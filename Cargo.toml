@@ -1,0 +1,19 @@
+[package]
+name          = "queen"
+version       = "0.1.0"
+license       = "MIT"
+authors       = ["mitum <dangcheng@hotmail.com>"]
+description   = "server"
+documentation = "https://docs.rs/queen"
+homepage      = "https://github.com/mitum/queen"
+repository    = "https://github.com/mitum/queen"
+readme        = "README.md"
+keywords      = ["server"]
+exclude       = [
+  ".gitignore",
+  ".travis.yml",
+  "deploy.sh",
+  "test/**/*",
+]
+
+[dependencies]
