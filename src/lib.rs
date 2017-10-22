@@ -1,6 +1,14 @@
 extern crate libc;
+extern crate nix;
 
-mod sys;
+pub mod sys;
+pub mod event;
+pub mod token;
+pub mod ready;
+pub mod poll_opt;
+pub mod poll;
+pub mod evented;
+pub mod registration;
 
 #[cfg(test)]
 mod tests {
@@ -10,7 +18,7 @@ mod tests {
 }
 
 
-
+/*
 extern crate soio;
 extern crate nix;
 
@@ -87,3 +95,4 @@ fn main() {
         }
     }
 }
+*/
