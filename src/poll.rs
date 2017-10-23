@@ -4,14 +4,10 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 
 use sys::{self, io};
-use event::Events;
-use token::Token;
-use ready::Ready;
-use poll_opt::PollOpt;
-use evented::Evented;
+use {Token, Ready, PollOpt, Events, Evented};
 
 pub struct Poll {
-    epoll: sys::epoll::Epoll
+    epoll: sys::Epoll
 }
 
 impl Poll {
@@ -20,7 +16,7 @@ impl Poll {
         is_sync::<Poll>();
 
         Ok(Poll {
-            epoll: sys::epoll::Epoll::new()?
+            epoll: sys::Epoll::new()?
         })
     }
 
@@ -60,7 +56,7 @@ impl Poll {
         Ok(())
     }
 
-    pub fn inner(&self) -> &sys::epoll::Epoll {
+    pub fn inner(&self) -> &sys::Epoll {
         &self.epoll
     }
 }

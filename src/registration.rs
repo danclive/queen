@@ -1,22 +1,18 @@
 use std::sync::Arc;
 
 use sys::io;
-use sys::awakener;
+use sys::Awakener;
 
-use poll::Poll;
-use token::Token;
-use ready::Ready;
-use poll_opt::PollOpt;
-use evented::Evented;
+use {Poll, Token, Ready, PollOpt, Evented};
 
 #[derive(Clone)]
 pub struct Registration {
-    pub awakener: Arc<awakener::Awakener>
+    pub awakener: Arc<Awakener>
 }
 
 impl Registration {
     pub fn new() -> io::Result<Registration>{
-        let awakener = Arc::new(awakener::Awakener::new()?);
+        let awakener = Arc::new(Awakener::new()?);
 
         let registration = Registration {
                 awakener: awakener
@@ -28,6 +24,10 @@ impl Registration {
     pub fn set_readiness(&self, ready: Ready) -> io::Result<()> {
         if ready == Ready::readable() || ready == Ready::writable() {
             self.awakener.wakeup()?;
+        }
+
+        if ready == Ready::empty() {
+            self.awakener.cleanup()
         }
 
         Ok(())

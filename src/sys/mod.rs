@@ -1,6 +1,9 @@
+mod epoll;
+mod awakener;
 pub mod io;
-pub mod epoll;
-pub mod awakener;
+
+pub use self::epoll::{Epoll, Events};
+pub use self::awakener::Awakener;
 
 trait IsMinusOne {
     fn is_minus_one(&self) -> bool;

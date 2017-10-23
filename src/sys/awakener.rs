@@ -1,14 +1,11 @@
 use std::os::unix::io::FromRawFd;
 
-use nix;
+use libc;
 
+use sys::cvt;
 use sys::io::{self, Io, Read, Write};
 
-use poll::Poll;
-use token::Token;
-use ready::Ready;
-use poll_opt::PollOpt;
-use evented::Evented;
+use {Poll, Token, Ready, PollOpt, Evented};
 
 pub struct Awakener {
     inner: Io
@@ -16,9 +13,8 @@ pub struct Awakener {
 
 impl Awakener {
     pub fn new() -> io::Result<Awakener> {
-        let flags = nix::sys::eventfd::EFD_CLOEXEC | nix::sys::eventfd::EFD_NONBLOCK;
-
-        let eventfd = nix::sys::eventfd::eventfd(0, flags).unwrap();
+        let flags = libc::EFD_CLOEXEC | libc::EFD_NONBLOCK;
+        let eventfd = unsafe { cvt(libc::eventfd(0, flags))? };
 
         Ok(Awakener {
             inner: unsafe { Io::from_raw_fd(eventfd) }

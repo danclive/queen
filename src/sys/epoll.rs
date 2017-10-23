@@ -11,10 +11,7 @@ use libc::{EPOLLRDHUP, EPOLLONESHOT};
 
 use sys::{io, cvt};
 
-use event::Event;
-use ready::Ready;
-use poll_opt::PollOpt;
-use token::Token;
+use {Token, Ready, PollOpt, Event};
 
 static NEXT_ID: AtomicUsize = ATOMIC_USIZE_INIT;
 
@@ -197,9 +194,6 @@ impl Events {
         })
     }
 }
-
-
-
 
 const NANOS_PER_MILLI: u32 = 1_000_000;
 const MILLIS_PER_SEC: u64 = 1_000;

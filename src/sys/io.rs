@@ -6,11 +6,7 @@ use libc;
 
 use sys::cvt;
 
-use poll::Poll;
-use token::Token;
-use ready::Ready;
-use poll_opt::PollOpt;
-use evented::Evented;
+use {Poll, Token, Ready, PollOpt, Evented};
 
 pub fn set_nonblock(fd: libc::c_int) -> Result<()> {
     unsafe {

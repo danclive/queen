@@ -18,4 +18,3 @@ exclude       = [
 
 [dependencies]
 libc     = "0.2"
-nix      = "*"
