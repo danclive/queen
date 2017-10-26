@@ -61,13 +61,11 @@ pub fn ctl_pair() -> io::Result<(SenderCtl, ReceiverCtl)> {
     Ok((tx, rx))
 }
 
-#[derive(Clone)]
 pub struct Sender<T> {
     tx: mpsc::Sender<T>,
     ctl: SenderCtl
 }
 
-#[derive(Clone)]
 pub struct SyncSender<T> {
     tx: mpsc::SyncSender<T>,
     ctl: SenderCtl
@@ -78,7 +76,6 @@ pub struct Receiver<T> {
     ctl: ReceiverCtl
 }
 
-//#[derive(Clone)]
 pub struct SenderCtl {
     inner: Arc<Inner>
 }
@@ -110,6 +107,15 @@ impl<T> Sender<T> {
     }
 }
 
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Sender<T> {
+        Sender {
+            tx: self.tx.clone(),
+            ctl: self.ctl.clone()
+        }
+    }
+}
+
 impl<T> SyncSender<T> {
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.tx.send(t).map_err(From::from).and_then(|_| { self.ctl.inc()?; Ok(()) })
@@ -117,6 +123,15 @@ impl<T> SyncSender<T> {
 
     pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
         self.tx.try_send(t).map_err(From::from).and_then(|_| { self.ctl.inc()?; Ok(()) })
+    }
+}
+
+impl<T> Clone for SyncSender<T> {
+    fn clone(&self) -> SyncSender<T> {
+        SyncSender {
+            tx: self.tx.clone(),
+            ctl: self.ctl.clone()
+        }
     }
 }
 
