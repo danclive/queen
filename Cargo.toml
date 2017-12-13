@@ -17,4 +17,6 @@ exclude       = [
 ]
 
 [dependencies]
-libc     = "0.2"
+nson = "0.1"
+byteorder = "1.1"
+queen-io = "0.1"
