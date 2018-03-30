@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.1.1"
+version       = "0.1.2"
 license       = "MIT"
 authors       = ["mitum <dangcheng@hotmail.com>"]
 description   = "server"
@@ -8,7 +8,7 @@ documentation = "https://docs.rs/queen"
 homepage      = "https://github.com/mitum/queen"
 repository    = "https://github.com/mitum/queen"
 readme        = "README.md"
-keywords      = ["server"]
+keywords      = ["server", "rpc"]
 exclude       = [
   ".gitignore",
   ".travis.yml",
@@ -20,3 +20,5 @@ exclude       = [
 nson = "0.1"
 byteorder = "1.1"
 queen-io = "0.1"
+queen-core = { path = "../queen-core" }
+queen-log = { path = "../queen-log" }
