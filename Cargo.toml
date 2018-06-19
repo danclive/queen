@@ -17,8 +17,21 @@ exclude       = [
 ]
 
 [dependencies]
-nson = "0.1"
+nson = { path = "../nson" }
 byteorder = "1.1"
-queen-io = "0.1"
+queen-io = { path = "../queen-io" }
+bitflags = "1.0"
 queen-core = { path = "../queen-core" }
 queen-log = { path = "../queen-log" }
+serde = "1.0"
+serde_derive = "1.0"
+serde_bytes = "0.10"
+rand = "0.5"
+
+[dependencies.serde_json]
+version = "1.0"
+features = ["preserve_order"]
+
+[[bin]]
+name = "main"
+path = "src/bin/main.rs"

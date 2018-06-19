@@ -9,7 +9,6 @@ use std::thread;
 use std::sync::mpsc::TryRecvError;
 use std::io::ErrorKind::ConnectionAborted;
 use std::collections::HashMap;
-use std::net::ToSocketAddrs;
 
 use queen_io::*;
 use queen_io::channel::{Receiver, Sender};
@@ -49,6 +48,19 @@ impl Session {
         }
     }
 
+    fn handle(&mut self, id: usize, message: Message) -> io::Result<()> {
+        match message.opcode {
+            OpCode::CONNECT => {
+                if message.content_type == 0 {
+                    
+                }
+            }
+            _ => ()
+        }
+
+        Ok(())
+    }
+    /*
     fn handle(&mut self, id: usize, message: Message) -> io::Result<()> {
         match message.opcode {
             OpCode::CONNECT => {
@@ -126,7 +138,7 @@ impl Session {
                 }
 
                 let mut unsubscribe_message = message;
-                unsubscribe_message.opcode = OpCode::UNSUBSCRIBE;
+                unsubscribe_message.opcode = OpCode::UNSUBACK;
                 let _ = self.send.send(ServiceMessage::Message(id, unsubscribe_message));
             }
             OpCode::PUBLISH => {
@@ -149,6 +161,9 @@ impl Session {
                 puback_message.body = vec![];
                 let _ = self.send.send(ServiceMessage::Message(id, puback_message));
             }
+            OpCode::PUBACK => {
+                //unimplemented!()
+            }
             _ => {
                 let mut error_message = message;
                 error_message.opcode = OpCode::ERROR;
@@ -160,7 +175,7 @@ impl Session {
 
         Ok(())
     }
-
+    */
 
     fn has_name(&self, name: &str) -> bool {
         if self.session_1.contains_key(name) {
@@ -198,8 +213,8 @@ impl Session {
 // 4 => json
 
 impl Queen {
-    fn new<A: ToSocketAddrs>(name: &str, addr: A) -> io::Result<Queen> {
-        let (mut service, send, recv) = Service::new(addr)?;
+    fn new(name: &str) -> io::Result<Queen> {
+        let (mut service, send, recv) = Service::new()?;
 
         let queen = Queen {
             poll: Poll::new()?,
@@ -260,7 +275,36 @@ impl Queen {
             Command::CloseConn {id} => {
                 self.sessions.remove(id);
             }
+            _ => ()
         }
+
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn listen(&self, addr: &str) -> io::Result<()> {
+        let listen_command = ServiceMessage::Command(
+            Command::Listen {
+                id: 0,
+                addr: addr.to_owned()
+            }
+        );
+
+        self.send.send(listen_command).unwrap();
+
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn link_to(&mut self, addr: &str) -> io::Result<()> {
+        let connent_command = ServiceMessage::Command(
+            Command::Connent {
+                id: 0,
+                addr: addr.to_owned()
+            }
+        );
+
+        self.send.send(connent_command).unwrap();
 
         Ok(())
     }
@@ -292,7 +336,7 @@ impl Queen {
 fn main() {
     queen_log::init(queen_log::Level::Trace, &queen_log::DefaultLogger);
 
-    let mut queen = Queen::new("queen", "127.0.0.1:50000").unwrap();
+    let mut queen = Queen::new("queen").unwrap();
 
     queen.run().unwrap();
 }
