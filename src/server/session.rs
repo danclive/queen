@@ -69,6 +69,9 @@ impl Session {
             OpCode::PUBLISH => {
                 self.handle_publish(id, message)?;
             }
+            OpCode::ERROR => {
+                self.handle_error(id, message)?;
+            }
             _ => ()
         }
 
@@ -291,6 +294,14 @@ impl Session {
         self.msg_queue.rx.push((id, return_message))?;
 
         return Ok(())
+    }
+
+    pub fn handle_error(&mut self, _id: usize, message: Message) -> io::Result<()> {
+        if message.origin != 0 {
+            self.msg_queue.rx.push((message.origin as usize, message))?;
+        }
+
+        Ok(())
     }
 
     fn insert_client(&mut self, socket_id: usize, methods: Option<Vec<String>>) {

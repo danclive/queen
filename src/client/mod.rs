@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::io;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
 use std::io::ErrorKind::ConnectionAborted;
+use std::collections::HashMap;
 
 use queen_io::message_queue::MessagesQueue;
 use nson;
@@ -15,16 +16,20 @@ use self::backend::Backend;
 
 pub mod backend;
 
-#[derive(Debug, Clone)]
+type SubScribeHandle = Fn(String, u8, Vec<u8>) + Send + Sync + 'static;
+type ResponseHandle = Fn(String, u8, Vec<u8>) -> (u8, Vec<u8>) + Send + Sync + 'static;
+
+#[derive(Clone)]
 pub struct Client {
     inner: Arc<ClientInner>
 }
 
-#[derive(Debug, Clone)]
 pub struct ClientInner {
-    message_id: Arc<AtomicUsize>,
+    message_id: AtomicUsize,
     msg_queue: MessagesQueue<(usize, Message)>,
-    task_queue: MessagesQueue<(Message, Option<Sender<Message>>)>
+    task_queue: MessagesQueue<(Message, Option<Sender<Message>>)>,
+    subscribe_handles: RwLock<HashMap<String, Box<SubScribeHandle>>>,
+    response_handle: RwLock<Option<Box<ResponseHandle>>>
 }
 
 impl Client {
@@ -34,9 +39,11 @@ impl Client {
 
         let client = Client {
             inner: Arc::new(ClientInner {
-                message_id: Arc::new(ATOMIC_USIZE_INIT),
+                message_id: ATOMIC_USIZE_INIT,
                 msg_queue: backend.msg_queue().clone(),
-                task_queue: backend.task_queue().clone()
+                task_queue: backend.task_queue().clone(),
+                subscribe_handles: RwLock::new(HashMap::new()),
+                response_handle: RwLock::new(None)
             })
         };
 
@@ -65,9 +72,7 @@ impl Client {
         }
     }
 
-    pub fn watch<H>(&self, handle: H) -> io::Result<()>
-        where H: Fn(Message) -> Message + Send + Sync + 'static
-    {
+    pub fn run(&self) -> io::Result<()> {
         loop {
             let (_, message) = self.inner.msg_queue.pop();
 
@@ -76,24 +81,47 @@ impl Client {
             let origin = message.origin;
             let topic = message.topic.clone();
 
-            let mut return_message = handle(message);
-
             if message_opcode == OpCode::REQUEST {
-                return_message.message_id = message_id;
-                return_message.opcode = OpCode::RESPONSE;
-                return_message.origin = origin;
-                return_message.topic = topic;
+                let response_handle = self.inner.response_handle.read().unwrap();
+
+                let return_message = if let Some(ref response_handle) = *response_handle {
+                    let (content_type, data) = response_handle(topic.clone(), message.content_type, message.body);
+
+                    let mut response_message = Message::new();
+                    response_message.message_id = message_id;
+                    response_message.opcode = OpCode::RESPONSE;
+                    response_message.origin = origin;
+                    response_message.topic = topic;
+                    response_message.content_type = content_type;
+                    response_message.body = data;
+
+                    response_message
+
+                } else {
+                    unimplemented!()
+                };
+
+                self.inner.task_queue.push((return_message, None)).unwrap();
             } else
-
             if message_opcode == OpCode::PUBLISH {
-                return_message.message_id = message_id;
-                return_message.opcode = OpCode::PUBACK;
-                return_message.origin = origin;
-                return_message.topic = topic;
+                let subscribe_handles = self.inner.subscribe_handles.read().unwrap();
 
+                let return_message = if let Some(ref subscribe_handle) = subscribe_handles.get(&topic) {
+                    subscribe_handle(topic.clone(), message.content_type, message.body);
+
+                    let mut puback_message = Message::new();
+                    puback_message.message_id = message_id;
+                    puback_message.opcode = OpCode::PUBACK;
+                    puback_message.topic = topic;
+
+                    puback_message
+
+                } else {
+                    unimplemented!()
+                };
+
+                self.inner.task_queue.push((return_message, None)).unwrap();
             }
-
-            self.inner.task_queue.push((return_message, None)).unwrap();
         }
     }
 
@@ -153,7 +181,19 @@ impl Client {
         Ok((response_message.content_type, response_message.body))
     }
 
-    pub fn subscribe(&self, topic: &str) -> io::Result<()> {
+    pub fn response<H>(&self, handle: H) -> io::Result<()>
+        where H: Fn(String, u8, Vec<u8>) -> (u8, Vec<u8>) + Send + Sync + 'static
+    {
+        let mut response_handle = self.inner.response_handle.write().unwrap();
+
+        *response_handle = Some(Box::new(handle));
+
+        Ok(())
+    }
+
+    pub fn subscribe<H>(&self, topic: &str, handle: H)-> io::Result<()>
+        where H: Fn(String, u8, Vec<u8>) + Send + Sync + 'static
+    {
         let mut subscribe_message = Message::new();
         subscribe_message.message_id = self.get_message_id();
         subscribe_message.opcode = OpCode::SUBSCRIBE;
@@ -163,7 +203,11 @@ impl Client {
 
         if suback_message.opcode != OpCode::SUBACK {
             unimplemented!()
-        } 
+        }
+
+        let mut subscribe_handles = self.inner.subscribe_handles.write().unwrap();
+
+        subscribe_handles.insert(topic.to_owned(), Box::new(handle));
 
         Ok(())
     }

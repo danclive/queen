@@ -39,12 +39,13 @@ impl RPC {
 		for _ in 0..worker_num {
 
 			let client = self.client.clone();
-			let handles = self.handles.clone();
+			//let handles = self.handles.clone();
 
 			threads.push(thread::spawn(move || {
-				client.watch(move |message| {
-					unimplemented!()
-				})
+				// client.watch(move |message| {
+				// 	unimplemented!()
+				// })
+				client.run().unwrap();
 			}));
 		}
 
