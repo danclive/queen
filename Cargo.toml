@@ -21,8 +21,6 @@ nson = { path = "../nson" }
 byteorder = "1.1"
 queen-io = { path = "../queen-io" }
 bitflags = "1.0"
-queen-core = { path = "../queen-core" }
-queen-log = { path = "../queen-log" }
 serde = "1.0"
 serde_derive = "1.0"
 serde_bytes = "0.10"

@@ -15,14 +15,14 @@ use self::backend::Backend;
 
 pub mod backend;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Client {
     inner: Arc<ClientInner>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ClientInner {
-    message_id: AtomicUsize,
+    message_id: Arc<AtomicUsize>,
     msg_queue: MessagesQueue<(usize, Message)>,
     task_queue: MessagesQueue<(Message, Option<Sender<Message>>)>
 }
@@ -34,7 +34,7 @@ impl Client {
 
         let client = Client {
             inner: Arc::new(ClientInner {
-                message_id: ATOMIC_USIZE_INIT,
+                message_id: Arc::new(ATOMIC_USIZE_INIT),
                 msg_queue: backend.msg_queue().clone(),
                 task_queue: backend.task_queue().clone()
             })

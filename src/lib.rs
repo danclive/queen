@@ -18,3 +18,4 @@ pub mod service;
 pub mod server;
 pub mod client;
 pub mod commom;
+pub mod rpc;
