@@ -91,7 +91,7 @@ impl Backend {
             }
         }
 
-        self.poll.register(&self.msg_queue.tx, MSG, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;
+        self.poll.reregister(&self.msg_queue.tx, MSG, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;
 
         Ok(())
     }
@@ -112,6 +112,8 @@ impl Backend {
 
             self.conn.set_message(&self.poll, task.0)?;
         }
+
+        self.poll.reregister(&self.task_queue, TASK, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;
 
         Ok(())
     }

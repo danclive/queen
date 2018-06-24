@@ -17,7 +17,7 @@ use self::backend::Backend;
 pub mod backend;
 
 type SubScribeHandle = Fn(String, u8, Vec<u8>) + Send + Sync + 'static;
-type ResponseHandle = Fn(String, u8, Vec<u8>) -> (u8, Vec<u8>) + Send + Sync + 'static;
+type ResponseHandle = Fn(String, u8, Vec<u8>) -> io::Result<(u8, Vec<u8>)> + Send + Sync + 'static;
 
 #[derive(Clone)]
 pub struct Client {
@@ -48,7 +48,8 @@ impl Client {
         };
 
         thread::Builder::new().name("client backend".to_owned()).spawn(move || {
-            backend.run()
+            let a = backend.run();
+            println!("{:?}", a);
         }).unwrap();
 
 
@@ -85,7 +86,7 @@ impl Client {
                 let response_handle = self.inner.response_handle.read().unwrap();
 
                 let return_message = if let Some(ref response_handle) = *response_handle {
-                    let (content_type, data) = response_handle(topic.clone(), message.content_type, message.body);
+                    let (content_type, data) = response_handle(topic.clone(), message.content_type, message.body)?;
 
                     let mut response_message = Message::new();
                     response_message.message_id = message_id;
@@ -98,7 +99,16 @@ impl Client {
                     response_message
 
                 } else {
-                    unimplemented!()
+
+                    let mut error_message = Message::new();
+                    error_message.message_id = message_id;
+                    error_message.opcode = OpCode::ERROR;
+                    error_message.origin = origin;
+                    error_message.topic = topic;
+                    error_message.content_type = ContentType::TEXT.bits();
+                    error_message.body = "The method doesn't exist!".as_bytes().to_vec();
+
+                    error_message
                 };
 
                 self.inner.task_queue.push((return_message, None)).unwrap();
@@ -106,7 +116,7 @@ impl Client {
             if message_opcode == OpCode::PUBLISH {
                 let subscribe_handles = self.inner.subscribe_handles.read().unwrap();
 
-                let return_message = if let Some(ref subscribe_handle) = subscribe_handles.get(&topic) {
+                if let Some(ref subscribe_handle) = subscribe_handles.get(&topic) {
                     subscribe_handle(topic.clone(), message.content_type, message.body);
 
                     let mut puback_message = Message::new();
@@ -114,13 +124,9 @@ impl Client {
                     puback_message.opcode = OpCode::PUBACK;
                     puback_message.topic = topic;
 
-                    puback_message
+                    self.inner.task_queue.push((puback_message, None)).unwrap();
 
-                } else {
-                    unimplemented!()
-                };
-
-                self.inner.task_queue.push((return_message, None)).unwrap();
+                }
             }
         }
     }
@@ -141,8 +147,6 @@ impl Client {
         connect_message.body = body;
 
         let return_message = self.send(connect_message)?;
-
-        println!("{:?}", return_message);
 
         if return_message.opcode != OpCode::CONNACK {
             unimplemented!()
@@ -182,7 +186,7 @@ impl Client {
     }
 
     pub fn response<H>(&self, handle: H) -> io::Result<()>
-        where H: Fn(String, u8, Vec<u8>) -> (u8, Vec<u8>) + Send + Sync + 'static
+        where H: Fn(String, u8, Vec<u8>) -> io::Result<(u8, Vec<u8>)> + Send + Sync + 'static
     {
         let mut response_handle = self.inner.response_handle.write().unwrap();
 
@@ -230,6 +234,7 @@ impl Client {
     pub fn publish(&self, topic: &str, content_type: u8, data: Vec<u8>) -> io::Result<()> {
         let mut publish_message = Message::new();
         publish_message.message_id = self.get_message_id();
+        publish_message.opcode = OpCode::PUBLISH;
         publish_message.topic = topic.to_owned();
         publish_message.content_type = content_type;
         publish_message.body = data;

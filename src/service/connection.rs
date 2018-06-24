@@ -59,7 +59,7 @@ impl Connection {
 
         loop {
             if self.stream.reader.len() < mem::size_of::<u32>() {
-                return Ok(())
+                break;
             }
 
             let message_length = {
@@ -80,7 +80,7 @@ impl Connection {
 
             let message = Message::read(&mut self.stream.reader)?;
 
-            msg_queue.tx.push((self.token.into(), message))?
+            msg_queue.tx.push((self.token.into(), message))?;
         }
 
         if self.stream.reader.len() < 16 * 1024 * 1024 {

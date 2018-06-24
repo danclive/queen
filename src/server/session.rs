@@ -46,7 +46,7 @@ impl Session {
     }
 
     pub fn handle(&mut self, id: usize, message: Message) -> io::Result<()> {
-        println!("session:handle: id: {:?}, message: {:?}", id, message);
+        //println!("session:handle: id: {:?}, message: {:?}", id, message);
         match message.opcode {
             OpCode::CONNECT => {
                 self.handle_connect(id, message)?;
@@ -163,6 +163,8 @@ impl Session {
             return_message.opcode = OpCode::CONNACK;
 
             self.msg_queue.rx.push((id, return_message)).unwrap();
+
+            return Ok(())
         }
 
         let mut return_message = Message::new();
@@ -296,9 +298,11 @@ impl Session {
         return Ok(())
     }
 
-    pub fn handle_error(&mut self, _id: usize, message: Message) -> io::Result<()> {
-        if message.origin != 0 {
-            self.msg_queue.rx.push((message.origin as usize, message))?;
+    pub fn handle_error(&mut self, id: usize, message: Message) -> io::Result<()> {
+        if self.check_client(id, message.message_id)? {
+            if message.origin != 0 {
+                self.msg_queue.rx.push((message.origin as usize, message))?;
+            }
         }
 
         Ok(())
@@ -336,7 +340,7 @@ impl Session {
     }
 
     pub fn remove_client(&mut self, socket_id: usize) {
-        println!("session:remove_client: {:?}", socket_id);
+        //println!("session:remove_client: {:?}", socket_id);
         self.clients.remove(&socket_id);
         self.cache1.remove(&socket_id);
 

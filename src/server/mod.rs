@@ -40,7 +40,7 @@ impl Queen {
         queen.poll.register(&queen.cmd_queue.tx, CMD, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;
 
         thread::Builder::new().name("service".to_owned()).spawn(move || {
-            service.run()
+            service.run().unwrap()
         }).unwrap();
 
         Ok(queen)

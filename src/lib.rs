@@ -2,6 +2,7 @@
 extern crate bitflags;
 extern crate byteorder;
 extern crate queen_io;
+#[macro_use]
 extern crate nson;
 extern crate serde;
 //#[macro_use]
