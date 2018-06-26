@@ -46,7 +46,7 @@ impl Session {
     }
 
     pub fn handle(&mut self, id: usize, message: Message) -> io::Result<()> {
-        //println!("session:handle: id: {:?}, message: {:?}", id, message);
+        println!("session:handle: id: {:?}, message: {:?}", id, message);
         match message.opcode {
             OpCode::CONNECT => {
                 self.handle_connect(id, message)?;
