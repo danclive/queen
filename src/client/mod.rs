@@ -11,13 +11,14 @@ use nson;
 
 use protocol::{Message, OpCode, ContentType};
 use commom::Connect;
+use error::Result;
 
 use self::backend::Backend;
 
 pub mod backend;
 
 type SubScribeHandle = Fn(String, u8, Vec<u8>) + Send + Sync + 'static;
-type ResponseHandle = Fn(String, u8, Vec<u8>) -> io::Result<(u8, Vec<u8>)> + Send + Sync + 'static;
+type ResponseHandle = Fn(String, u8, Vec<u8>) -> Result<(u8, Vec<u8>)> + Send + Sync + 'static;
 
 #[derive(Clone)]
 pub struct Client {
@@ -186,7 +187,7 @@ impl Client {
     }
 
     pub fn response<H>(&self, handle: H) -> io::Result<()>
-        where H: Fn(String, u8, Vec<u8>) -> io::Result<(u8, Vec<u8>)> + Send + Sync + 'static
+        where H: Fn(String, u8, Vec<u8>) -> Result<(u8, Vec<u8>)> + Send + Sync + 'static
     {
         let mut response_handle = self.inner.response_handle.write().unwrap();
 

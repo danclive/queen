@@ -5,11 +5,11 @@ use std::thread;
 
 use nson;
 
+use error::Result;
 use protocol::ContentType;
-
 use client::Client;
 
-pub type Handle = Fn(u8, Vec<u8>) -> io::Result<(u8, Vec<u8>)> + Send + Sync + 'static;
+pub type Handle = Fn(u8, Vec<u8>) -> Result<(u8, Vec<u8>)> + Send + Sync + 'static;
 
 #[derive(Clone)]
 pub struct RPC {
@@ -26,7 +26,7 @@ impl RPC {
     }
 
     pub fn register<H>(&mut self, method: &str, handle: H)
-        where H: Fn(u8, Vec<u8>) -> io::Result<(u8, Vec<u8>)> + Send + Sync + 'static
+        where H: Fn(u8, Vec<u8>) -> Result<(u8, Vec<u8>)> + Send + Sync + 'static
     {
         self.handles.insert(method.to_owned(), Arc::new(Box::new(handle)));
     }
@@ -67,8 +67,8 @@ impl RPC {
     }
 }
 
-use serde::Serialize;
-use serde::de::DeserializeOwned;
+// use serde::Serialize;
+// use serde::de::DeserializeOwned;
 use std::io::Cursor;
 
 macro_rules! service {
@@ -80,32 +80,51 @@ macro_rules! service {
         }
 
         impl $name {
-            fn request(rpc: &RPC, request: $request) -> io::Result<$response> {
+            pub fn request(rpc: &RPC, request: $request) -> Result<$response> {
                 let n = nson::encode::to_nson(&request).unwrap();
 
                 let mut buf = Vec::new();
 
-                nson::encode::encode_object(&mut buf, &object!{"p": n}).unwrap();
+                nson::encode::encode_object(&mut buf, &object!{"q": n}).unwrap();
 
                 let (_, data) = rpc.client.request(stringify!($name), ContentType::NSON.bits(), buf)?;
                 let mut reader = Cursor::new(data);
 
-                let mut q = nson::decode::decode_object(&mut reader).unwrap();
+                let mut p = nson::decode::decode_object(&mut reader).unwrap();
 
-                if let Some(r) = q.remove("q") {
+                if let Some(r) = p.remove("p") {
                     let response = nson::decode::from_nson(r).unwrap();
                     return Ok(response)
                 }
 
-                unsafe {
-                    ::std::mem::zeroed()
-                }
+                unimplemented!()
             }
 
-            fn response<F>(rpc: &mut RPC, handle: F)
-                where F: Fn($request) -> $response+ Send + Sync + 'static
+            pub fn response<F>(rpc: &mut RPC, handle: F)
+                where F: Fn($request) -> Result<$response> + Send + Sync + 'static
             {
+                rpc.register(stringify!($name), move |content_type, data| {
 
+                    if content_type == ContentType::NSON.bits() {
+                        let mut reader = Cursor::new(data);
+                        let mut q = nson::decode::decode_object(&mut reader).unwrap();
+
+                        if let Some(r) = q.remove("q") {
+                            let request = nson::decode::from_nson(r).unwrap();
+
+                            let response = handle(request).unwrap();
+
+                            let p = nson::encode::to_nson(&response).unwrap();
+
+                            let mut buf = Vec::new();
+                            nson::encode::encode_object(&mut buf, &object!{"p": p}).unwrap();
+
+                            return Ok((content_type, buf))
+                        }
+                    }
+
+                    unimplemented!()
+                });
             }
         }
     }

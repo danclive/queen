@@ -16,6 +16,8 @@ exclude       = [
   "test/**/*",
 ]
 
+autobins = false
+
 [dependencies]
 nson = { path = "../nson" }
 byteorder = "1.1"
