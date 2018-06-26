@@ -83,11 +83,14 @@ impl Backend {
             };
 
             let message_id = msg.1.message_id;
+            let opcode = msg.1.opcode;
 
-            if let Some(send) = self.tasks.remove(&message_id) {
-                send.send(msg.1).unwrap();
-            } else {
+            if opcode == OpCode::REQUEST || opcode == OpCode::PUBLISH {
                 self.msg_queue.rx.push(msg)?;
+            } else {
+                if let Some(send) = self.tasks.remove(&message_id) {
+                    send.send(msg.1).unwrap();
+                }
             }
         }
 

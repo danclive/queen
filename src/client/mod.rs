@@ -83,18 +83,11 @@ impl Client {
             let origin = message.origin;
             let topic = message.topic.clone();
 
-            println!("{:?}", message);
-
             if message_opcode == OpCode::REQUEST {
                 let response_handle = self.inner.response_handle.read().unwrap();
 
-                println!("{:?}", "aaaaaaaaaaaaaaa");
-
                 let return_message = if let Some(ref response_handle) = *response_handle {
-
-                    println!("{:?}", "bbbbbbbbbbbbbbbbb");
                     let (content_type, data) = response_handle(topic.clone(), message.content_type, message.body)?;
-                    println!("{:?}", "eeeeeeeeeeeeeeeee");
 
                     let mut response_message = Message::new();
                     response_message.message_id = message_id;
@@ -103,9 +96,6 @@ impl Client {
                     response_message.topic = topic;
                     response_message.content_type = content_type;
                     response_message.body = data;
-
-                    println!("{:?}", "ccccccccccccccccc");
-                    println!("{:?}", response_message);
 
                     response_message
 
@@ -121,8 +111,6 @@ impl Client {
 
                     error_message
                 };
-
-                println!("{:?}", return_message);
 
                 self.inner.task_queue.push((return_message, None)).unwrap();
             } else
@@ -193,7 +181,6 @@ impl Client {
         let response_message = self.send(request_message)?;
 
         if response_message.opcode != OpCode::RESPONSE {
-            println!("{:?}", response_message);
             unimplemented!()
         }
 

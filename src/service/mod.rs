@@ -265,6 +265,8 @@ impl Service {
 
                             let token = self.next_token();
 
+                            socket.set_nodelay(true)?;
+
                             let conn = Connection::new(socket, token)?;
                             conn.register_insterest(&self.poll);
 
