@@ -47,12 +47,7 @@ impl Queen {
     }
 
     fn msg_handle(&mut self) -> io::Result<()> {
-        loop {
-            let msg = match self.msg_queue.tx.try_pop()? {
-                Some(msg) => msg,
-                None => break
-            };
-
+        while let Some(msg) = self.msg_queue.tx.try_pop()? {
             self.sessions.handle(msg.0, msg.1)?;
         }
 
@@ -62,17 +57,9 @@ impl Queen {
     }
 
     fn cmd_handle(&mut self) -> io::Result<()> {
-        loop {
-            let cmd = match self.cmd_queue.tx.try_pop()? {
-                Some(cmd) => cmd,
-                None => break
-            };
-
-            match cmd {
-                Command::CloseConn { id } => {
-                    self.sessions.remove_client(id)
-                }
-                _ => ()
+        while let Some(cmd) = self.cmd_queue.tx.try_pop()? {
+            if let Command::CloseConn { id } = cmd {
+                self.sessions.remove_client(id)
             }
         }
 

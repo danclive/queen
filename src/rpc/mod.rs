@@ -4,6 +4,8 @@ use std::io;
 use std::thread;
 
 use nson;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use error::Result;
 use protocol::ContentType;
@@ -62,13 +64,13 @@ impl RPC {
 
             let client = self.client.clone();
 
-            threads.push(thread::spawn(move || {
+            threads.push(thread::Builder::new().name("worker".to_owned()).spawn(move || {
                 client.run().unwrap();
-            }));
+            }).unwrap());
         }
 
         for thread in threads {
-            let _ = thread.join().unwrap();
+            thread.join().unwrap();
         }
 
         Ok(())
@@ -119,9 +121,6 @@ pub fn response<P: DeserializeOwned, Q: Serialize, F>(content_type: u8, data: Ve
     unimplemented!()
 }
 
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-
 #[macro_export]
 macro_rules! service {
     ($name:ident, $request:ident, $response:ident) => {
@@ -146,15 +145,3 @@ macro_rules! service {
         }
     }
 }
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Aaa {
-    aa: i32
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Bbb {
-    bb: i32
-}
-
-service!(Haha, Aaa, Bbb);

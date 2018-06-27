@@ -37,7 +37,7 @@ impl Backend {
             poll: Poll::new()?,
             events: Events::with_capacity(128),
             //addr: addr.to_owned(),
-            conn: conn,
+            conn,
             tasks: HashMap::new(),
             msg_queue: BothQueue::new(256)?,
             task_queue: MessagesQueue::with_capacity(256)?
@@ -61,7 +61,7 @@ impl Backend {
 
     fn connect_handle(&mut self, event: Event) -> io::Result<()> {
         if event.readiness().is_hup() || event.readiness().is_error() {
-            return Err(io::Error::new(ConnectionAborted, "").into())
+            return Err(io::Error::new(ConnectionAborted, ""))
         }
 
         if event.readiness().is_readable() {
@@ -76,21 +76,14 @@ impl Backend {
     }
 
     fn msg_handle(&mut self) -> io::Result<()> {
-        loop {
-            let msg = match self.msg_queue.tx.try_pop()? {
-                Some(msg) => msg,
-                None => break
-            };
-
+        while let Some(msg) = self.msg_queue.tx.try_pop()? {
             let message_id = msg.1.message_id;
             let opcode = msg.1.opcode;
 
             if opcode == OpCode::REQUEST || opcode == OpCode::PUBLISH {
                 self.msg_queue.rx.push(msg)?;
-            } else {
-                if let Some(send) = self.tasks.remove(&message_id) {
-                    send.send(msg.1).unwrap();
-                }
+            } else if let Some(send) = self.tasks.remove(&message_id) {
+                send.send(msg.1).unwrap();
             }
         }
 
@@ -100,12 +93,7 @@ impl Backend {
     }
 
     fn task_handle(&mut self) -> io::Result<()> {
-        loop {
-            let task = match self.task_queue.try_pop()? {
-                Some(task) => task,
-                None => break
-            };
-
+        while let Some(task) = self.task_queue.try_pop()? {
             if task.0.opcode != OpCode::RESPONSE && task.0.opcode != OpCode::PUBACK {
                 if let Some(send) = task.1 {
                     let message_id = task.0.message_id;
@@ -113,7 +101,7 @@ impl Backend {
                 }
             }
 
-            self.conn.set_message(&self.poll, task.0)?;
+            self.conn.set_message(&self.poll, &task.0)?;
         }
 
         self.poll.reregister(&self.task_queue, TASK, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;

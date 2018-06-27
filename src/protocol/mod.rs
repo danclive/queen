@@ -94,6 +94,10 @@ impl Message {
         4 * 4 + self.topic.len() + 1 + self.body.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.body.is_empty()
+    }
+
     pub fn write<W: Write>(&self, buffer: &mut W) -> Result<()> {
         let length = self.len();
 
@@ -104,7 +108,7 @@ impl Message {
         buffer.write_u8(self.opcode.bits())?;
         buffer.write_u8(self.content_type)?;
         buffer.write_u16::<LittleEndian>(0)?;
-        buffer.write(&self.body)?;
+        buffer.write_all(&self.body)?;
 
         Ok(())
     }
@@ -136,12 +140,12 @@ impl Message {
         let opcode = OpCode::from_bits(opcode).unwrap_or_default();
 
         Ok(Message {
-            message_id: message_id,
-            origin: origin,
-            topic: topic,
-            opcode: opcode,
+            message_id,
+            origin,
+            topic,
+            opcode,
             content_type,
-            body: body
+            body
         })
     }
 }

@@ -7,7 +7,7 @@ pub struct Connect {
 }
 
 impl Connect {
-    pub fn from_str(value: String) -> Option<Connect> {
+    pub fn from_string(value: &str) -> Option<Connect> {
         if !value.contains('&') {
             return None
         }
@@ -16,7 +16,7 @@ impl Connect {
 
         let mut connect = Connect::default();
 
-        for fragment in fragments.iter() {
+        for fragment in &fragments {
             if !fragment.contains(':') {
                 continue;
             }

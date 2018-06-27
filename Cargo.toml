@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.1.2"
+version       = "0.2.0"
 license       = "MIT"
 authors       = ["mitum <dangcheng@hotmail.com>"]
 description   = "server"
@@ -19,9 +19,9 @@ exclude       = [
 autobins = false
 
 [dependencies]
-nson = { path = "../nson" }
+nson = "0.1"
 byteorder = "1.1"
-queen-io = { path = "../queen-io" }
+queen-io = "0.1"
 bitflags = "1.0"
 serde = "1.0"
 serde_derive = "1.0"

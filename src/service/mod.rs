@@ -76,8 +76,8 @@ impl Service {
             events: Events::with_capacity(256),
             conns: HashMap::with_capacity(128),
             token_counter: Cell::new(8),
-            msg_queue: msg_queue,
-            cmd_queue: cmd_queue,
+            msg_queue,
+            cmd_queue,
             socket: None,
             run: true
 
@@ -102,14 +102,19 @@ impl Service {
         Token(self.token_counter.replace(next_token) as usize)
     }
     fn msg_handle(&mut self) -> io::Result<()> {
-        loop {
-            let msg = match self.msg_queue.rx.try_pop()? {
-                Some(msg) => msg,
-                None => break
-            };
+        // loop {
+        //     let msg = match self.msg_queue.rx.try_pop()? {
+        //         Some(msg) => msg,
+        //         None => break
+        //     };
 
+        //     if let Some(conn) = self.conns.get_mut(&Token(msg.0)) {
+        //         conn.set_message(&self.poll, msg.1)?;
+        //     }
+        // }
+        while let Some(msg) = self.msg_queue.rx.try_pop()? {
             if let Some(conn) = self.conns.get_mut(&Token(msg.0)) {
-                conn.set_message(&self.poll, msg.1)?;
+                conn.set_message(&self.poll, &msg.1)?;
             }
         }
 
@@ -119,12 +124,7 @@ impl Service {
     }
 
     fn cmd_handle(&mut self) -> io::Result<()> {
-        loop {
-            let cmd = match self.cmd_queue.rx.try_pop()? {
-                Some(cmd) => cmd,
-                None => break
-            };
-
+        while let Some(cmd) = self.cmd_queue.rx.try_pop()? {
             match cmd {
                 Command::Shoutdown => {
                     self.run = false
@@ -138,8 +138,8 @@ impl Service {
                         Err(err) => {
                             self.cmd_queue.tx.push(
                                 Command::ListenReply {
-                                    id: id,
-                                    addr: addr,
+                                    id,
+                                    addr,
                                     success: false,
                                     msg: err.description().to_owned()
                                 }
@@ -155,8 +155,8 @@ impl Service {
 
                     self.cmd_queue.tx.push(
                         Command::ListenReply {
-                            id: id,
-                            addr: addr,
+                            id,
+                            addr,
                             success: true,
                             msg: String::default()
                         }
@@ -168,9 +168,9 @@ impl Service {
                         Err(err) => {
                             self.cmd_queue.tx.push(
                                 Command::ConnentReply {
-                                    id: id,
+                                    id,
                                     token: 0,
-                                    addr: addr,
+                                    addr,
                                     success: false,
                                     msg: err.description().to_owned()
                                 }
@@ -191,9 +191,9 @@ impl Service {
 
                     self.cmd_queue.tx.push(
                         Command::ConnentReply {
-                            id: id,
+                            id,
                             token: token.into(),
-                            addr: addr,
+                            addr,
                             success: true,
                             msg: String::default()
                         }
@@ -243,44 +243,38 @@ impl Service {
             )?;
         }
 
-        return Ok(())
+        Ok(())
     }
 
     fn dispatch(&mut self, event: Event) -> io::Result<()> {
         match event.token() {
             SOCKET => {
-                match self.socket {
-                    Some(ref socket) => {
-                        loop {
-                            let socket = match socket.accept().map(|s| s.0) {
-                                Ok(socket) => socket,
-                                Err(err) => {
-                                    if let WouldBlock = err.kind() {
-                                        break;
-                                    } else {
-                                        return Err(err)
-                                    }
+                if let Some(ref socket) = self.socket {
+                    loop {
+                        let socket = match socket.accept().map(|s| s.0) {
+                            Ok(socket) => socket,
+                            Err(err) => {
+                                if let WouldBlock = err.kind() {
+                                    break;
+                                } else {
+                                    return Err(err)
                                 }
-                            };
+                            }
+                        };
 
-                            let token = self.next_token();
+                        let token = self.next_token();
 
-                            socket.set_nodelay(true)?;
+                        socket.set_nodelay(true)?;
 
-                            let conn = Connection::new(socket, token)?;
-                            conn.register_insterest(&self.poll);
+                        let conn = Connection::new(socket, token)?;
+                        conn.register_insterest(&self.poll);
 
-                            self.conns.insert(
-                                token,
-                                conn
-                            );
-                        }
-
-                        self.poll.reregister(socket, SOCKET, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;
+                        self.conns.insert(token, conn);
                     }
-                    None => ()
-                }
 
+                    self.poll.reregister(socket, SOCKET, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;
+                }
+ 
                 Ok(())
             }
             MSG => self.msg_handle(),

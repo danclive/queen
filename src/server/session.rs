@@ -27,8 +27,8 @@ pub struct Session {
 impl Session {
     pub fn new(msg_queue: BothQueue<(usize, Message)>, cmd_queue: BothQueue<Command>) -> Session {
         Session {
-            msg_queue: msg_queue,
-            cmd_queue: cmd_queue,
+            msg_queue,
+            cmd_queue,
             clients: HashSet::new(),
             cache0: HashMap::new(),
             cache1: HashMap::new(),
@@ -49,10 +49,10 @@ impl Session {
         //println!("session:handle: id: {:?}, message: {:?}", id, message);
         match message.opcode {
             OpCode::CONNECT => {
-                self.handle_connect(id, message)?;
+                self.handle_connect(id, &message)?;
             }
             OpCode::PING => {
-                self.handle_ping(id, message)?;
+                self.handle_ping(id, &message)?;
             }
             OpCode::REQUEST => {
                 self.handle_request(id, message)?;
@@ -64,10 +64,10 @@ impl Session {
                 self.handle_subscribe(id, message)?;
             }
             OpCode::UNSUBSCRIBE => {
-                self.handle_unsubscribe(id, message)?;
+                self.handle_unsubscribe(id, &message)?;
             }
             OpCode::PUBLISH => {
-                self.handle_publish(id, message)?;
+                self.handle_publish(id, &message)?;
             }
             OpCode::ERROR => {
                 self.handle_error(id, message)?;
@@ -78,7 +78,7 @@ impl Session {
         Ok(())
     }
 
-    pub fn handle_connect(&mut self, id: usize, message: Message) -> io::Result<()> {
+    pub fn handle_connect(&mut self, id: usize, message: &Message) -> io::Result<()> {
         if message.body.is_empty() {
             return Ok(())
         }
@@ -130,7 +130,7 @@ impl Session {
             }
             t if t == ContentType::TEXT.bits() => {
                 // username:value&password:value&method:value1,value2,value3
-                match Connect::from_str(String::from_utf8_lossy(&message.body).to_owned().to_string()) {
+                match Connect::from_string(&String::from_utf8_lossy(&message.body)) {
                     Some(context_text) => context_text,
                     None => {
 
@@ -138,7 +138,7 @@ impl Session {
                         return_message.message_id = message.message_id;
                         return_message.opcode = OpCode::CONNACK;
                         return_message.content_type = message.content_type;
-                        return_message.body = "id:0&message:Data structure error".as_bytes().to_vec();
+                        return_message.body = b"id:0&message:Data structure error".to_vec();
 
                         self.msg_queue.rx.push((id, return_message)).unwrap();
 
@@ -171,14 +171,14 @@ impl Session {
         return_message.message_id = message.message_id;
         return_message.opcode = OpCode::ERROR;
         return_message.content_type = ContentType::TEXT.bits();
-        return_message.body = "Password authentication failed".as_bytes().to_vec();
+        return_message.body = b"Password authentication failed".to_vec();
 
         self.msg_queue.rx.push((id, return_message)).unwrap();
 
         Ok(())
     }
 
-    pub fn handle_ping(&mut self, id: usize, message: Message) -> io::Result<()> {
+    pub fn handle_ping(&mut self, id: usize, message: &Message) -> io::Result<()> {
         if self.check_client(id, message.message_id)? {
             let mut return_message = Message::new();
             return_message.message_id = message.message_id;
@@ -187,7 +187,7 @@ impl Session {
             self.msg_queue.rx.push((id, return_message))?;
         }
 
-        return Ok(())
+        Ok(())
     }
 
     pub fn handle_request(&mut self, id: usize, message: Message) -> io::Result<()> {
@@ -199,7 +199,7 @@ impl Session {
                 if sockets.len() == 1 {
                     socket_id = *sockets.iter().next().unwrap();
                 } else {
-                    let sockets_id: Vec<usize> = sockets.iter().map(|s| *s ).collect();
+                    let sockets_id: Vec<usize> = sockets.to_vec();
 
                     if let Some(id) = self.thread_rng.choose(&sockets_id) {
                         socket_id = *id;
@@ -217,7 +217,7 @@ impl Session {
             self.msg_queue.rx.push((socket_id, message))?;
         }
 
-        return Ok(())
+        Ok(())
     }
 
     pub fn handle_response(&mut self, id: usize, message: Message) -> io::Result<()> {
@@ -227,19 +227,16 @@ impl Session {
             self.msg_queue.rx.push((socket_id, message))?;
         }
 
-        return Ok(())
+        Ok(())
     }
 
     pub fn handle_subscribe(&mut self, id: usize, message: Message) -> io::Result<()> {
         if self.check_client(id, message.message_id)? {
-            if self.cache2.contains_key(&message.topic) {
-                if let Some(client_ids) = self.cache2.get_mut(&message.topic) {
-                    if !client_ids.contains(&id) {
-                        client_ids.push(id);
-                    }
-                }
-            } else {
-                self.cache2.insert(message.topic, vec![id]);
+            //let client_ids = self.cache2.entry(message.topic).or_insert(vec![]);
+            let client_ids = self.cache2.entry(message.topic).or_insert_with(||<[_]>::into_vec(Box::new([id])));
+
+            if !client_ids.contains(&id) {
+                client_ids.push(id);
             }
         }
 
@@ -249,10 +246,10 @@ impl Session {
 
         self.msg_queue.rx.push((id, return_message))?;
 
-        return Ok(())
+        Ok(())
     }
 
-    pub fn handle_unsubscribe(&mut self, id: usize, message: Message) -> io::Result<()> {
+    pub fn handle_unsubscribe(&mut self, id: usize, message: &Message) -> io::Result<()> {
         if self.check_client(id, message.message_id)? {
             let mut is_empty = false;
 
@@ -261,7 +258,7 @@ impl Session {
                     client_ids.remove(pos);
                 }
 
-                if client_ids.len() == 0 {
+                if client_ids.is_empty() {
                     is_empty = true;
                 }
             }
@@ -277,10 +274,10 @@ impl Session {
 
         self.msg_queue.rx.push((id, return_message))?;
 
-        return Ok(())
+        Ok(())
     }
 
-    pub fn handle_publish(&mut self, id: usize, message: Message) -> io::Result<()> {
+    pub fn handle_publish(&mut self, id: usize, message: &Message) -> io::Result<()> {
         if self.check_client(id, message.message_id)? {
             if let Some(client_ids) = self.cache2.get(&message.topic) {
                 for client_id in client_ids {
@@ -295,14 +292,12 @@ impl Session {
 
         self.msg_queue.rx.push((id, return_message))?;
 
-        return Ok(())
+        Ok(())
     }
 
     pub fn handle_error(&mut self, id: usize, message: Message) -> io::Result<()> {
-        if self.check_client(id, message.message_id)? {
-            if message.origin != 0 {
-                self.msg_queue.rx.push((message.origin as usize, message))?;
-            }
+        if self.check_client(id, message.message_id)? && message.origin != 0 {
+            self.msg_queue.rx.push((message.origin as usize, message))?;
         }
 
         Ok(())
@@ -313,7 +308,7 @@ impl Session {
 
         if let Some(methods) = methods {
 
-            for method in methods.iter() {
+            for method in &methods {
                 if self.cache0.contains_key(method) {
                     if let Some(client_ids) = self.cache0.get_mut(method) {
                         if !client_ids.contains(&socket_id) {
@@ -325,16 +320,12 @@ impl Session {
                 }
             }
 
-            if self.cache1.contains_key(&socket_id) {
-                if let Some(methods2) = self.cache1.get_mut(&socket_id) {
-                    for method in methods.iter() {
-                        if !methods2.contains(method) {
-                            methods2.push(method.to_owned());
-                        }
-                    }
+            let methods2 = self.cache1.entry(socket_id).or_insert_with(|| methods.clone());
+
+            for method in &methods {
+                if !methods2.contains(method) {
+                    methods2.push(method.to_owned());
                 }
-            } else {
-                self.cache1.insert(socket_id, methods);
             }
         }
     }
@@ -346,12 +337,12 @@ impl Session {
 
         let mut temps = Vec::new();
 
-        for (key, item) in self.cache0.iter_mut() {
+        for (key, item) in &mut self.cache0 {
             if let Some(pos) = item.iter().position(|x| *x == socket_id) {
                 item.remove(pos);
             }
 
-            if item.len() == 0 {
+            if item.is_empty() {
                 temps.push(key.to_owned());
             }
         }
@@ -362,12 +353,12 @@ impl Session {
 
         let mut temps = Vec::new();
 
-        for (topic, client_ids) in self.cache2.iter_mut() {
+        for (topic, client_ids) in &mut self.cache2 {
             if let Some(pos) = client_ids.iter().position(|x| *x == socket_id) {
                 client_ids.remove(pos);
             }
 
-            if client_ids.len() == 0 {
+            if client_ids.is_empty() {
                 temps.push(topic.to_owned());
             }
         }
@@ -385,7 +376,7 @@ impl Session {
             return_message.message_id = message_id;
             return_message.opcode = OpCode::ERROR;
             return_message.content_type = ContentType::TEXT.bits();
-            return_message.body = "Permission is not allowed!".as_bytes().to_vec();
+            return_message.body = b"Permission is not allowed!".to_vec();
 
             self.msg_queue.rx.push((socket_id, return_message))?;
         }

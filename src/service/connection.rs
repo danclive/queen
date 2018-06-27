@@ -2,6 +2,7 @@ use std::io;
 use std::io::{Read, Write};
 use std::io::ErrorKind::WouldBlock;
 use std::mem;
+use std::{u32, usize};
 
 use queen_io::tcp::TcpStream;
 use queen_io::Poll;
@@ -24,8 +25,8 @@ pub struct Connection {
 impl Connection {
     pub fn new(socket: TcpStream, token: Token) -> io::Result<Connection> {
         let conn = Connection {
-            socket: socket,
-            token: token,
+            socket,
+            token,
             interest: Ready::readable() | Ready::hup(),
             stream: Stream::new()
         };
@@ -44,7 +45,7 @@ impl Connection {
                     if size == 0 {
                         return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "ConnectionAborted"))
                     } else {
-                        self.stream.reader.write(&buf[0..size])?;
+                        self.stream.reader.write_all(&buf[0..size])?;
                     }
                 }
                 Err(err) => {
@@ -67,10 +68,10 @@ impl Connection {
                 self.stream.reader.seek(&mut buf)?;
 
                 (
-                    ((buf[0] as u32) << 0) |
-                    ((buf[1] as u32) << 8) |
-                    ((buf[2] as u32) << 16) |
-                    ((buf[3] as u32) << 24)
+                    u32::from(buf[0]) |
+                    (u32::from(buf[1]) << 8) |
+                    (u32::from(buf[2]) << 16) |
+                    (u32::from(buf[3]) << 24)
                 ) as usize
             };
 
@@ -87,7 +88,7 @@ impl Connection {
             self.interest.insert(Ready::readable());
         }
 
-        if self.stream.writer.len() > 0 {
+        if !self.stream.writer.is_empty() {
             self.interest.insert(Ready::writable());
         }
 
@@ -130,7 +131,7 @@ impl Connection {
             self.interest.insert(Ready::readable());
         }
 
-        if self.stream.writer.len() > 0 {
+        if !self.stream.writer.is_empty() {
             self.interest.insert(Ready::writable());
         }
 
@@ -185,14 +186,14 @@ impl Connection {
         }
     }
 */
-    pub fn set_message(&mut self, poll: &Poll, message: Message) -> io::Result<()> {
+    pub fn set_message(&mut self, poll: &Poll, message: &Message) -> io::Result<()> {
         message.write(&mut self.stream.writer)?;
 
         if self.stream.reader.len() < 16 * 1024 * 1024 {
             self.interest.insert(Ready::readable());
         }
 
-        if self.stream.writer.len() > 0 {
+        if !self.stream.writer.is_empty() {
             self.interest.insert(Ready::writable());
         }
 

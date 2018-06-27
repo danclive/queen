@@ -69,7 +69,7 @@ impl Client {
         match rx.recv() {
             Ok(message) => Ok(message),
             Err(err) => {
-                return Err(io::Error::new(ConnectionAborted, err).into())
+                Err(io::Error::new(ConnectionAborted, err))
             }
         }
     }
@@ -107,14 +107,13 @@ impl Client {
                     error_message.origin = origin;
                     error_message.topic = topic;
                     error_message.content_type = ContentType::TEXT.bits();
-                    error_message.body = "The method doesn't exist!".as_bytes().to_vec();
+                    error_message.body = b"The method doesn't exist!".to_vec();
 
                     error_message
                 };
 
                 self.inner.task_queue.push((return_message, None)).unwrap();
-            } else
-            if message_opcode == OpCode::PUBLISH {
+            } else if message_opcode == OpCode::PUBLISH {
                 let subscribe_handles = self.inner.subscribe_handles.read().unwrap();
 
                 if let Some(ref subscribe_handle) = subscribe_handles.get(&topic) {
@@ -136,7 +135,7 @@ impl Client {
         let connect = Connect {
             username: username.to_owned(),
             password: password.to_owned(),
-            methods: methods
+            methods
         };
 
         let body = nson::encode::to_vec(&connect).unwrap();

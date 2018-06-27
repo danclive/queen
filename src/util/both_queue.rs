@@ -20,6 +20,6 @@ impl<T> BothQueue<T> where T: Send {
 
 impl<T> fmt::Debug for BothQueue<T> where T: Send {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{}", "both queue")
+        write!(fmt, "both queue")
     }
 }

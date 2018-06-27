@@ -4,7 +4,7 @@ use std::cmp;
 
 const DEFAULT_CAPACITY: usize = 2 * 1024;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Stream {
     pub reader: RingBuffer,
     pub writer: RingBuffer,
@@ -23,7 +23,7 @@ impl Stream {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct RingBuffer {
     inner: VecDeque<u8>
 }
@@ -76,8 +76,8 @@ impl RingBuffer {
         let amt = cmp::min(buf.len(), self.inner.len());
 
         for (i, value) in buf[0..amt].iter_mut().enumerate() {
-            let v = self.inner.get(i).unwrap();
-            *value = *v
+            let v = self.inner[i];
+            *value = v
         }
 
         Ok(amt)
