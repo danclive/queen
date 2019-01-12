@@ -7,22 +7,22 @@ use bsonrs::{doc, bson};
 
 fn handle_client(mut stream: TcpStream) {
     loop {
-	    // let mut buf = [0u8; 4 * 1024];
-	    // let size = stream.read(&mut buf).unwrap();
+        // let mut buf = [0u8; 4 * 1024];
+        // let size = stream.read(&mut buf).unwrap();
 
-	    // if size == 0 {
-	    // 	return;
-	    // }
+        // if size == 0 {
+        //  return;
+        // }
 
-	    // println!("{:?}", &buf[..size]);
-	    // stream.write(&buf[..size]).unwrap();
+        // println!("{:?}", &buf[..size]);
+        // stream.write(&buf[..size]).unwrap();
 
-	    let message = Message::decode(&mut stream).unwrap();
-	    println!("{:?}", message);
+        let message = Message::decode(&mut stream).unwrap();
+        println!("{:?}", message);
 
-	    let reply = doc!{"ok": true};
-	    reply.encode(&mut stream).unwrap();
-	}
+        let reply = doc!{"ok": true};
+        reply.encode(&mut stream).unwrap();
+    }
 }
 
 fn main() -> io::Result<()> {
@@ -31,7 +31,7 @@ fn main() -> io::Result<()> {
     // accept connections and process them serially
     for stream in listener.incoming() {
         thread::spawn(|| {
-        	handle_client(stream.unwrap());
+            handle_client(stream.unwrap());
         });
     }
     Ok(())
