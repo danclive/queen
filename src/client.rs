@@ -113,14 +113,12 @@ impl Queen {
                 loop {
                     let (event, message) = that.inner.queue.pop();
                     
-                    let mut handles2 = Vec::new();
+                    let handles2;
 
                     {
                         let handles = that.inner.handles.lock().unwrap();
                         if let Some(vector) = handles.get(&event) {
-                            for (id, handle) in vector {
-                                handles2.push((*id, handle.clone()));
-                            }
+                            handles2 = vector.clone();
                         } else {
                             continue;
                         }

@@ -1,13 +1,12 @@
 use std::thread;
 use std::time::Duration;
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
 use bsonrs::doc;
 
 use queen::queen::Queen;
 use queen::client;
-use queen::Message;
 
 #[test]
 fn node_unlisten() {

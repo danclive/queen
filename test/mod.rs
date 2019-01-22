@@ -1,3 +1,4 @@
+mod test_event_emit;
 mod test_broker_tcp;
 mod test_handshake;
 mod test_relay_message;
