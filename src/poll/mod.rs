@@ -6,8 +6,8 @@ use std::i32;
 mod ready;
 mod event;
 
-pub use self::ready::Ready;
-pub use self::event::{Event, Events};
+pub use ready::Ready;
+pub use event::{Event, Events};
 
 pub fn poll(evts: &mut Events, timeout: Option<Duration>) -> io::Result<i32> {
     let timeout_ms = timeout

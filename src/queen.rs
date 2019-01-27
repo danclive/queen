@@ -1,6 +1,6 @@
 use std::sync::atomic::AtomicIsize;
 use std::sync::atomic::Ordering::SeqCst;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use std::thread;
 use std::io;
@@ -21,7 +21,7 @@ pub struct Queen {
 struct InnerQueen {
     queue: BlockQueue<(String, Message)>,
     control_i: Queue<(Message)>,
-    handles: Mutex<HashMap<String, Vec<(i32, Arc<Box<dyn (Fn(Context)) + Send + Sync + 'static>>)>>>,
+    handles: RwLock<HashMap<String, Vec<(i32, Arc<Box<dyn (Fn(Context)) + Send + Sync + 'static>>)>>>,
     next_id: AtomicIsize
 }
 
@@ -48,7 +48,7 @@ impl Queen {
             inner: Arc::new(InnerQueen {
                 queue: queue_o,
                 control_i: queue_i,
-                handles: Mutex::new(HashMap::new()),
+                handles: RwLock::new(HashMap::new()),
                 next_id: AtomicIsize::new(0)
             })
         };
@@ -57,7 +57,7 @@ impl Queen {
     }
 
     pub fn on(&self, event: &str, handle: impl (Fn(Context)) + Send + Sync + 'static) -> i32 {
-        let mut handles = self.inner.handles.lock().unwrap();
+        let mut handles = self.inner.handles.write().unwrap();
         let id = self.inner.next_id.fetch_add(1, SeqCst) as i32;
 
         let vector = handles.entry(event.to_owned()).or_insert(vec![]);
@@ -70,8 +70,8 @@ impl Queen {
         id
     }
 
-    pub fn off(&self, id: i32) -> Option<i32> {
-        let mut handles = self.inner.handles.lock().unwrap();
+    pub fn off(&self, id: i32) -> bool {
+        let mut handles = self.inner.handles.write().unwrap();
         for (event, vector) in handles.iter_mut() {
             if let Some(position) = vector.iter().position(|(x, _)| x == &id) {
                 vector.remove(position);
@@ -80,11 +80,11 @@ impl Queen {
                     self.inner.control_i.push(doc!{"event": "sys:detach", "v": event}).unwrap();
                 }
 
-                return Some(id)
+                return true
             }
         }
 
-        None
+        false
     }
 
     pub fn emit(&self, event: &str, message: Message) {
@@ -109,7 +109,7 @@ impl Queen {
                     let handles2;
 
                     {
-                        let handles = that.inner.handles.lock().unwrap();
+                        let handles = that.inner.handles.read().unwrap();
                         if let Some(vector) = handles.get(&event) {
                             handles2 = vector.clone();
                         } else {
