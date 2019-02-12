@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use bsonrs::doc;
+use nson::msg;
 
 use queen::queen::Queen;
 
@@ -19,7 +19,7 @@ fn on_emit() {
         *hasemit = true;
     });
 
-    queen.emit("hello", doc!{"hello": "world"});
+    queen.emit("hello", msg!{"hello": "world"});
 
     thread::sleep(Duration::from_secs(1));
     let hasemit = hasemit.lock().unwrap();

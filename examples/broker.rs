@@ -1,5 +1,5 @@
 use queen::queen::Queen;
-use bsonrs::doc;
+use nson::msg;
 
 fn main() {
     let queen = Queen::new().unwrap();
@@ -34,7 +34,7 @@ fn main() {
     //  //println!("{:?}", message);
     // });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "0.0.0.0:8888"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "0.0.0.0:8888"});
 
     queen.run(4, true);
 }

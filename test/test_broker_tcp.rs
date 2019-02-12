@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 
-use bsonrs::doc;
+use nson::msg;
 
 use queen::queen::Queen;
 use queen::client;
@@ -20,7 +20,7 @@ fn test_broker_tcp_listen() {
         }
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     thread::sleep(Duration::from_secs(1));
@@ -54,7 +54,7 @@ fn test_broker_tcp_link() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -83,7 +83,7 @@ fn test_broker_tcp_link_broker() {
         }
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // node 2
@@ -100,7 +100,7 @@ fn test_broker_tcp_link_broker() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -129,7 +129,7 @@ fn test_client_tcp_link_broker() {
         }
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // client
@@ -146,7 +146,7 @@ fn test_client_tcp_link_broker() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }

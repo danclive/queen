@@ -3,7 +3,7 @@ use std::io::{self, Read, Write};
 use std::thread;
 
 use queen::Message;
-use bsonrs::{doc, bson};
+use nson::msg;
 
 fn handle_client(mut stream: TcpStream) {
     loop {
@@ -20,7 +20,7 @@ fn handle_client(mut stream: TcpStream) {
         let message = Message::decode(&mut stream).unwrap();
         println!("{:?}", message);
 
-        let reply = doc!{"ok": true};
+        let reply = msg!{"ok": true};
         reply.encode(&mut stream).unwrap();
     }
 }

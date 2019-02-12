@@ -12,7 +12,7 @@ use std::cell::Cell;
 use std::i32;
 use std::error::Error;
 
-use bsonrs::doc;
+use nson::msg;
 use queen_io::plus::block_queue::BlockQueue;
 use queen_io::plus::mpms_queue::Queue;
 
@@ -71,7 +71,7 @@ impl Queen {
         vector.push((id, Arc::new(Box::new(handle))));
 
         if event.starts_with("pub:") || event.starts_with("sys:") {
-            self.inner.control_i.push(doc!{"event": "sys:attach", "v": event}).unwrap();
+            self.inner.control_i.push(msg!{"event": "sys:attach", "v": event}).unwrap();
         }
 
         id
@@ -84,7 +84,7 @@ impl Queen {
                 vector.remove(position);
 
                 if event.starts_with("pub:") || event.starts_with("sys:") {
-                    self.inner.control_i.push(doc!{"event": "sys:detach", "v": event}).unwrap();
+                    self.inner.control_i.push(msg!{"event": "sys:detach", "v": event}).unwrap();
                 }
 
                 return true
@@ -280,7 +280,7 @@ impl Control {
                         }
                     }
                     "sys:link" => {
-                        // doc!{
+                        // msg!{
                         //  "protocol": "tcp", // unix
                         //  "addr": "127.0.0.1:6666",
                         //  "path": "/path/to/the/socket"
@@ -439,7 +439,7 @@ impl Control {
 
                                 for (k, _) in &self.attach_events {
                                     if k.starts_with("pub:") {
-                                        let message = doc!{
+                                        let message = msg!{
                                             "event": "sys:attach", "v": k
                                         };
 
@@ -516,7 +516,7 @@ impl Control {
     }
 
     fn remove_link(&mut self) {
-        let mut message = doc!{
+        let mut message = msg!{
             "event": "sys:remove",
             "protocol": "tcp",
         };

@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
-use bsonrs::doc;
+use nson::msg;
 
 use queen::queen::Queen;
 use queen::client;
@@ -22,7 +22,7 @@ fn node_unlisten() {
             let mut addr = addr2.lock().unwrap();
             *addr = Some(context.message.get_str("addr").unwrap().to_string());
 
-            context.queen.emit("sys:unlisten", doc!{"listen_id": context.message.get_i32("listen_id").unwrap()});
+            context.queen.emit("sys:unlisten", msg!{"listen_id": context.message.get_i32("listen_id").unwrap()});
         } else {
             panic!("{:?}", context);
         }
@@ -32,7 +32,7 @@ fn node_unlisten() {
         assert!(context.message.get_bool("ok").unwrap());
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     thread::sleep(Duration::from_secs(1));
@@ -74,7 +74,7 @@ fn node_ublink() {
         *remove = true;
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     let queen2 = Queen::new().unwrap();
@@ -84,7 +84,7 @@ fn node_ublink() {
             assert!(ok);
 
             let conn_id = context.message.get_i32("conn_id").unwrap();
-            context.queen.emit("sys:unlink", doc!{"conn_id": conn_id});
+            context.queen.emit("sys:unlink", msg!{"conn_id": conn_id});
             
         } else {
             panic!("{:?}", context);
@@ -101,7 +101,7 @@ fn node_ublink() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -143,7 +143,7 @@ fn client_unlink() {
         *remove = true;
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     let queen2 = client::Queen::new().unwrap();
@@ -152,7 +152,7 @@ fn client_unlink() {
         if let Ok(ok) = context.message.get_bool("ok") {
             assert!(ok);
 
-            context.queen.emit("sys:unlink", doc!{});
+            context.queen.emit("sys:unlink", msg!{});
         } else {
             panic!("{:?}", context);
         }
@@ -168,7 +168,7 @@ fn client_unlink() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -206,7 +206,7 @@ fn node_unlink_client_remove() {
 
     queen.on("sys:accept", |context| {
         let conn_id = context.message.get_i32("conn_id").unwrap();
-        context.queen.emit("sys:unlink", doc!{"conn_id": conn_id});
+        context.queen.emit("sys:unlink", msg!{"conn_id": conn_id});
     });
 
     let unlink2 = unlink.clone();
@@ -216,7 +216,7 @@ fn node_unlink_client_remove() {
         *unlink = true;
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     let queen2 = client::Queen::new().unwrap();
@@ -239,7 +239,7 @@ fn node_unlink_client_remove() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }

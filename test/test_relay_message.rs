@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
-use bsonrs::doc;
+use nson::msg;
 
 use queen::queen::Queen;
 use queen::client;
@@ -41,7 +41,7 @@ fn simple_client_relay_message() {
         context.queen.emit("sys:hand", message);
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // client
@@ -64,12 +64,12 @@ fn simple_client_relay_message() {
                 
                 let mut stream = TcpStream::connect(addr3).unwrap();
 
-                let hand = doc!{"event": "sys:hand", "u": "admin", "p": "admin123"};
+                let hand = msg!{"event": "sys:hand", "u": "admin", "p": "admin123"};
                 hand.encode(&mut stream).unwrap();
                 let hand_r = Message::decode(&mut stream).unwrap();
                 assert!(hand_r.get_bool("ok").unwrap());
 
-                let attach = doc!{"event": "sys:attach", "v": "pub:hello"};
+                let attach = msg!{"event": "sys:attach", "v": "pub:hello"};
                 attach.encode(&mut stream).unwrap();
                 let attach_r = Message::decode(&mut stream).unwrap();
                 assert!(attach_r.get_bool("ok").unwrap());
@@ -90,12 +90,12 @@ fn simple_client_relay_message() {
             
             let mut stream = TcpStream::connect(addr).unwrap();
 
-            let hand = doc!{"event": "sys:hand", "u": "admin", "p": "admin123"};
+            let hand = msg!{"event": "sys:hand", "u": "admin", "p": "admin123"};
             hand.encode(&mut stream).unwrap();
             let hand_r = Message::decode(&mut stream).unwrap();
             assert!(hand_r.get_bool("ok").unwrap());
 
-            let hello = doc!{"event": "pub:hello", "hello": "world"};
+            let hello = msg!{"event": "pub:hello", "hello": "world"};
             hello.encode(&mut stream).unwrap();
             let hello_r = Message::decode(&mut stream).unwrap();
             assert!(hello_r.get_bool("ok").unwrap());
@@ -139,7 +139,7 @@ fn client_relay_message() {
         context.queen.emit("sys:hand", message);
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // client 1
@@ -149,14 +149,14 @@ fn client_relay_message() {
         if let Ok(ok) = context.message.get_bool("ok") {
             assert!(ok);
 
-            context.queen.emit("sys:hand", doc!{"u": "admin", "p": "admin123"});
+            context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});
         } else {
             panic!("{:?}", context);
         }
     });
 
     queen2.on("sys:hand", |context| {
-        context.queen.emit("pub:hello", doc!{"hello": "world"});
+        context.queen.emit("pub:hello", msg!{"hello": "world"});
     });
 
     let hello2 = hello.clone();
@@ -168,7 +168,7 @@ fn client_relay_message() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -182,20 +182,20 @@ fn client_relay_message() {
         if let Ok(ok) = context.message.get_bool("ok") {
             assert!(ok);
 
-            context.queen.emit("sys:hand", doc!{"u": "admin", "p": "admin123"});
+            context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});
         } else {
             panic!("{:?}", context);
         }
     });
 
     queen3.on("sys:hand", |context| {
-        context.queen.emit("pub:hello", doc!{"hello": "world"});
+        context.queen.emit("pub:hello", msg!{"hello": "world"});
     });
 
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen3.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen3.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -238,7 +238,7 @@ fn client_relay_message_off() {
         context.queen.emit("sys:hand", message);
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // client 1
@@ -248,14 +248,14 @@ fn client_relay_message_off() {
         if let Ok(ok) = context.message.get_bool("ok") {
             assert!(ok);
 
-            context.queen.emit("sys:hand", doc!{"u": "admin", "p": "admin123"});
+            context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});
         } else {
             panic!("{:?}", context);
         }
     });
 
     queen2.on("sys:hand", |context| {
-        context.queen.emit("pub:hello", doc!{"hello": "world"});
+        context.queen.emit("pub:hello", msg!{"hello": "world"});
     });
 
     let hello2 = hello.clone();
@@ -268,7 +268,7 @@ fn client_relay_message_off() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -282,20 +282,20 @@ fn client_relay_message_off() {
         if let Ok(ok) = context.message.get_bool("ok") {
             assert!(ok);
 
-            context.queen.emit("sys:hand", doc!{"u": "admin", "p": "admin123"});
+            context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});
         } else {
             panic!("{:?}", context);
         }
     });
 
     queen3.on("sys:hand", |context| {
-        context.queen.emit("pub:hello", doc!{"hello": "world"});
+        context.queen.emit("pub:hello", msg!{"hello": "world"});
     });
 
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen3.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen3.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }

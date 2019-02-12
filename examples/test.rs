@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 
-use bsonrs::doc;
+use nson::msg;
 
 use queen::queen::Queen;
 use queen::client;
@@ -45,7 +45,7 @@ fn node_not_handshake() {
         context.queen.emit("sys:hand", message);
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // client 1
@@ -55,14 +55,14 @@ fn node_not_handshake() {
         if let Ok(ok) = context.message.get_bool("ok") {
             assert!(ok);
 
-            context.queen.emit("sys:hand", doc!{"u": "admin", "p": "admin123"});
+            context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});
         } else {
             panic!("{:?}", context);
         }
     });
 
     queen2.on("sys:hand", |context| {
-        context.queen.emit("pub:hello", doc!{"hello": "world", "aa": "bb"});
+        context.queen.emit("pub:hello", msg!{"hello": "world", "aa": "bb"});
     });
 
     let hello2 = hello.clone();
@@ -75,7 +75,7 @@ fn node_not_handshake() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -89,14 +89,14 @@ fn node_not_handshake() {
         if let Ok(ok) = context.message.get_bool("ok") {
             assert!(ok);
 
-            context.queen.emit("sys:hand", doc!{"u": "admin", "p": "admin123"});
+            context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});
         } else {
             panic!("{:?}", context);
         }
     });
 
     queen3.on("sys:hand", |context| {
-        context.queen.emit("pub:hello", doc!{"hello": "world", "cc": "dd"});
+        context.queen.emit("pub:hello", msg!{"hello": "world", "cc": "dd"});
     });
 
     queen3.on("pub:hello", |context| {
@@ -106,7 +106,7 @@ fn node_not_handshake() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen3.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen3.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }

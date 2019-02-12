@@ -12,8 +12,8 @@ use queen_io::{Poll, Events, Token, Ready, PollOpt, Event, Evented};
 use queen_io::plus::mpms_queue::Queue;
 use queen_io::tcp::TcpListener;
 use queen_io::tcp::TcpStream;
-use bsonrs::Value;
-use bsonrs::doc;
+use nson::Value;
+use nson::msg;
 
 use crate::Message;
 use crate::util::split_message;
@@ -156,7 +156,7 @@ impl InnerService {
                         self.poll.register(&conn.socket, Token(id as usize), Ready::readable() | Ready::hup(), PollOpt::edge())?;
                         self.conns.insert(id, conn);
 
-                        self.queue_o.push(doc!{
+                        self.queue_o.push(msg!{
                             "event": "sys:accept",
                             "protocol": "tcp",
                             "conn_id": id,
@@ -229,7 +229,7 @@ impl InnerService {
 
             let recycle: Vec<Vec<u8>> = conn.queue_i.into();
 
-            self.queue_o.push(doc!{
+            self.queue_o.push(msg!{
                 "event": "sys:remove",
                 "protocol": "tcp",
                 "conn_id": conn.id,
@@ -261,7 +261,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
 
         match event {
             "sys:listen" => {
-                // doc!{
+                // msg!{
                 //  "protocol": "tcp", // unix
                 //  "addr": "127.0.0.1:6666",
                 //  "path": "/path/to/the/socket"
@@ -333,7 +333,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                 };
 
                 if let Some(listen) = service.listens.remove(&listen_id) {
-                    service.queue_o.push(doc!{
+                    service.queue_o.push(msg!{
                         "event": "sys:unlisten",
                         "ok": true,
                         "protocol": "tcp",
@@ -343,7 +343,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                 }
             }
             "sys:link" => {
-                // doc!{
+                // msg!{
                 //  "protocol": "tcp", // unix
                 //  "addr": "127.0.0.1:6666",
                 //  "path": "/path/to/the/socket"
@@ -413,7 +413,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
 
                     let recycle: Vec<Vec<u8>> = conn.queue_i.into();
 
-                    service.queue_o.push(doc!{
+                    service.queue_o.push(msg!{
                         "event": "sys:unlink",
                         "ok": true,
                         "protocol": "tcp",
@@ -425,7 +425,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                 }
             }
             "sys:send" => {
-                // doc!{
+                // msg!{
                 //  "conns": [1i32, 2, 3],
                 //  "data": vec![5u8, 0, 0, 0, 1]
                 // };
@@ -463,7 +463,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                 };
 
                 for conn in conns {
-                    if let Value::Int32(conn_id) = conn {
+                    if let Value::I32(conn_id) = conn {
                         if let Some(conn) = service.conns.get_mut(conn_id) {
                             conn.queue_i.push_back(data.clone());
                             conn.interest.insert(Ready::writable());
@@ -522,7 +522,7 @@ impl Connection {
                     } else {
                         let messages = split_message(&mut self.buffer, &buf[..size]);
                         for message in messages {
-                            queue_o.push(doc!{
+                            queue_o.push(msg!{
                                 "event": "sys:recv",
                                 "conn_id": self.id,
                                 "data": message
@@ -590,7 +590,7 @@ impl Connection {
 
 #[cfg(test)]
 mod test {
-    use bsonrs::doc;
+    use nson::msg;
     use crate::service::split_message;
 
     #[test]
@@ -607,9 +607,9 @@ mod test {
     fn test_read() {
         let mut data: Vec<u8> = Vec::new();
 
-        let message1 = doc!{"aa": "bb"};
+        let message1 = msg!{"aa": "bb"};
         message1.encode(&mut data).unwrap();
-        let message2 = doc!{"cc": "bb"};
+        let message2 = msg!{"cc": "bb"};
         message2.encode(&mut data).unwrap();
         data.extend_from_slice(&[16, 0, 0, 0, 6]);
 
@@ -623,9 +623,9 @@ mod test {
     fn test_read2() {
         let mut data: Vec<u8> = Vec::new();
 
-        let message1 = doc!{"aa": "bb"};
+        let message1 = msg!{"aa": "bb"};
         message1.encode(&mut data).unwrap();
-        let message2 = doc!{"cc": "bb"};
+        let message2 = msg!{"cc": "bb"};
         message2.encode(&mut data).unwrap();
 
         data.extend_from_slice(&[16, 0, 0, 0, 6]);
@@ -644,9 +644,9 @@ mod test {
     fn test_read3() {
         let mut data: Vec<u8> = Vec::new();
 
-        let message1 = doc!{"aa": "bb"};
+        let message1 = msg!{"aa": "bb"};
         message1.encode(&mut data).unwrap();
-        let message2 = doc!{"cc": "bb"};
+        let message2 = msg!{"cc": "bb"};
         message2.encode(&mut data).unwrap();
 
         data.extend_from_slice(&[16, 0, 0, 0, 6]);
@@ -665,9 +665,9 @@ mod test {
     fn test_read4() {
         let mut data: Vec<u8> = Vec::new();
 
-        let message1 = doc!{"aa": "bb"};
+        let message1 = msg!{"aa": "bb"};
         message1.encode(&mut data).unwrap();
-        let message2 = doc!{"cc": "bb"};
+        let message2 = msg!{"cc": "bb"};
         message2.encode(&mut data).unwrap();
 
         data.extend_from_slice(&[16, 0, 0, 0, 6]);

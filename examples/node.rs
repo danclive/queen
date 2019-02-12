@@ -1,5 +1,5 @@
 use queen::queen::Queen;
-use bsonrs::{doc, bson};
+use nson::msg;
 
 fn main() {
     let queen = Queen::new().unwrap();
@@ -12,10 +12,10 @@ fn main() {
             if ok {
                 let conn_id = context.message.get_i32("conn_id").expect("Can't get conn_id!");
 
-                context.queen.emit("sys:hand", doc!{"conn_id": conn_id, "node": true, "u": "admin", "p": "admin123"});
+                context.queen.emit("sys:hand", msg!{"conn_id": conn_id, "node": true, "u": "admin", "p": "admin123"});
             } else {
                 println!("{:?}", "aaaaa");
-                context.queen.emit("sys:link", doc!{"protocol": "tcp", "addr": "127.0.0.1:8888"});
+                context.queen.emit("sys:link", msg!{"protocol": "tcp", "addr": "127.0.0.1:8888"});
                 println!("{:?}", "bbbbb");
             }
         }
@@ -53,12 +53,12 @@ fn main() {
 
         if let Ok(my) = context.message.get_bool("my") {
             if my {
-                context.queen.emit("sys:link", doc!{"protocol": "tcp", "addr": "127.0.0.1:8888"});
+                context.queen.emit("sys:link", msg!{"protocol": "tcp", "addr": "127.0.0.1:8888"});
             }
         }
     });
 
-    queen.emit("sys:link", doc!{"protocol": "tcp", "addr": "127.0.0.1:8888"});
+    queen.emit("sys:link", msg!{"protocol": "tcp", "addr": "127.0.0.1:8888"});
 
     queen.run(4, true);
 }

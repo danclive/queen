@@ -6,7 +6,7 @@ use std::thread;
 use std::io;
 use std::fmt;
 
-use bsonrs::doc;
+use nson::msg;
 use queen_io::plus::block_queue::BlockQueue;
 use queen_io::plus::mpms_queue::Queue;
 
@@ -64,7 +64,7 @@ impl Queen {
         vector.push((id, Arc::new(Box::new(handle))));
 
         if event.starts_with("pub:") || event.starts_with("sys:") {
-            self.inner.control_i.push(doc!{"event": "sys:attach", "v": event}).unwrap();
+            self.inner.control_i.push(msg!{"event": "sys:attach", "v": event}).unwrap();
         }
 
         id
@@ -77,7 +77,7 @@ impl Queen {
                 vector.remove(position);
 
                 if event.starts_with("pub:") || event.starts_with("sys:") {
-                    self.inner.control_i.push(doc!{"event": "sys:detach", "v": event}).unwrap();
+                    self.inner.control_i.push(msg!{"event": "sys:detach", "v": event}).unwrap();
                 }
 
                 return true

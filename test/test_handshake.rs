@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
-use bsonrs::doc;
+use nson::msg;
 
 use queen::queen::Queen;
 use queen::client;
@@ -41,7 +41,7 @@ fn node_not_handshake() {
         context.queen.emit("sys:hand", message);
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // node 2
@@ -51,7 +51,7 @@ fn node_not_handshake() {
         if let Ok(ok) = context.message.get_bool("ok") {
             assert!(ok);
 
-            context.queen.emit("pub:hello", doc!{"hello": "world"});
+            context.queen.emit("pub:hello", msg!{"hello": "world"});
         } else {
             panic!("{:?}", context);
         }
@@ -60,7 +60,7 @@ fn node_not_handshake() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -105,7 +105,7 @@ fn node_has_handshake() {
         context.queen.emit("sys:hand", message);
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // node 2
@@ -117,20 +117,20 @@ fn node_has_handshake() {
 
             let conn_id = context.message.get_i32("conn_id").unwrap();
 
-            context.queen.emit("sys:hand", doc!{ "conn_id": conn_id, "u": "admin", "p": "admin123"});
+            context.queen.emit("sys:hand", msg!{ "conn_id": conn_id, "u": "admin", "p": "admin123"});
         } else {
             panic!("{:?}", context);
         }
     });
 
     queen2.on("sys:hand", |context| {
-        context.queen.emit("pub:hello", doc!{"hello": "world"});
+        context.queen.emit("pub:hello", msg!{"hello": "world"});
     });
 
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -175,7 +175,7 @@ fn client_not_handshake() {
         context.queen.emit("sys:hand", message);
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // client
@@ -185,7 +185,7 @@ fn client_not_handshake() {
         if let Ok(ok) = context.message.get_bool("ok") {
             assert!(ok);
 
-            context.queen.emit("pub:hello", doc!{"hello": "world"});
+            context.queen.emit("pub:hello", msg!{"hello": "world"});
         } else {
             panic!("{:?}", context);
         }
@@ -194,7 +194,7 @@ fn client_not_handshake() {
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -239,7 +239,7 @@ fn client_has_handshake() {
         context.queen.emit("sys:hand", message);
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // client
@@ -249,20 +249,20 @@ fn client_has_handshake() {
         if let Ok(ok) = context.message.get_bool("ok") {
             assert!(ok);
 
-            context.queen.emit("sys:hand", doc!{"u": "admin", "p": "admin123"});
+            context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});
         } else {
             panic!("{:?}", context);
         }
     });
 
     queen2.on("sys:hand", |context| {
-        context.queen.emit("pub:hello", doc!{"hello": "world"});
+        context.queen.emit("pub:hello", msg!{"hello": "world"});
     });
 
     loop {
         let addr = addr.lock().unwrap();
         if let Some(ref addr) = *addr {
-            queen2.emit("sys:link", doc!{"protocol": "tcp", "addr": addr});
+            queen2.emit("sys:link", msg!{"protocol": "tcp", "addr": addr});
             break;
         }
     }
@@ -307,7 +307,7 @@ fn sinple_client_handshake() {
         context.queen.emit("sys:hand", message);
     });
 
-    queen.emit("sys:listen", doc!{"protocol": "tcp", "addr": "127.0.0.1:0"});
+    queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
     // client 1
@@ -317,7 +317,7 @@ fn sinple_client_handshake() {
             
             let mut stream = TcpStream::connect(addr).unwrap();
 
-            let hand = doc!{"event": "sys:hand", "u": "admin", "p": "admin123"};
+            let hand = msg!{"event": "sys:hand", "u": "admin", "p": "admin123"};
             hand.encode(&mut stream).unwrap();
             let hand_r = Message::decode(&mut stream).unwrap();
             assert!(hand_r.get_bool("ok").unwrap());
@@ -333,7 +333,7 @@ fn sinple_client_handshake() {
             
             let mut stream = TcpStream::connect(addr).unwrap();
 
-            let hand = doc!{"event": "sys:hand"};
+            let hand = msg!{"event": "sys:hand"};
             hand.encode(&mut stream).unwrap();
             let hand_r = Message::decode(&mut stream).unwrap();
             assert!(hand_r.get_str("error").unwrap() == "Can't get u from message!");

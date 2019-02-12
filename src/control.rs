@@ -6,10 +6,10 @@ use std::os::unix::io::AsRawFd;
 
 use queen_io::plus::mpms_queue::Queue;
 use queen_io::plus::block_queue::BlockQueue;
-use bsonrs::doc;
+use nson::msg;
 
-use bsonrs::Value;
-use bsonrs::value::Array;
+use nson::Value;
+use nson::value::Array;
 
 use crate::service::Service;
 use crate::Message;
@@ -206,7 +206,7 @@ impl Control {
                 match event.as_str() {
                     "sys:hand" => {
                         if let Ok(ok) = message.get_bool("ok") {
-                            if let Some(Value::Int32(conn_id)) = message.remove("conn_id") {
+                            if let Some(Value::I32(conn_id)) = message.remove("conn_id") {
                                 message.remove("protocol");
                                 message.remove("addr");
 
@@ -223,35 +223,36 @@ impl Control {
                                         }
 
                                         let data = message.to_vec().unwrap();
-                                        self.service.send(doc!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                                        self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
                                     }
                                 } else {
                                     let data = message.to_vec().unwrap();
-                                    self.service.send(doc!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                                    self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                                    // send and close ??
                                 }
                             }
                         } else {
-                            if let Some(Value::Int32(conn_id)) = message.remove("conn_id") {
+                            if let Some(Value::I32(conn_id)) = message.remove("conn_id") {
                                 let mut message = message;
                                 message.insert("node", true);
                                 let data = message.to_vec().unwrap();
-                                self.service.send(doc!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                                self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
                             }
                         }
                     }
                     "sys:handed" => {
-                        if let Some(Value::Int32(conn_id)) = message.remove("conn_id") {
+                        if let Some(Value::I32(conn_id)) = message.remove("conn_id") {
                             let data = message.to_vec().unwrap();
-                            self.service.send(doc!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                            self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
                         }
                     }
                     "sys:attach" => {
                         if let Ok(ok) = message.get_bool("ok") {
-                            if let Some(Value::Int32(conn_id)) = message.remove("conn_id") {
+                            if let Some(Value::I32(conn_id)) = message.remove("conn_id") {
                                 macro_rules! attach_reply {
                                     ($message:expr, $ok:expr, $conn_id:expr) => (
                                         let data = $message.to_vec().unwrap();
-                                        self.service.send(doc!{"event": "sys:send", "conns": [$conn_id], "data": data}).unwrap();
+                                        self.service.send(msg!{"event": "sys:send", "conns": [$conn_id], "data": data}).unwrap();
                                     )
                                 }
 
@@ -393,7 +394,7 @@ impl Control {
     }
 
     fn event_recv(&mut self, message: &Message) {
-        // doc!{
+        // msg!{
         //  "event_id": 1,
         //  "event": "sys:hand",
         //  "ok": true, // or false
@@ -455,7 +456,7 @@ impl Control {
                             message.insert("error", "Can't get u from message!");
 
                             let data = message.to_vec().unwrap();
-                            self.service.send(doc!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                            self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
                             return
                         };
 
@@ -464,7 +465,7 @@ impl Control {
                             message.insert("error", "Can't get p from message!");
 
                             let data = message.to_vec().unwrap();
-                            self.service.send(doc!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                            self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
                             return
                         };
 
@@ -495,7 +496,7 @@ impl Control {
                             }
 
                             let data = message.to_vec().unwrap();
-                            self.service.send(doc!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                            self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
                         }
                     }
                 },
@@ -508,7 +509,7 @@ impl Control {
                             let mut message = $message;
                             message.insert("ok", $ok);
                             let data = message.to_vec().unwrap();
-                            self.service.send(doc!{"event": "sys:send", "conns": [$conn_id], "data": data}).unwrap();
+                            self.service.send(msg!{"event": "sys:send", "conns": [$conn_id], "data": data}).unwrap();
                         )
                     }
 
@@ -576,7 +577,7 @@ impl Control {
                         message.insert("ok", false);
                         message.insert("error", "Not to handshake!");
                         let data = message.to_vec().unwrap();
-                        self.service.send(doc!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                        self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
                     }
                 }
             }
@@ -608,17 +609,17 @@ impl Control {
 
         if !array.is_empty() {
             let data = message.to_vec().unwrap();
-            self.service.send(doc!{"event": "sys:send", "conns": array, "data": data}).unwrap();
+            self.service.send(msg!{"event": "sys:send", "conns": array, "data": data}).unwrap();
         }
 
-        let mut reply = doc!{"event": event, "ok": true};
+        let mut reply = msg!{"event": event, "ok": true};
 
         if let Ok(event_id) = message.get_i32("event_id") {
             reply.insert("event_id", event_id);
         }
 
         let data = reply.to_vec().unwrap();
-        self.service.send(doc!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+        self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
     }
 
     fn attach(&mut self, conn_id: i32, event: &str) {
@@ -639,7 +640,7 @@ impl Control {
                 let mut message = $message;
                 message.insert("ok", $ok);
                 let data = message.to_vec().unwrap();
-                self.service.send(doc!{"event": "sys:send", "conns": [$conn_id], "data": data}).unwrap();
+                self.service.send(msg!{"event": "sys:send", "conns": [$conn_id], "data": data}).unwrap();
             )
         }
 
