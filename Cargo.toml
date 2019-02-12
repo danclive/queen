@@ -8,7 +8,7 @@ documentation = "https://docs.rs/queen"
 homepage      = "https://github.com/mitum/queen"
 repository    = "https://github.com/mitum/queen"
 readme        = "README.md"
-keywords      = ["message queue", "rpc", "event emiter"]
+keywords      = ["message-queue", "rpc", "event-emiter"]
 exclude       = [
   ".gitignore",
   ".travis.yml",
