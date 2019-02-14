@@ -156,12 +156,14 @@ impl InnerService {
                         self.poll.register(&conn.socket, Token(id as usize), Ready::readable() | Ready::hup(), PollOpt::edge())?;
                         self.conns.insert(id, conn);
 
-                        self.queue_o.push(msg!{
+                        let msg = msg!{
                             "event": "sys:accept",
                             "protocol": "tcp",
                             "conn_id": id,
                             "addr": addr.to_string()
-                        }).unwrap();
+                        };
+
+                        self.queue_o.push(msg).unwrap();
 
                     }
 
@@ -229,14 +231,16 @@ impl InnerService {
 
             let recycle: Vec<Vec<u8>> = conn.queue_i.into();
 
-            self.queue_o.push(msg!{
+            let msg = msg!{
                 "event": "sys:remove",
                 "protocol": "tcp",
                 "conn_id": conn.id,
                 "addr": conn.addr,
                 "my": conn.my,
                 "recycle": recycle
-            }).unwrap();
+            };
+
+            self.queue_o.push(msg).unwrap();
         }
 
         Ok(())
@@ -272,7 +276,9 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                         let mut message = message;
                         message.insert("ok", false);
                         message.insert("error", "Message format error: can't not get protocol!");
+
                         service.queue_o.push(message).unwrap();
+
                         continue;
                     }
                 };
@@ -284,7 +290,9 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                             let mut message = message;
                             message.insert("ok", false);
                             message.insert("error", "Message format error: can't not get addr!");
+
                             service.queue_o.push(message).unwrap();
+
                             continue;
                         }
                     };
@@ -296,17 +304,21 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                             message.insert("ok", true);
                             message.insert("listen_id", id);
                             message.insert("addr", listen.local_addr()?.to_string());
-                            service.queue_o.push(message).unwrap();
 
                             service.poll.register(&listen, Token(id as usize), Ready::readable(), PollOpt::edge())?;
                             service.listens.insert(id, listen);
+
+                            service.queue_o.push(message).unwrap();
+
                             continue;
                         },
                         Err(err) => {
                             let mut message = message;
                             message.insert("ok", false);
                             message.insert("error", err.description());
+
                             service.queue_o.push(message).unwrap();
+
                             continue;
                         }
                     }
@@ -316,8 +328,8 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                     let mut message = message;
                     message.insert("ok", false);
                     message.insert("error", "unimplemented");
+
                     service.queue_o.push(message).unwrap();
-                    continue;
                 }
             },
             "sys:unlisten" => {
@@ -327,19 +339,24 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                         let mut message = message;
                         message.insert("ok", false);
                         message.insert("error", "Message format error: can't not get listen_id!");
+
                         service.queue_o.push(message).unwrap();
+
                         continue;
                     }
                 };
 
                 if let Some(listen) = service.listens.remove(&listen_id) {
-                    service.queue_o.push(msg!{
+
+                    let msg = msg!{
                         "event": "sys:unlisten",
                         "ok": true,
                         "protocol": "tcp",
                         "listen_id": listen_id,
                         "addr": listen.local_addr()?.to_string(),
-                    }).unwrap();
+                    };
+
+                    service.queue_o.push(msg).unwrap();
                 }
             }
             "sys:link" => {
@@ -354,7 +371,9 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                         let mut message = message;
                         message.insert("ok", false);
                         message.insert("error", "Message format error: can't not get protocol!");
+
                         service.queue_o.push(message).unwrap();
+
                         continue;
                     }
                 };
@@ -366,7 +385,9 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                             let mut message = message;
                             message.insert("ok", false);
                             message.insert("error", "Message format error: can't not get addr!");
+
                             service.queue_o.push(message).unwrap();
+
                             continue;
                         }
                     };
@@ -384,14 +405,15 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                             let mut message = message;
                             message.insert("ok", true);
                             message.insert("conn_id", id);
+
                             service.queue_o.push(message).unwrap();
                         }
                         Err(err) => {
                             let mut message = message;
                             message.insert("ok", false);
                             message.insert("error", err.description());
+
                             service.queue_o.push(message).unwrap();
-                            continue;
                         }
                     }
                 }
@@ -403,7 +425,9 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                         let mut message = message;
                         message.insert("ok", false);
                         message.insert("error", "Message format error: can't not get conn_id!");
+
                         service.queue_o.push(message).unwrap();
+
                         continue;
                     }
                 };
@@ -413,7 +437,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
 
                     let recycle: Vec<Vec<u8>> = conn.queue_i.into();
 
-                    service.queue_o.push(msg!{
+                    let msg = msg!{
                         "event": "sys:unlink",
                         "ok": true,
                         "protocol": "tcp",
@@ -421,7 +445,9 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                         "addr": conn.addr,
                         "my": conn.my,
                         "recycle": recycle
-                    }).unwrap();
+                    };
+
+                    service.queue_o.push(msg).unwrap();
                 }
             }
             "sys:send" => {
@@ -434,8 +460,10 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                     Err(_) => {
                         let mut message = message;
                         message.insert("ok", false);
-                        message.insert("error", "Message format error: can't not get protocol!");
+                        message.insert("error", "Message format error: can't not get conns!");
+
                         service.queue_o.push(message).unwrap();
+
                         continue;
                     }
                 };
@@ -447,7 +475,9 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                             let mut message = message;
                             message.insert("ok", false);
                             message.insert("error", "Message format error: the data is too short!");
+
                             service.queue_o.push(message).unwrap();
+
                             continue;
                         }
 
@@ -457,7 +487,9 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                         let mut message = message;
                         message.insert("ok", false);
                         message.insert("error", "Message format error: can't not get data!");
+
                         service.queue_o.push(message).unwrap();
+
                         continue;
                     }
                 };
@@ -479,7 +511,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
             "sys:shoutdown" => {
                 service.run = false;
             }
-            _ => ()
+            _ => unimplemented!()
         }
     }
 
@@ -522,11 +554,14 @@ impl Connection {
                     } else {
                         let messages = split_message(&mut self.buffer, &buf[..size]);
                         for message in messages {
-                            queue_o.push(msg!{
+
+                            let msg = msg!{
                                 "event": "sys:recv",
                                 "conn_id": self.id,
                                 "data": message
-                            }).unwrap();
+                            };
+
+                            queue_o.push(msg).unwrap();
                         }
                     }
                 }

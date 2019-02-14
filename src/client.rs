@@ -291,7 +291,9 @@ impl Control {
                                 let mut message = message;
                                 message.insert("ok", false);
                                 message.insert("error", "Message format error: can't not get protocol!");
+
                                 self.queue_o.push((event, message));
+
                                 continue;
                             }
                         };
@@ -303,7 +305,9 @@ impl Control {
                                     let mut message = message;
                                     message.insert("ok", false);
                                     message.insert("error", "Message format error: can't not get addr!");
+
                                     self.queue_o.push((event, message));
+
                                     continue;
                                 }
                             };
@@ -313,18 +317,23 @@ impl Control {
                                     socket.set_nodelay(true)?;
                                     socket.set_nonblocking(true)?;
                                     let conn = Connection::new(socket)?;
+
                                     self.conn = Some(conn);
 
                                     let mut message = message;
                                     message.insert("ok", true);
+
                                     self.queue_o.push((event, message));
+
                                     continue;
                                 }
                                 Err(err) => {
                                     let mut message = message;
                                     message.insert("ok", false);
                                     message.insert("error", err.description());
+
                                     self.queue_o.push((event, message));
+
                                     continue;
                                 }
                             }
