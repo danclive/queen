@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 use std::fmt;
 use std::thread;
+use std::sync::atomic::AtomicIsize;
+use std::sync::atomic::Ordering::SeqCst;
 
 use nson::Value;
 use queen_io::plus::block_queue::BlockQueue;
@@ -13,6 +15,7 @@ pub struct Center {
 
 pub struct Context<'a> {
     pub center: &'a Center,
+    pub id: i32,
     pub key: &'a str,
     pub old_value: Option<Value>,
     pub value: Value
@@ -21,7 +24,8 @@ pub struct Context<'a> {
 struct InnerCenter {
     queue: BlockQueue<(String, Option<Value>, Value)>,
     map: Mutex<HashMap<String, Value>>,
-    handles: RwLock<HashMap<String, Vec<Box<dyn Fn(Context) + Send + Sync + 'static>>>>,
+    handles: RwLock<HashMap<String, Vec<(i32, Arc<dyn Fn(Context) + Send + Sync + 'static>)>>>,
+    next_id: AtomicIsize
 }
 
 impl Center {
@@ -30,7 +34,8 @@ impl Center {
             inner: Arc::new(InnerCenter {
                 queue: BlockQueue::with_capacity(4 * 1000),
                 map: Mutex::new(HashMap::new()),
-                handles: RwLock::new(HashMap::new())
+                handles: RwLock::new(HashMap::new()),
+                next_id: AtomicIsize::new(0)
             })
         }
     }
@@ -60,11 +65,27 @@ impl Center {
         map.remove(key)
     }
 
-    pub fn on(&self, key: &str, handle: impl Fn(Context) + Send + Sync + 'static) {
+    pub fn on(&self, key: &str, handle: impl Fn(Context) + Send + Sync + 'static) -> i32 {
         let mut handles = self.inner.handles.write().unwrap();
+        let id = self.inner.next_id.fetch_add(1, SeqCst) as i32;
 
         let vector = handles.entry(key.to_owned()).or_insert(vec![]);
-        vector.push(Box::new(handle));
+        vector.push((id, Arc::new(handle)));
+
+        id
+    }
+
+    pub fn off(&self, id: i32) -> bool {
+        let mut handles = self.inner.handles.write().unwrap();
+        for (_, vector) in handles.iter_mut() {
+            if let Some(position) = vector.iter().position(|(x, _)| x == &id) {
+                vector.remove(position);
+
+                return true
+            }
+        }
+
+        false
     }
 
     pub fn run(&self, worker_size: usize, block: bool) {
@@ -76,18 +97,27 @@ impl Center {
                 loop {
                     let (key, old_value, value) = that.inner.queue.pop();
 
-                    let handles = that.inner.handles.read().unwrap();
-                    if let Some(vector) = handles.get(&key) {
-                        for handle in vector {
-                            let context = Context {
-                                center: &that,
-                                key: &key,
-                                old_value: old_value.clone(),
-                                value: value.clone()
-                            };
+                    let handles2;
 
-                            handle(context);
+                    {
+                        let handles = that.inner.handles.read().unwrap();
+                        if let Some(vector) = handles.get(&key) {
+                            handles2 = vector.clone();
+                        } else {
+                            continue;
                         }
+                    }
+
+                    for (id, handle) in handles2 {
+                        let context = Context {
+                            center: &that,
+                            id,
+                            key: &key,
+                            old_value: old_value.clone(),
+                            value: value.clone()
+                        };
+
+                        handle(context);
                     }
                 }
             }).unwrap());

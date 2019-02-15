@@ -21,7 +21,7 @@ pub struct Queen {
 struct InnerQueen {
     queue: BlockQueue<(String, Message)>,
     control_i: Queue<(Message)>,
-    handles: RwLock<HashMap<String, Vec<(i32, Arc<Box<dyn Fn(Context) + Send + Sync + 'static>>)>>>,
+    handles: RwLock<HashMap<String, Vec<(i32, Arc<dyn Fn(Context) + Send + Sync + 'static>)>>>,
     next_id: AtomicIsize
 }
 
@@ -61,7 +61,7 @@ impl Queen {
         let id = self.inner.next_id.fetch_add(1, SeqCst) as i32;
 
         let vector = handles.entry(event.to_owned()).or_insert(vec![]);
-        vector.push((id, Arc::new(Box::new(handle))));
+        vector.push((id, Arc::new(handle)));
 
         if event.starts_with("pub:") || event.starts_with("sys:") {
             self.inner.control_i.push(msg!{"event": "sys:attach", "v": event}).unwrap();
