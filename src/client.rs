@@ -288,7 +288,6 @@ impl Control {
                         let protocol = match message.get_str("protocol") {
                             Ok(protocol) => protocol,
                             Err(_) => {
-                                let mut message = message;
                                 message.insert("ok", false);
                                 message.insert("error", "Message format error: can't not get protocol!");
 
@@ -302,7 +301,6 @@ impl Control {
                             let addr = match message.get_str("addr") {
                                 Ok(addr) => addr,
                                 Err(_) => {
-                                    let mut message = message;
                                     message.insert("ok", false);
                                     message.insert("error", "Message format error: can't not get addr!");
 
@@ -320,7 +318,6 @@ impl Control {
 
                                     self.conn = Some(conn);
 
-                                    let mut message = message;
                                     message.insert("ok", true);
 
                                     self.queue_o.push((event, message));
@@ -328,7 +325,6 @@ impl Control {
                                     continue;
                                 }
                                 Err(err) => {
-                                    let mut message = message;
                                     message.insert("ok", false);
                                     message.insert("error", err.description());
 
@@ -339,7 +335,6 @@ impl Control {
                             }
                         }
 
-                        let mut message = message;
                         message.insert("ok", false);
                         message.insert("error", "unimplemented");
                         self.queue_o.push((event, message));
@@ -347,15 +342,18 @@ impl Control {
                     "sys:unlink" => {
                         if self.conn.is_some() {
                             let conn = self.conn.take().unwrap();
-                            let mut message = message;
+
                             message.insert("ok", true);
                             message.insert("protocol", "tcp");
                             message.insert("addr", conn.addr);
 
-                            self.queue_o.push((event, message));
-
                             self.handshake = false;
+                        } else {
+                            message.insert("ok", false);
+                            message.insert("error", "already unlink!");
                         }
+
+                        self.queue_o.push((event, message));
                     }
                     "sys:sync" => {
 

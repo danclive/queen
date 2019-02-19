@@ -25,6 +25,7 @@ struct InnerCenter {
     queue: BlockQueue<(String, Option<Value>, Value)>,
     map: Mutex<HashMap<String, Value>>,
     handles: RwLock<HashMap<String, Vec<(i32, Arc<dyn Fn(Context) + Send + Sync + 'static>)>>>,
+    all: RwLock<Vec<(i32, Arc<dyn Fn(Context) + Send + Sync + 'static>)>>,
     next_id: AtomicIsize
 }
 
@@ -35,24 +36,36 @@ impl Center {
                 queue: BlockQueue::with_capacity(4 * 1000),
                 map: Mutex::new(HashMap::new()),
                 handles: RwLock::new(HashMap::new()),
+                all: RwLock::new(Vec::new()),
                 next_id: AtomicIsize::new(0)
             })
         }
     }
 
-    pub fn insert(&self, key: &str, value: Value) {
+    pub fn insert(&self, key: &str, value: Value) -> Option<Value> {
         let result = {
             let mut map = self.inner.map.lock().unwrap();
             map.insert(key.to_owned(), value.clone())
         };
 
+        let mut skip = false;
+
         if let Some(ref result) = result {
             if *result == value {
-                return
+                skip = true
             }
         }
 
-        self.inner.queue.push((key.to_owned(), result, value));
+        if !skip {
+            self.inner.queue.push((key.to_owned(), result.clone(), value));
+        }
+
+        result
+    }
+
+    pub fn set(&self, key: &str, value: Value) -> Option<Value> {
+        let mut map = self.inner.map.lock().unwrap();
+        map.insert(key.to_owned(), value.clone())
     }
 
     pub fn get(&self, key: &str) -> Option<Value>{
@@ -75,11 +88,31 @@ impl Center {
         id
     }
 
+    pub fn all(&self, handle: impl Fn(Context) + Send + Sync + 'static) -> i32 {
+        let mut handles = self.inner.all.write().unwrap();
+        let id = self.inner.next_id.fetch_add(1, SeqCst) as i32;
+
+        handles.push((id, Arc::new(handle)));
+
+        id
+    }
+
     pub fn off(&self, id: i32) -> bool {
-        let mut handles = self.inner.handles.write().unwrap();
-        for (_, vector) in handles.iter_mut() {
-            if let Some(position) = vector.iter().position(|(x, _)| x == &id) {
-                vector.remove(position);
+        {
+            let mut handles = self.inner.handles.write().unwrap();
+            for (_, vector) in handles.iter_mut() {
+                if let Some(position) = vector.iter().position(|(x, _)| x == &id) {
+                    vector.remove(position);
+
+                    return true
+                }
+            }
+        }
+
+        {
+            let mut handles = self.inner.all.write().unwrap();
+            if let Some(position) = handles.iter().position(|(x, _)| x == &id) {
+                handles.remove(position);
 
                 return true
             }
@@ -96,15 +129,17 @@ impl Center {
             threads.push(thread::Builder::new().name("worker".into()).spawn(move || {
                 loop {
                     let (key, old_value, value) = that.inner.queue.pop();
+                    let mut handles2 = Vec::new();
 
-                    let handles2;
+                    {
+                        let handles = that.inner.all.read().unwrap();
+                        handles2.extend_from_slice(&handles);
+                    }
 
                     {
                         let handles = that.inner.handles.read().unwrap();
                         if let Some(vector) = handles.get(&key) {
-                            handles2 = vector.clone();
-                        } else {
-                            continue;
+                            handles2.extend_from_slice(vector);
                         }
                     }
 

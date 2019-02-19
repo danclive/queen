@@ -19,7 +19,7 @@ fn main() {
         //println!("{:?}", aaa);
         aaa.encode(&mut stream).unwrap();
 
-        let aaa_r = Message::decode(&mut stream);
+        let _aaa_r = Message::decode(&mut stream);
         //println!("{:?}", aaa_r);
         id += 1;
         println!("{:?}", id);

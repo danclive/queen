@@ -108,3 +108,45 @@ fn on_and_off4() {
     let a = a.lock().unwrap();
     assert!(*a == 0);
 }
+
+#[test]
+fn all_and_off() {
+    let a = Arc::new(Mutex::new(0));
+    let center = Center::new();
+
+    let a2 = a.clone();
+    center.all(move |context| {
+        let mut a = a2.lock().unwrap();
+        *a = context.value.as_i32().unwrap();
+    });
+
+    center.run(2, false);
+
+    center.insert("hello", 123.into());
+
+    thread::sleep(Duration::from_secs(1));
+    let a = a.lock().unwrap();
+    assert!(*a == 123);
+}
+
+#[test]
+fn all_and_off2() {
+    let a = Arc::new(Mutex::new(0));
+    let center = Center::new();
+
+    let a2 = a.clone();
+    let id = center.all(move |context| {
+        let mut a = a2.lock().unwrap();
+        *a = context.value.as_i32().unwrap();
+    });
+
+    assert!(center.off(id));
+
+    center.run(2, false);
+
+    center.insert("hello", 123.into());
+
+    thread::sleep(Duration::from_secs(1));
+    let a = a.lock().unwrap();
+    assert!(*a == 0);
+}
