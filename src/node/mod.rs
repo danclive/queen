@@ -10,8 +10,11 @@ use nson::msg;
 use queen_io::plus::block_queue::BlockQueue;
 use queen_io::plus::mpms_queue::Queue;
 
-use crate::control::Control;
+use control::Control;
 use crate::Message;
+
+pub mod service;
+pub mod control;
 
 #[derive(Clone)]
 pub struct Queen {

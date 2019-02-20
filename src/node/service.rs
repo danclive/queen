@@ -626,7 +626,7 @@ impl Connection {
 #[cfg(test)]
 mod test {
     use nson::msg;
-    use crate::service::split_message;
+    use crate::util::split_message;
 
     #[test]
     fn test_small_buf() {

@@ -11,9 +11,10 @@ use nson::msg;
 use nson::Value;
 use nson::value::Array;
 
-use crate::service::Service;
 use crate::Message;
 use crate::poll::{poll, Ready, Events};
+
+use super::service::Service;
 
 pub struct Control {
     events: Events,

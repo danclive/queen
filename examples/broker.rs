@@ -1,4 +1,4 @@
-use queen::queen::Queen;
+use queen::node::Queen;
 use nson::msg;
 
 fn main() {

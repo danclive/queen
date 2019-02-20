@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use nson::msg;
 
-use queen::queen::Queen;
+use queen::node::Queen;
 use queen::client;
 
 #[test]
