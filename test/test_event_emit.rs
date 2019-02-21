@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use nson::msg;
 
-use queen::node::Queen;
+use queen::Queen;
 
 #[test]
 fn on_emit() {

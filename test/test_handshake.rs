@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use nson::msg;
 
-use queen::node::Queen;
+use queen::Queen;
+use queen::node;
 use queen::client;
 use queen::Message;
 
@@ -16,6 +17,8 @@ fn node_not_handshake() {
 
     // node 1
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -46,6 +49,8 @@ fn node_not_handshake() {
 
     // node 2
     let queen2 = Queen::new().unwrap();
+    let control = node::Control::new(&queen2).unwrap();
+    control.run();
 
     queen2.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
@@ -80,6 +85,8 @@ fn node_has_handshake() {
 
     // node 1
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -110,6 +117,8 @@ fn node_has_handshake() {
 
     // node 2
     let queen2 = Queen::new().unwrap();
+    let control = node::Control::new(&queen2).unwrap();
+    control.run();
 
     queen2.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
@@ -150,6 +159,8 @@ fn client_not_handshake() {
 
     // node 1
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -179,7 +190,9 @@ fn client_not_handshake() {
     queen.run(2, false);
 
     // client
-    let queen2 = client::Queen::new().unwrap();
+    let queen2 = Queen::new().unwrap();
+    let control = client::Control::new(&queen2).unwrap();
+    control.run();
 
     queen2.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
@@ -214,6 +227,8 @@ fn client_has_handshake() {
 
     // node
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -243,7 +258,9 @@ fn client_has_handshake() {
     queen.run(2, false);
 
     // client
-    let queen2 = client::Queen::new().unwrap();
+    let queen2 = Queen::new().unwrap();
+    let control = client::Control::new(&queen2).unwrap();
+    control.run();
 
     queen2.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
@@ -282,6 +299,8 @@ fn sinple_client_handshake() {
 
     // node
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {

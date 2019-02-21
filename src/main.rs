@@ -1,9 +1,13 @@
-use queen::node::Queen;
+use queen::Queen;
 use queen::Message;
+use queen::node::Control;
 use nson::msg;
 
 fn main() {
     let queen = Queen::new().unwrap();
+
+    let control = Control::new(&queen).unwrap();
+    control.run();
 
     queen.on("sys:listen", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {

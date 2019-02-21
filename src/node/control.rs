@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::cell::Cell;
 use std::i32;
 use std::os::unix::io::AsRawFd;
+use std::thread;
 
 use queen_io::plus::mpms_queue::Queue;
 use queen_io::plus::block_queue::BlockQueue;
@@ -12,6 +13,7 @@ use nson::Value;
 use nson::value::Array;
 
 use crate::Message;
+use crate::Queen;
 use crate::poll::{poll, Ready, Events};
 
 use super::service::Service;
@@ -62,7 +64,7 @@ impl Session {
 }
 
 impl Control {
-    pub fn new() -> io::Result<Control> {
+    pub fn new(queen: &Queen) -> io::Result<Control> {
         let service = Service::new()?;
         let mut session = Session::new();
 
@@ -79,8 +81,8 @@ impl Control {
             events: Events::new(),
             service,
             session,
-            queue_i: Queue::with_capacity(16 * 1000)?,
-            queue_o: BlockQueue::with_capacity(4 * 1000),
+            queue_i: queen.inner.queue_o.clone(),
+            queue_o: queen.inner.queue_i.clone(),
             event_id: Cell::new(0),
             run: true
         };
@@ -88,12 +90,14 @@ impl Control {
         Ok(control)
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
-        while self.run {
-            self.run_once()?;
-        }
+    pub fn run(self) {
+        thread::Builder::new().name("control".into()).spawn(move || {
+            let mut control = self;
 
-        Ok(())
+            while control.run {
+                control.run_once().unwrap();
+            }
+        }).unwrap();
     }
 
     #[inline]

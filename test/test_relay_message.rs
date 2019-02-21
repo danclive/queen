@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use nson::msg;
 
-use queen::node::Queen;
+use queen::Queen;
+use queen::node;
 use queen::client;
 use queen::Message;
 
@@ -16,6 +17,8 @@ fn simple_client_relay_message() {
 
     // node 1
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -114,6 +117,8 @@ fn client_relay_message() {
 
     // node 1
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -143,7 +148,9 @@ fn client_relay_message() {
     queen.run(2, false);
 
     // client 1
-    let queen2 = client::Queen::new().unwrap();
+    let queen2 = Queen::new().unwrap();
+    let control = client::Control::new(&queen2).unwrap();
+    control.run();
 
     queen2.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
@@ -176,7 +183,9 @@ fn client_relay_message() {
     queen2.run(2, false);
 
     // client 2
-    let queen3 = client::Queen::new().unwrap();
+    let queen3 = Queen::new().unwrap();
+    let control = client::Control::new(&queen3).unwrap();
+    control.run();
 
     queen3.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
@@ -213,6 +222,8 @@ fn client_relay_message_off() {
 
     // node 1
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -242,7 +253,9 @@ fn client_relay_message_off() {
     queen.run(2, false);
 
     // client 1
-    let queen2 = client::Queen::new().unwrap();
+    let queen2 = Queen::new().unwrap();
+    let control = client::Control::new(&queen2).unwrap();
+    control.run();
 
     queen2.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
@@ -276,7 +289,9 @@ fn client_relay_message_off() {
     queen2.run(2, false);
 
     // client 2
-    let queen3 = client::Queen::new().unwrap();
+    let queen3 = Queen::new().unwrap();
+    let control = client::Control::new(&queen3).unwrap();
+    control.run();
 
     queen3.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
@@ -308,12 +323,14 @@ fn client_relay_message_off() {
 
 #[test]
 fn client_node_node_client() {
-    let addr_node1: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let addr_node1: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let addr_node2: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let hello: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
 
     // node 1
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr = addr_node1.clone();
     queen.on("sys:listen", move |context| {
@@ -346,6 +363,8 @@ fn client_node_node_client() {
 
     // node 2
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr = addr_node2.clone();
     queen.on("sys:listen", move |context| {
@@ -396,7 +415,9 @@ fn client_node_node_client() {
 
 
     // client 1
-    let queen = client::Queen::new().unwrap();
+    let queen = Queen::new().unwrap();
+    let control = client::Control::new(&queen).unwrap();
+    control.run();
 
     queen.on("sys:link", |context| {
         context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});
@@ -420,7 +441,9 @@ fn client_node_node_client() {
 
 
     // client 2
-    let queen = client::Queen::new().unwrap();
+    let queen = Queen::new().unwrap();
+    let control = client::Control::new(&queen).unwrap();
+    control.run();
 
     queen.on("sys:link", |context| {
         context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});

@@ -1,8 +1,11 @@
-use queen::node::Queen;
+use queen::Queen;
+use queen::node;
 use nson::msg;
 
 fn main() {
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     queen.on("sys:link", |context| {
         println!("event: {:?}", context.event);

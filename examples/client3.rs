@@ -2,7 +2,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use queen::node::Queen;
+use queen::Queen;
+use queen::node;
 use queen::client;
 use nson::msg;
 
@@ -13,6 +14,8 @@ fn main() {
 
     // node 1
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr = addr_node1.clone();
     queen.on("sys:listen", move |context| {
@@ -45,6 +48,8 @@ fn main() {
 
     // node 2
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr = addr_node2.clone();
     queen.on("sys:listen", move |context| {
@@ -95,7 +100,9 @@ fn main() {
 
 
     // client 1
-    let queen = client::Queen::new().unwrap();
+    let queen = Queen::new().unwrap();
+    let control = client::Control::new(&queen).unwrap();
+    control.run();
 
     queen.on("sys:link", |context| {
         context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});
@@ -119,7 +126,9 @@ fn main() {
 
 
     // client 2
-    let queen = client::Queen::new().unwrap();
+    let queen = Queen::new().unwrap();
+    let control = client::Control::new(&queen).unwrap();
+    control.run();
 
     queen.on("sys:link", |context| {
         context.queen.emit("sys:hand", msg!{"u": "admin", "p": "admin123"});

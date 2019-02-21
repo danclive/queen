@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use nson::msg;
 
-use queen::node::Queen;
+use queen::Queen;
+use queen::node;
 use queen::client;
 
 #[test]
@@ -13,6 +14,8 @@ fn node_unlisten() {
     let addr: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -55,6 +58,8 @@ fn node_ublink() {
     let unlink: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -78,6 +83,8 @@ fn node_ublink() {
     queen.run(2, false);
 
     let queen2 = Queen::new().unwrap();
+    let control = node::Control::new(&queen2).unwrap();
+    control.run();
 
     queen2.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
@@ -124,6 +131,8 @@ fn client_unlink() {
     let unlink: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -146,7 +155,9 @@ fn client_unlink() {
     queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
-    let queen2 = client::Queen::new().unwrap();
+    let queen2 = Queen::new().unwrap();
+    let control = client::Control::new(&queen2).unwrap();
+    control.run();
 
     queen2.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
@@ -191,6 +202,8 @@ fn node_unlink_client_remove() {
     let unlink: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
     let queen = Queen::new().unwrap();
+    let control = node::Control::new(&queen).unwrap();
+    control.run();
 
     let addr2 = addr.clone();
     queen.on("sys:listen", move |context| {
@@ -219,7 +232,9 @@ fn node_unlink_client_remove() {
     queen.emit("sys:listen", msg!{"protocol": "tcp", "addr": "127.0.0.1:0"});
     queen.run(2, false);
 
-    let queen2 = client::Queen::new().unwrap();
+    let queen2 = Queen::new().unwrap();
+    let control = client::Control::new(&queen2).unwrap();
+    control.run();
 
     queen2.on("sys:link", |context| {
         if let Ok(ok) = context.message.get_bool("ok") {
