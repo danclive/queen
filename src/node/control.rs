@@ -198,7 +198,9 @@ impl Control {
                 }
             };
 
-            let event = message.get_str("event").expect("Can't get event!").to_string();
+            let event = message.get_str("event")
+                .expect("Can't get event!")
+                .to_string();
 
             if let Err(_) = message.get_i32("event_id") {
                 let event_id = self.get_event_id();
@@ -227,53 +229,65 @@ impl Control {
                                             }
                                         }
 
-                                        let data = message.to_vec().unwrap();
-                                        self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                                        self.service.send(msg!{
+                                            "event": "sys:send",
+                                            "conns": [conn_id],
+                                            "data": message.to_vec().unwrap()
+                                        }).unwrap();
                                     }
                                 } else {
-                                    let data = message.to_vec().unwrap();
-                                    self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                                    self.service.send(msg!{
+                                        "event": "sys:send",
+                                        "conns": [conn_id],
+                                        "data": message.to_vec().unwrap()
+                                    }).unwrap();
                                     // send and close ??
                                 }
                             }
                         } else {
                             if let Some(Value::I32(conn_id)) = message.remove("conn_id") {
-                                let mut message = message;
                                 message.insert("node", true);
-                                let data = message.to_vec().unwrap();
-                                self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+
+                                self.service.send(msg!{
+                                    "event": "sys:send",
+                                    "conns": [conn_id],
+                                    "data": message.to_vec().unwrap()
+                                }).unwrap();
                             }
                         }
                     }
                     "sys:handed" => {
                         if let Some(Value::I32(conn_id)) = message.remove("conn_id") {
-                            let data = message.to_vec().unwrap();
-                            self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                            self.service.send(msg!{
+                                "event": "sys:send",
+                                "conns": [conn_id],
+                                "data": message.to_vec().unwrap()
+                            }).unwrap();
                         }
                     }
                     "sys:attach" => {
                         if let Ok(ok) = message.get_bool("ok") {
                             if let Some(Value::I32(conn_id)) = message.remove("conn_id") {
-                                macro_rules! attach_reply {
-                                    ($message:expr, $ok:expr, $conn_id:expr) => (
-                                        let data = $message.to_vec().unwrap();
-                                        self.service.send(msg!{"event": "sys:send", "conns": [$conn_id], "data": data}).unwrap();
-                                    )
-                                }
 
                                 message.remove("protocol");
                                 message.remove("addr");
 
-                                let event = message.get_str("v").expect("Can't get v at attach!");
+                                let event = message.get_str("v")
+                                    .expect("Can't get v at attach!");
+
                                 if ok {
                                     self.attach(conn_id, &event);
-                                    attach_reply!(message, true, conn_id);
-                                } else {
-                                    attach_reply!(message, false, conn_id);
                                 }
+
+                                self.service.send(msg!{
+                                    "event": "sys:send",
+                                    "conns": [conn_id],
+                                    "data": message.to_vec().unwrap()
+                                }).unwrap();
                             }
                         } else {
-                            let event = message.get_str("v").expect("Can't get v at attach!");
+                            let event = message.get_str("v")
+                                .expect("Can't get v at attach!");
                             self.attach(0, &event);
                         }
                     }
@@ -305,12 +319,15 @@ impl Control {
     fn event_listen(&mut self, message: &Message) {
         if let Ok(ok) = message.get_bool("ok") {
             if ok {
-                let id = message.get_i32("listen_id").expect("Can't get listen_id!");
-                let protocol = message.get_str("protocol").expect("Can't get protocol!");
+                let id = message.get_i32("listen_id")
+                    .expect("Can't get listen_id!");
+                let protocol = message.get_str("protocol")
+                    .expect("Can't get protocol!");
 
                 // Todo, unix socket
                 if protocol == "tcp" {
-                    let addr = message.get_str("addr").expect("Can't get addr!");
+                    let addr = message.get_str("addr")
+                        .expect("Can't get addr!");
 
                     let listen_state = ListenState {
                         protocol: protocol.to_string(),
@@ -326,12 +343,15 @@ impl Control {
     fn event_link(&mut self, message: &Message) {
         if let Ok(ok) = message.get_bool("ok") {
             if ok {
-                let id = message.get_i32("conn_id").expect("Can't get conn_id!");
-                let protocol = message.get_str("protocol").expect("Can't get protocol!");
+                let id = message.get_i32("conn_id")
+                    .expect("Can't get conn_id!");
+                let protocol = message.get_str("protocol")
+                    .expect("Can't get protocol!");
 
                 // Todo, unix socket
                 if protocol == "tcp" {
-                    let addr = message.get_str("addr").expect("Can't get addr!");
+                    let addr = message.get_str("addr")
+                        .expect("Can't get addr!");
 
                     let link_state = LinkState {
                         protocol: protocol.to_string(),
@@ -349,12 +369,15 @@ impl Control {
     }
 
     fn event_accept(&mut self, message: &Message) {
-        let id = message.get_i32("conn_id").expect("Can't get conn_id!");
-        let protocol = message.get_str("protocol").expect("Can't get protocol!");
+        let id = message.get_i32("conn_id")
+            .expect("Can't get conn_id!");
+        let protocol = message.get_str("protocol")
+            .expect("Can't get protocol!");
 
         // Todo, unix socket
         if protocol == "tcp" {
-            let addr = message.get_str("addr").expect("Can't get addr!");
+            let addr = message.get_str("addr")
+                .expect("Can't get addr!");
 
             let link_state = LinkState {
                 protocol: protocol.to_string(),
@@ -407,8 +430,10 @@ impl Control {
         //  "p": "admin123" // password
         // };
 
-        let conn_id = message.get_i32("conn_id").expect("Can't get conn_id!");
-        let data = message.get_binary("data").expect("Can't get data!");
+        let conn_id = message.get_i32("conn_id")
+            .expect("Can't get conn_id!");
+        let data = message.get_binary("data")
+            .expect("Can't get data!");
 
         let inner_message = match Message::from_slice(&data) {
             Ok(m) => m,
@@ -460,8 +485,12 @@ impl Control {
                             let mut message = inner_message;
                             message.insert("error", "Can't get u from message!");
 
-                            let data = message.to_vec().unwrap();
-                            self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                            self.service.send(msg!{
+                                "event": "sys:send",
+                                "conns": [conn_id],
+                                "data": message.to_vec().unwrap()
+                            }).unwrap();
+
                             return
                         };
 
@@ -469,8 +498,12 @@ impl Control {
                             let mut message = inner_message;
                             message.insert("error", "Can't get p from message!");
 
-                            let data = message.to_vec().unwrap();
-                            self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                            self.service.send(msg!{
+                                "event": "sys:send",
+                                "conns": [conn_id],
+                                "data": message.to_vec().unwrap()
+                            }).unwrap();
+
                             return
                         };
 
@@ -500,8 +533,11 @@ impl Control {
                                 message.insert("ok", false);
                             }
 
-                            let data = message.to_vec().unwrap();
-                            self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+                            self.service.send(msg!{
+                                "event": "sys:send",
+                                "conns": [conn_id],
+                                "data": message.to_vec().unwrap()
+                            }).unwrap();
                         }
                     }
                 },
@@ -513,8 +549,12 @@ impl Control {
                         ($message:ident, $ok:expr, $conn_id:expr) => (
                             let mut message = $message;
                             message.insert("ok", $ok);
-                            let data = message.to_vec().unwrap();
-                            self.service.send(msg!{"event": "sys:send", "conns": [$conn_id], "data": data}).unwrap();
+
+                            self.service.send(msg!{
+                                "event": "sys:send",
+                                "conns": [$conn_id],
+                                "data": message.to_vec().unwrap()
+                            }).unwrap();
                         )
                     }
 
@@ -581,8 +621,12 @@ impl Control {
                         let mut message = inner_message;
                         message.insert("ok", false);
                         message.insert("error", "Not to handshake!");
-                        let data = message.to_vec().unwrap();
-                        self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+
+                        self.service.send(msg!{
+                            "event": "sys:send",
+                            "conns": [conn_id],
+                            "data": message.to_vec().unwrap()
+                        }).unwrap();
                     }
                 }
             }
@@ -613,8 +657,11 @@ impl Control {
         }
 
         if !array.is_empty() {
-            let data = message.to_vec().unwrap();
-            self.service.send(msg!{"event": "sys:send", "conns": array, "data": data}).unwrap();
+            self.service.send(msg!{
+                "event": "sys:send",
+                "conns": array,
+                "data": message.to_vec().unwrap()
+            }).unwrap();
         }
 
         let mut reply = msg!{"event": event, "ok": true};
@@ -623,8 +670,11 @@ impl Control {
             reply.insert("event_id", event_id);
         }
 
-        let data = reply.to_vec().unwrap();
-        self.service.send(msg!{"event": "sys:send", "conns": [conn_id], "data": data}).unwrap();
+        self.service.send(msg!{
+            "event": "sys:send",
+            "conns": [conn_id],
+            "data": reply.to_vec().unwrap()
+        }).unwrap();
     }
 
     fn attach(&mut self, conn_id: i32, event: &str) {
@@ -644,8 +694,12 @@ impl Control {
             ($message:ident, $ok:expr, $conn_id:ident) => (
                 let mut message = $message;
                 message.insert("ok", $ok);
-                let data = message.to_vec().unwrap();
-                self.service.send(msg!{"event": "sys:send", "conns": [$conn_id], "data": data}).unwrap();
+
+                self.service.send(msg!{
+                    "event": "sys:send",
+                    "conns": [$conn_id],
+                    "data": message.to_vec().unwrap()
+                }).unwrap();
             )
         }
 

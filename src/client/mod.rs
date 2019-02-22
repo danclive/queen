@@ -90,7 +90,6 @@ impl Control {
             }
         }
 
-
         Ok(())
     }
 
@@ -103,11 +102,12 @@ impl Control {
                 }
             };
 
-            let event = message.get_str("event").expect("Can't get event!").to_string();
+            let event = message.get_str("event")
+                .expect("Can't get event!")
+                .to_string();
         
             if let Err(_) = message.get_i32("event_id") {
-                let event_id = self.get_event_id();
-                message.insert("event_id", event_id);
+                message.insert("event_id", self.get_event_id());
             }
 
             if event.starts_with("pub:") {
@@ -115,30 +115,26 @@ impl Control {
                     self.queue_o.push((event, message.clone()));
                 }
 
-                let data = message.to_vec().unwrap();
-                self.push_back(data);
+                self.push_back(message.to_vec().unwrap());
+
             } else if event.starts_with("sys:") {
                 match event.as_str() {
                     "sys:hand" => {
-                        let data = message.to_vec().unwrap();
-                        self.push_back(data);
+                        self.push_back(message.to_vec().unwrap());
                     }
                     "sys:handed" => {
-                        let data = message.to_vec().unwrap();
-                        self.push_back(data);
+                        self.push_back(message.to_vec().unwrap());
                     }
                     "sys:attach" => {
                         let event = message.get_str("v").expect("Can't get v at attach");
                         if self.attach(event) && event.starts_with("pub:") && self.handshake {
-                            let data = message.to_vec().unwrap();
-                            self.push_back(data);
+                            self.push_back(message.to_vec().unwrap());
                         }
                     }
                     "sys:detach" => {
                         let event = message.get_str("v").expect("Can't get v at attach");
                         if self.detach(event) && event.starts_with("pub:") && self.handshake {
-                            let data = message.to_vec().unwrap();
-                            self.push_back(data);
+                            self.push_back(message.to_vec().unwrap());
                         }
                     }
                     "sys:link" => {
@@ -199,6 +195,7 @@ impl Control {
 
                         message.insert("ok", false);
                         message.insert("error", "unimplemented");
+
                         self.queue_o.push((event, message));
                     }
                     "sys:unlink" => {
@@ -312,8 +309,7 @@ impl Control {
                                             "event": "sys:attach", "v": k
                                         };
 
-                                        let data = message.to_vec().unwrap();
-                                        self.cache.push_back(data);
+                                        self.cache.push_back(message.to_vec().unwrap());
                                     }
                                 }
                             }
@@ -336,7 +332,7 @@ impl Control {
                     _ => ()
                 }
             } else if event.starts_with("pub:") {
-                if let Ok(_ok) = message.get_bool("ok") {
+                if let Ok(_) = message.get_bool("ok") {
                     if let Some(_) = self.attach_events.get("sys:reply") {
                         self.queue_o.push(("sys:reply".to_string(), message));
                     }
