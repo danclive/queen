@@ -33,16 +33,6 @@ pub struct Context<'a> {
 
 impl Queen {
     pub fn new() -> io::Result<Queen> {
-        // let control = Control::new()?;
-
-        // let queue_i = control.queue_i.clone();
-        // let queue_o = control.queue_o.clone();
-
-        // thread::Builder::new().name("control".into()).spawn(move || {
-        //     let mut control = control;
-        //     let _ = control.run();
-        // }).unwrap();
-
         let queue = Queen {
             inner: Arc::new(InnerQueen {
                 queue_i: BlockQueue::with_capacity(4 * 1000),
@@ -105,16 +95,14 @@ impl Queen {
                 loop {
                     let (event, message) = that.inner.queue_i.pop();
 
-                    let handles2;
-
-                    {
+                    let handles2 = {
                         let handles = that.inner.handles.read().unwrap();
                         if let Some(vector) = handles.get(&event) {
-                            handles2 = vector.clone();
+                            vector.clone()
                         } else {
                             continue;
                         }
-                    }
+                    };
 
                     for (id, handle) in handles2 {
                         let context = Context {
