@@ -26,9 +26,6 @@ pub struct Service {
 
 impl Service {
     pub fn new() -> io::Result<Service> {
-        is_send::<Service>();
-        is_sync::<Service>();
-
         let inner = InnerService::new()?;
 
         let queue_i = inner.queue_i.clone();
@@ -365,7 +362,8 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
             "sys:link" => {
                 // msg!{
                 //  "protocol": "tcp", // unix
-                //  "addr": "127.0.0.1:6666"
+                //  "addr": "127.0.0.1:6666",
+                //  "path": "/path/to/the/socket"
                 // };
                 let protocol = match message.get_str("protocol") {
                     Ok(protocol) => protocol,
@@ -624,9 +622,6 @@ impl Connection {
         Ok(())
     }
 }
-
-fn is_send<T: Send>() {}
-fn is_sync<T: Sync>() {}
 
 #[cfg(test)]
 mod test {

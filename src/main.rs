@@ -4,6 +4,10 @@ use queen::node::Control;
 use nson::msg;
 
 fn main() {
+
+}
+/*
+fn main() {
     let queen = Queen::new().unwrap();
 
     let control = Control::new(&queen).unwrap();
@@ -43,3 +47,4 @@ fn main() {
 
     queen.run(4, true);
 }
+*/
