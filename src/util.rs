@@ -51,8 +51,8 @@ pub fn split_message(buffer: &mut Vec<u8>, buf: &[u8]) -> Vec<Vec<u8>>{
                 }
             }
         } else {
-                // size < message length
-                buffer.extend_from_slice(&buf[0..size]);
+            // size < message length
+            buffer.extend_from_slice(&buf[0..size]);
         }
     } else {
         let message_len = get_length(buffer, 0) - buffer_len;

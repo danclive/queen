@@ -14,6 +14,19 @@ use queen_io::plus::block_queue::BlockQueue;
 
 use crate::Message;
 
+// p => public
+// s => system
+// q => queen
+// m => message
+// e => event
+// h => hand
+// a => attach
+// d => detach
+// v => value
+
+// usn => username
+// pwd => password 
+
 #[derive(Clone)]
 pub struct Queen {
     inner: Arc<QueenInner>
@@ -58,8 +71,8 @@ impl Queen {
         let vector = handles.entry(event.to_owned()).or_insert(vec![]);
         vector.push((id, Arc::new(handle)));
 
-        if event.starts_with("pub:") || event.starts_with("sys:") {
-            self.emit("queen:on", msg!{"event": event});
+        if event.starts_with("p:") || event.starts_with("s:") {
+            self.emit("q:on", msg!{"e": event});
         }
 
         id
@@ -71,8 +84,8 @@ impl Queen {
             if let Some(position) = vector.iter().position(|(x, _)| x == &id) {
                 vector.remove(position);
 
-                if event.starts_with("pub:") || event.starts_with("sys:") {
-                    self.emit("queen:off", msg!{"event": event});
+                if event.starts_with("p:") || event.starts_with("s:") {
+                    self.emit("q:off", msg!{"event": event});
                 }
 
                 return true
@@ -88,8 +101,8 @@ impl Queen {
         if let Some(Value::I32(delay)) = message.remove("delay") {
             self.inner.timer.push((event.to_owned(), message), delay);
         } else {
-            if event.starts_with("pub:") || event.starts_with("sys:") {
-                self.emit("queen:emit", msg!{"event": event, "message": message});
+            if event.starts_with("p:") || event.starts_with("s:") {
+                self.emit("q:emit", msg!{"e": event, "m": message});
             } else {
                 self.inner.queue.push((event.to_string(), message));
             }
@@ -109,7 +122,6 @@ impl Queen {
             threads.push(thread::Builder::new().name("worker".into()).spawn(move || {
                 loop {
                     let (event, message) = that.inner.queue.pop();
-
                     let handles2 = {
                         let handles = that.inner.handles.read().unwrap();
                         if let Some(vector) = handles.get(&event) {

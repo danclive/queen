@@ -96,8 +96,8 @@ impl InnerService {
         let service = InnerService {
             poll: Poll::new()?,
             events: Events::with_capacity(1024),
-            queue_i: Queue::with_capacity(8 * 1000)?,
-            queue_o: Queue::with_capacity(8 * 1000)?,
+            queue_i: Queue::with_capacity(16 * 1000)?,
+            queue_o: Queue::with_capacity(16 * 1000)?,
             listens: HashMap::with_capacity(100),
             conns: HashMap::with_capacity(1024),
             next_listen_id: Cell::new(100), // 100 ~ 199
@@ -160,7 +160,7 @@ impl InnerService {
                         self.conns.insert(id, conn);
 
                         let msg = msg!{
-                            "event": "sys:accept",
+                            "e": "s:accept",
                             "protocol": "tcp",
                             "conn_id": id,
                             "addr": addr.to_string()
@@ -235,7 +235,7 @@ impl InnerService {
             let recycle: Vec<Vec<u8>> = conn.queue_i.into();
 
             let msg = msg!{
-                "event": "sys:remove",
+                "e": "s:remove",
                 "protocol": "tcp",
                 "conn_id": conn.id,
                 "addr": conn.addr,
@@ -259,7 +259,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
             }
         };
 
-        let event = match message.get_str("event") {
+        let event = match message.get_str("e") {
             Ok(event) => event,
             Err(_) => {
                 continue;
@@ -267,7 +267,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
         };
 
         match event {
-            "sys:listen" => {
+            "s:listen" => {
                 // msg!{
                 //  "protocol": "tcp", // unix
                 //  "addr": "127.0.0.1:6666",
@@ -335,7 +335,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                     service.queue_o.push(message).unwrap();
                 }
             },
-            "sys:unlisten" => {
+            "s:unlisten" => {
                 let listen_id = match message.get_i32("listen_id") {
                     Ok(listen_id) => listen_id,
                     Err(_) => {
@@ -352,7 +352,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                 if let Some(listen) = service.listens.remove(&listen_id) {
 
                     let msg = msg!{
-                        "event": "sys:unlisten",
+                        "e": "s:unlisten",
                         "ok": true,
                         "protocol": "tcp",
                         "listen_id": listen_id,
@@ -362,7 +362,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                     service.queue_o.push(msg).unwrap();
                 }
             }
-            "sys:link" => {
+            "s:link" => {
                 // msg!{
                 //  "protocol": "tcp", // unix
                 //  "addr": "127.0.0.1:6666"
@@ -420,7 +420,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                     }
                 }
             },
-            "sys:unlink" => {
+            "s:unlink" => {
                 let conn_id = match message.get_i32("conn_id") {
                     Ok(conn_id) => conn_id,
                     Err(_) => {
@@ -440,7 +440,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                     let recycle: Vec<Vec<u8>> = conn.queue_i.into();
 
                     let msg = msg!{
-                        "event": "sys:unlink",
+                        "e": "s:unlink",
                         "ok": true,
                         "protocol": "tcp",
                         "conn_id": conn.id,
@@ -452,7 +452,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                     service.queue_o.push(msg).unwrap();
                 }
             }
-            "sys:send" => {
+            "s:send" => {
                 // msg!{
                 //  "conns": [1i32, 2, 3],
                 //  "data": vec![5u8, 0, 0, 0, 1]
@@ -510,7 +510,7 @@ fn dispatch_queue_i(service: &mut InnerService) -> io::Result<()> {
                 message.insert("ok", true);
                 service.queue_o.push(message).unwrap();
             },
-            "sys:shoutdown" => {
+            "s:shoutdown" => {
                 service.run = false;
             }
             _ => unimplemented!()
@@ -558,7 +558,7 @@ impl Connection {
                         for message in messages {
 
                             let msg = msg!{
-                                "event": "sys:recv",
+                                "e": "s:recv",
                                 "conn_id": self.id,
                                 "data": message
                             };

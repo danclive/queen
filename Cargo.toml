@@ -19,7 +19,8 @@ edition       = "2018"
 autobins      = false
 
 [dependencies]
-nson = "0.2"
+#nson = "0.2"
+nson = { path = "../nson" }
 queen-io = "0.2"
 serde = "1.0"
 serde_derive = "1.0"

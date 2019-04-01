@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::io;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use nson::msg;
-use nson::Value;
+use nson::{Value, Array, Message};
 
-use log::{trace, debug};
+use log::{trace, debug, warn};
 
 use crate::{Queen, Context};
 use crate::poll::{poll, Ready, Events};
@@ -15,7 +15,7 @@ use super::service::Service;
 
 #[derive(Clone)]
 struct Session {
-    inner: Arc<RwLock<SessionInner>>
+    inner: Arc<Mutex<SessionInner>>
 }
 
 struct SessionInner {
@@ -44,7 +44,7 @@ struct LinkState {
 impl Session {
     fn new() -> Session {
         Session {
-            inner: Arc::new(RwLock::new(SessionInner {
+            inner: Arc::new(Mutex::new(SessionInner {
                 listens: HashMap::new(),
                 links: HashMap::new(),
                 node: Vec::new(),
@@ -87,57 +87,57 @@ impl Control {
         };
 
         let control2 = control.clone();
-        queen.on("sys:listen", move |context| {
+        queen.on("s:listen", move |context| {
             control2.listen(context);
         });
 
         let control2 = control.clone();
-        queen.on("sys:unlisten", move |context| {
+        queen.on("s:unlisten", move |context| {
             control2.unlisten(context);
         });
 
         let control2 = control.clone();
-        queen.on("sys:link", move |context| {
+        queen.on("s:link", move |context| {
             control2.link(context);
         });
 
         let control2 = control.clone();
-        queen.on("sys:unlink", move |context| {
+        queen.on("s:unlink", move |context| {
             control2.unlink(context);
         });
 
         let control2 = control.clone();
-        queen.on("sys:accept", move |context| {
+        queen.on("s:accept", move |context| {
             control2.accept(context);
         });
 
         let control2 = control.clone();
-        queen.on("sys:remove", move |context| {
+        queen.on("s:remove", move |context| {
             control2.remove(context);
         });
 
         let control2 = control.clone();
-        queen.on("sys:send", move |context| {
+        queen.on("s:send", move |context| {
             control2.send(context);
         });
 
         let control2 = control.clone();
-        queen.on("sys:recv", move |context| {
+        queen.on("s:recv", move |context| {
             control2.recv(context);
         });
 
         let control2 = control.clone();
-        queen.on("queen:on", move |context| {
+        queen.on("q:on", move |context| {
             control2.on(context);
         });
 
         let control2 = control.clone();
-        queen.on("queen:off", move |context| {
+        queen.on("q:off", move |context| {
             control2.off(context);
         });
 
         let control2 = control.clone();
-        queen.on("queen:emit", move |context| {
+        queen.on("q:emit", move |context| {
             control2.emit(context);
         });
 
@@ -147,7 +147,7 @@ impl Control {
     }
 
     #[inline]
-    pub fn listen(&self, context: Context) {
+    fn listen(&self, context: Context) {
         debug!("listen: {:?}", context);
 
         let message = context.message;
@@ -168,7 +168,7 @@ impl Control {
                         addr: addr.to_owned()
                     };
 
-                    let mut session = self.session.inner.write().unwrap();
+                    let mut session = self.session.inner.lock().unwrap();
                     session.listens.insert(id, state);
 
                     debug!("session.listens: {:?}", session.listens);
@@ -180,7 +180,7 @@ impl Control {
     }
 
     #[inline]
-    pub fn unlisten(&self, context: Context) {
+    fn unlisten(&self, context: Context) {
         debug!("unlisten: {:?}", context);
 
         let message = context.message;
@@ -190,7 +190,7 @@ impl Control {
                 let id = message.get_i32("listen_id")
                     .expect("Can't get listen_id!");
 
-                let mut session = self.session.inner.write().unwrap();
+                let mut session = self.session.inner.lock().unwrap();
                 session.listens.remove(&id);
 
                 debug!("session.listens: {:?}", session.listens);
@@ -201,7 +201,7 @@ impl Control {
     }
 
     #[inline]
-    pub fn link(&self, context: Context) {
+    fn link(&self, context: Context) {
         debug!("link: {:?}", context);
 
         let message = context.message;
@@ -226,7 +226,7 @@ impl Control {
                         events: HashMap::new()
                     };
 
-                    let mut session = self.session.inner.write().unwrap();
+                    let mut session = self.session.inner.lock().unwrap();
                     session.links.insert(id, state);
 
                     debug!("session.links: {:?}", session.links);
@@ -238,7 +238,7 @@ impl Control {
     }
 
     #[inline]
-    pub fn unlink(&self, context: Context) {
+    fn unlink(&self, context: Context) {
         debug!("unlink: {:?}", context);
 
         let message = context.message;
@@ -248,7 +248,7 @@ impl Control {
                 let id = message.get_i32("conn_id")
                     .expect("Can't get conn_id!");
 
-                let mut session = self.session.inner.write().unwrap();
+                let mut session = self.session.inner.lock().unwrap();
                 if let Some(link) = session.links.remove(&id) {
                     for (event, _) in link.events {
                         let mut temps = Vec::new();
@@ -276,9 +276,7 @@ impl Control {
     }
 
     #[inline]
-    pub fn accept(&self, context: Context) {
-        debug!("accept: {:?}", context);
-
+    fn accept(&self, context: Context) {
         let message = context.message;
 
         let id = message.get_i32("conn_id")
@@ -299,23 +297,22 @@ impl Control {
                 events: HashMap::new()
             };
 
-            let mut session = self.session.inner.write().unwrap();
+            let mut session = self.session.inner.lock().unwrap();
             session.links.insert(id, state);
-
             debug!("session.links: {:?}", session.links);
         }
     }
 
     #[inline]
-    pub fn remove(&self, context: Context) {
-        debug!("accept: {:?}", context);
+    fn remove(&self, context: Context) {
+        debug!("remove: {:?}", context);
 
         let message = context.message;
 
         let id = message.get_i32("conn_id")
             .expect("Can't get conn_id!");
 
-        let mut session = self.session.inner.write().unwrap();
+        let mut session = self.session.inner.lock().unwrap();
         if let Some(link) = session.links.remove(&id) {
             for (event, _) in link.events {
                 let mut temps = Vec::new();
@@ -335,52 +332,297 @@ impl Control {
                 }
             }
         }
-        debug!("session.links: {:?}", session.links);
+        // debug!("session.links: {:?}", session.links);
     }
 
     #[inline]
-    pub fn send(&self, context: Context) {
-        debug!("send: {:?}", context);
+    fn send(&self, context: Context) {
+        if !context.message.contains_key("ok") {
+            let _ = self.service.send(context.message);
+        }
     }
 
     #[inline]
-    pub fn recv(&self, context: Context) {
-        debug!("recv: {:?}", context);
+    fn recv(&self, context: Context) {
+        // debug!("recv: {:?}", context);
+        // println!("{:?}", "recv");
+        let message = context.message;
+
+        let conn_id = message.get_i32("conn_id")
+            .expect("Can't get conn_id!");
+        let data = message.get_binary("data")
+            .expect("Can't get data!");
+
+        let message = match Message::from_slice(&data) {
+            Ok(msg) => msg,
+            Err(err) => {
+                warn!("sys:recv, message decode error, conn_id: {:?}, err: {:?}", conn_id, err);
+                return
+            }
+        };
+
+        let event = match message.get_str("e") {
+            Ok(event) => event.to_owned(),
+            Err(_) => {
+                warn!("sys:recv, can't get event, conn_id:{:?}, message: {:?}", conn_id, message);
+                return
+            }
+        };
+
+        if event.starts_with("s:") {
+            match event.as_str() {
+                "s:h" => self.hand_from_recv(conn_id, message),
+                "s:a" => self.attach_from_recv(conn_id, message),
+                "s:d" => self.detach(conn_id, message),
+                _ => warn!("event unsupport: {:?}, conn_id: {:?}, message: {:?}", event, conn_id, message)
+            }
+        } else if event.starts_with("p:") {
+            self.relay(conn_id, &event, message.clone());
+            context.queen.push(&event, message);
+        } else {
+            warn!("event prefix is unsupport: {:?} conn_id: {:?}, message: {:?}", event, conn_id, message);
+        }
     }
 
     #[inline]
-    pub fn on(&self, context: Context) {
-        debug!("on: {:?}", context);
+    fn on(&self, _context: Context) {
+        // debug!("on: {:?}", context);
     }
 
     #[inline]
-    pub fn off(&self, context: Context) {
+    fn off(&self, context: Context) {
         debug!("off: {:?}", context);
     }
 
     #[inline]
-    pub fn emit(&self, context: Context) {
+    fn emit(&self, context: Context) {
         let mut message = context.message;
 
         trace!("emit: {:?}", message);
 
-        let event = match message.get_str("event") {
+        let event = match message.get_str("e") {
             Ok(event) => event.to_owned(),
             Err(_) => return
         };
 
-        if let Some(Value::Message(mut message)) = message.remove("message") {
-            message.insert("event", event.to_owned());
+        if let Some(Value::Message(mut message)) = message.remove("m") {
+            message.insert("e", event.to_owned());
 
-            if event.starts_with("sys:") {
+            if event.starts_with("s:") {
+                match event.as_str() {
+                    "s:h" => self.hand_from_emit(message),
+                    "s:a" => self.attach_from_emit(message),
+                    _ => context.queen.push(&event, message)
+                }
+
+            } else if event.starts_with("p:") {
+                self.relay(0, &event, message.clone());
                 context.queen.push(&event, message);
-            } else if event.starts_with("pub:") {
-                
             }
         }
     }
 
-    pub fn run(self) {
+    #[inline]
+    fn hand_from_recv(&self, conn_id: i32, message: Message) {
+        if let Ok(_ok) = message.get_bool("ok") {
+
+        } else {
+            let session = self.session.inner.lock().unwrap();
+            if let Some(link) = session.links.get(&conn_id) {
+                let mut message = message;
+                message.insert("conn_id", conn_id);
+                message.insert("protocol", link.protocol.clone());
+                message.insert("addr", link.addr.clone());
+
+                self.queen.push("s:h", message);
+            }
+        }
+    }
+
+    #[inline]
+    fn hand_from_emit(&self, message: Message) {
+        if let Ok(ok) = message.get_bool("ok") {
+            let mut message = message;
+            if let Some(Value::I32(conn_id)) = message.remove("conn_id") {
+
+                message.remove("protocol");
+                message.remove("addr");
+
+                if ok {
+                    let mut session = self.session.inner.lock().unwrap();
+                    if let Some(link) = session.links.get_mut(&conn_id) {
+                        link.handshake = true;
+
+                        if let Ok(node) = message.get_bool("node") {
+                            if node {
+                                link.node = true;
+                                if !session.node.contains(&conn_id) {
+                                    session.node.push(conn_id);
+                                }
+                            }
+                        }
+
+                        self.queen.emit("s:send", msg!{
+                            "e": "s:send",
+                            "conns": [conn_id],
+                            "data": message.to_vec().unwrap()
+                        });
+                    }
+                }
+            }
+        } else {
+
+        }
+    }
+
+    fn attach_from_recv(&self, conn_id: i32, message: Message) {
+        if !message.contains_key("ok") {
+            let mut message = message;
+
+            if let Ok(event) = message.get_str("v") {
+                if event.starts_with("p:") {
+                    let mut session = self.session.inner.lock().unwrap();
+                    if let Some(link) = session.links.get_mut(&conn_id) {
+                        if !link.handshake {
+                            message.insert("ok", false);
+                            message.insert("error", "Not handshake!");
+                        } else {
+                            message.insert("conn_id", conn_id);
+                            message.insert("protocol", link.protocol.clone());
+                            message.insert("addr", link.addr.clone());
+                            message.insert("node", link.node);
+
+                            self.queen.push("s:a", message);
+                            return
+                        }
+                    }
+                } else {
+                    message.insert("ok", false);
+                    message.insert("error", "Only attach public event!");
+                }
+            } else {
+                message.insert("ok", false);
+                message.insert("error", "Can't get v from message!");
+            }
+
+            self.queen.emit("s:send", msg!{
+                "e": "s:send",
+                "conns": [conn_id],
+                "data": message.to_vec().unwrap()
+            });
+        }
+    }
+
+    fn attach_from_emit(&self, message: Message) {
+        if let Ok(ok) = message.get_bool("ok") {
+            let mut message = message;
+            if let Some(Value::I32(conn_id)) = message.remove("conn_id") {
+                message.remove("protocol");
+                message.remove("addr");
+                message.remove("node");
+
+                let event = message.get_str("v")
+                    .expect("Can't get v at attach!");
+
+                if ok {
+                    self.attach(conn_id, event);
+                }
+
+                self.queen.emit("s:send", msg!{
+                    "e": "s:send",
+                    "conns": [conn_id],
+                    "data": message.to_vec().unwrap()
+                });
+            }
+        }
+    }
+
+    fn attach(&self, conn_id: i32, event: &str) {
+        let mut session = self.session.inner.lock().unwrap();
+        let conns = session.chan.entry(event.to_owned()).or_insert_with(||Vec::new());
+        if !conns.contains(&conn_id) {
+            conns.push(conn_id);
+        }
+
+        if let Some(link) = session.links.get_mut(&conn_id) {
+            let count = link.events.entry(event.to_owned()).or_insert(0);
+            *count += 1;
+        }
+    }
+
+    fn detach(&self, conn_id: i32, message: Message) {
+        let mut message = message;
+
+        if let Ok(event) = message.get_str("v") {
+            let mut session = self.session.inner.lock().unwrap();
+            if let Some(link) = session.links.get_mut(&conn_id) {
+                if let Some(count) = link.events.get_mut(event) {
+                    *count -= 1;
+
+                    if *count <= 0 {
+                        link.events.remove(event);
+
+                        if let Some(conns) = session.chan.get_mut(event) {
+                            if let Some(pos) = conns.iter().position(|x| *x == conn_id) {
+                                conns.remove(pos);
+                            }
+
+                            if conns.is_empty() {
+                                session.chan.remove(event);
+                            }
+                        }
+                    }
+                }
+
+                message.insert("ok", true);
+            }
+        } else {
+            message.insert("ok", false);
+            message.insert("error", "Can't get v from message!");
+        }
+
+        self.queen.emit("s:send", msg!{
+            "e": "s:send",
+            "conns": [conn_id],
+            "data": message.to_vec().unwrap()
+        });
+    }
+
+    fn relay(&self, conn_id: i32, event: &str, message: Message) {
+        let mut array: Array = Array::new();
+
+        let session = self.session.inner.lock().unwrap();
+        if let Some(conns) = session.chan.get(event) {
+            for id in conns {
+                if let Some(link) = session.links.get(id) {
+                    if link.handshake && id != &conn_id {
+                        array.push((*id).into());
+                    }
+                }
+            }
+        }
+
+        if !array.is_empty() {
+            self.queen.push("s:send", msg!{
+                "e": "s:send",
+                "conns": array,
+                "data": message.to_vec().unwrap()
+            });
+        }
+
+        if conn_id != 0 {
+            let mut message = message;
+            message.insert("ok", true);
+
+            self.queen.push("s:send", msg!{
+                "e": "s:send",
+                "conns": [conn_id],
+                "data": message.to_vec().unwrap()
+            });
+        }
+    }
+
+    fn run(self) {
         thread::Builder::new().name("control".into()).spawn(move || {
             let mut control = self;
 
@@ -395,14 +637,14 @@ impl Control {
         }).unwrap();
     }
 
-    pub fn run_once(&mut self) {
+    fn run_once(&mut self) {
         loop {
             let message = match self.service.recv() {
                 Some(message) => message,
                 None => break
             };
 
-            let event = match message.get_str("event") {
+            let event = match message.get_str("e") {
                 Ok(event) => event.to_owned(),
                 Err(_) => break
             };
