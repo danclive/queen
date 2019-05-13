@@ -14,18 +14,27 @@ use queen_io::plus::block_queue::BlockQueue;
 
 use crate::Message;
 
+// prefix
 // p => public
 // s => system
 // q => queen
+
+// key
 // m => message
 // e => event
+
+// params
 // h => hand
 // a => attach
 // d => detach
 // v => value
+// s => sync
+// n => node
+// _id
+// _time
 
 // usn => username
-// pwd => password 
+// pwd => password
 
 #[derive(Clone)]
 pub struct Queen {
@@ -68,11 +77,11 @@ impl Queen {
         let mut handles = self.inner.handles.write().unwrap();
         let id = self.inner.next_id.fetch_add(1, SeqCst) as i32;
 
-        let vector = handles.entry(event.to_owned()).or_insert(vec![]);
+        let vector = handles.entry(event.to_owned()).or_insert_with(|| vec![]);
         vector.push((id, Arc::new(handle)));
 
-        if event.starts_with("p:") || event.starts_with("s:") {
-            self.emit("q:on", msg!{"e": event});
+        if event.starts_with("pub:") || event.starts_with("sys:") {
+            self.emit("queen", msg!{"event": "on", "value": event});
         }
 
         id
@@ -84,8 +93,8 @@ impl Queen {
             if let Some(position) = vector.iter().position(|(x, _)| x == &id) {
                 vector.remove(position);
 
-                if event.starts_with("p:") || event.starts_with("s:") {
-                    self.emit("q:off", msg!{"event": event});
+                if event.starts_with("pub:") || event.starts_with("sys:") {
+                    self.emit("queen", msg!{"event": "off", "value": event});
                 }
 
                 return true
@@ -98,18 +107,15 @@ impl Queen {
     pub fn emit(&self, event: &str, message: Message) {
         let mut message = message;
 
-        if let Some(Value::I32(delay)) = message.remove("delay") {
+        if let Some(Value::I32(delay)) = message.remove("_delay") {
             self.inner.timer.push((event.to_owned(), message), delay);
+        } else if event.starts_with("pub:") || event.starts_with("sys:") {
+            self.emit("queen", msg!{"event": "emit", "value": event, "msg": message});
         } else {
-            if event.starts_with("p:") || event.starts_with("s:") {
-                self.emit("q:emit", msg!{"e": event, "m": message});
-            } else {
-                self.inner.queue.push((event.to_string(), message));
-            }
+            self.push(event, message);
         }
     }
 
-    #[inline]
     pub fn push(&self, event: &str, message: Message) {
         self.inner.queue.push((event.to_string(), message));
     }
@@ -194,6 +200,7 @@ impl PartialEq for Task {
 
 impl Eq for Task {}
 
+#[derive(Default)]
 pub struct Timer {
     thread_handle: RwLock<Option<thread::JoinHandle<()>>>,
     tasks: Arc<Mutex<BinaryHeap<Task>>>
@@ -218,7 +225,7 @@ impl Timer {
         tasks.push(Task {data, time});
 
         let thread_handle = self.thread_handle.read().unwrap();
-        thread_handle.as_ref().map(|t| t.thread().unpark());
+        if let Some(t) = thread_handle.as_ref() { t.thread().unpark() }
     }
 
     pub fn run(&self, queen: Queen) {
@@ -241,11 +248,9 @@ impl Timer {
                         if task.time > now {
                             sleep_duration = task.time - now;
                             break;
-                        } else {
-                            if let Some(task) = tasks.pop() {
-                                let (event, message) = task.data;
-                                queen.emit(&event, message);
-                            }
+                        } else if let Some(task) = tasks.pop() {
+                            let (event, message) = task.data;
+                            queen.emit(&event, message);
                         }
                     } else {
                         break;

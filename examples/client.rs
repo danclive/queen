@@ -3,7 +3,6 @@ use std::io::{Read, Write};
 
 
 use queen::{Queen, Context};
-use queen::node::Control;
 use queen::nson::msg;
 use queen::nson::Message;
 
@@ -37,6 +36,7 @@ fn main() {
 
     println!("{:?}", recv);
     let mut a = 0;
+
 loop {
     let msg = msg!{
         "e": "p:hello",
@@ -47,8 +47,9 @@ loop {
 
     let recv = Message::decode(&mut stream).unwrap();
 
-    //println!("{:?}", recv);
+    // println!("{:?}", recv);
     a += 1;
     println!("{:?}", a);
+
 }
 }

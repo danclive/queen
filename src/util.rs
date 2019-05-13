@@ -3,7 +3,7 @@ use std::mem;
 #[inline]
 pub fn get_length(buf: &[u8], start: usize) -> usize {
     (
-        i32::from(buf[start + 0]) |
+        i32::from(buf[start]) |
         i32::from(buf[start + 1]) << 8 |
         i32::from(buf[start + 2]) << 16 |
         i32::from(buf[start + 3]) << 24
@@ -47,7 +47,7 @@ pub fn split_message(buffer: &mut Vec<u8>, buf: &[u8]) -> Vec<Vec<u8>>{
                     return messages;
                 } else {
                     start = end;
-                    end = end + message_len;
+                    end += message_len;
                 }
             }
         } else {
@@ -88,7 +88,7 @@ pub fn split_message(buffer: &mut Vec<u8>, buf: &[u8]) -> Vec<Vec<u8>>{
                     return messages
                 } else {
                     start = end;
-                    end = end + message_len;
+                    end += message_len;
                 }
             }
         } else {

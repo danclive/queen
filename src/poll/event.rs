@@ -22,16 +22,17 @@ impl Event {
     }
 
     #[inline]
-    pub fn fd(&self) -> RawFd {
+    pub fn fd(self) -> RawFd {
         self.fd
     }
 
     #[inline]
-    pub fn readiness(&self) -> Ready {
+    pub fn readiness(self) -> Ready {
         self.kind
     }
 }
 
+#[derive(Default)]
 pub struct Events {
     pub events: Vec<libc::pollfd>
 }
@@ -54,6 +55,11 @@ impl Events {
     #[inline]
     pub fn len(&self) -> usize {
         self.events.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.events.is_empty()
     }
 
     #[inline]

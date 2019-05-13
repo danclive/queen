@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.3.10"
+version       = "0.3.11"
 license       = "MIT"
 authors       = ["mitum <dangcheng@hotmail.com>"]
 description   = "server"
@@ -19,9 +19,8 @@ edition       = "2018"
 autobins      = false
 
 [dependencies]
-#nson = "0.2"
-nson = { path = "../nson" }
-queen-io = "0.2"
+nson = "0.2"
+queen-io = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
 libc = "0.2"
