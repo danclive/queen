@@ -14,28 +14,6 @@ use queen_io::plus::block_queue::BlockQueue;
 
 use crate::Message;
 
-// prefix
-// p => public
-// s => system
-// q => queen
-
-// key
-// m => message
-// e => event
-
-// params
-// h => hand
-// a => attach
-// d => detach
-// v => value
-// s => sync
-// n => node
-// _id
-// _time
-
-// usn => username
-// pwd => password
-
 #[derive(Clone)]
 pub struct Queen {
     inner: Arc<QueenInner>
@@ -110,7 +88,8 @@ impl Queen {
         if let Some(Value::I32(delay)) = message.remove("_delay") {
             self.inner.timer.push((event.to_owned(), message), delay);
         } else if event.starts_with("pub:") || event.starts_with("sys:") {
-            self.emit("queen", msg!{"event": "emit", "value": event, "msg": message});
+            self.emit("queen", msg!{"event": "emit", "value": event, "msg": message.clone()});
+            self.push(event, message);
         } else {
             self.push(event, message);
         }

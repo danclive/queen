@@ -22,7 +22,7 @@ pub struct Context<'a> {
 }
 
 struct InnerCenter {
-    queue: BlockQueue<(String, Option<Value>, Value)>,
+    queue: BlockQueue<(String, Option<Value>, Value, bool, bool)>,
     map: Mutex<HashMap<String, Value>>,
     handles: RwLock<HashMap<String, Vec<(i32, Arc<dyn Fn(Context) + Send + Sync + 'static>)>>>,
     all: RwLock<Vec<(i32, Arc<dyn Fn(Context) + Send + Sync + 'static>)>>,
@@ -56,9 +56,26 @@ impl Center {
             }
         }
 
-        if !skip {
-            self.inner.queue.push((key.to_owned(), result.clone(), value));
+        self.inner.queue.push((key.to_owned(), result.clone(), value, skip, false));
+
+        result
+    }
+
+    pub fn insert_skip_all(&self, key: &str, value: Value) -> Option<Value> {
+        let result = {
+            let mut map = self.inner.map.lock().unwrap();
+            map.insert(key.to_owned(), value.clone())
+        };
+
+        let mut skip = false;
+
+        if let Some(ref result) = result {
+            if *result == value {
+                skip = true
+            }
         }
+
+        self.inner.queue.push((key.to_owned(), result.clone(), value, skip, true));
 
         result
     }
@@ -128,15 +145,15 @@ impl Center {
             let that = self.clone();
             threads.push(thread::Builder::new().name("worker".into()).spawn(move || {
                 loop {
-                    let (key, old_value, value) = that.inner.queue.pop();
+                    let (key, old_value, value, skip, skip_all) = that.inner.queue.pop();
                     let mut handles2 = Vec::new();
 
-                    {
+                    if !skip_all {
                         let handles = that.inner.all.read().unwrap();
                         handles2.extend_from_slice(&handles);
                     }
 
-                    {
+                    if !skip {
                         let handles = that.inner.handles.read().unwrap();
                         if let Some(vector) = handles.get(&key) {
                             handles2.extend_from_slice(vector);

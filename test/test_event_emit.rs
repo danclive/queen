@@ -56,7 +56,7 @@ fn sys_pub_on() {
     queen.run(2, false);
 
     let hasemit2 = hasemit.clone();
-    queen.on("queen:on", move |_context| {
+    queen.on("queen", move |_context| {
         let mut hasemit = hasemit2.lock().unwrap();
         *hasemit = true;
     });
@@ -74,7 +74,7 @@ fn sys_pub_on() {
     queen.run(2, false);
 
     let hasemit2 = hasemit.clone();
-    queen.on("queen:on", move |_context| {
+    queen.on("queen", move |_context| {
         let mut hasemit = hasemit2.lock().unwrap();
         *hasemit = true;
     });
@@ -94,7 +94,7 @@ fn sys_pub_off() {
     queen.run(2, false);
 
     let hasemit2 = hasemit.clone();
-    queen.on("queen:off", move |_context| {
+    queen.on("queen", move |_context| {
         let mut hasemit = hasemit2.lock().unwrap();
         *hasemit = true;
     });
@@ -113,7 +113,7 @@ fn sys_pub_off() {
     queen.run(2, false);
 
     let hasemit2 = hasemit.clone();
-    queen.on("queen:off", move |_context| {
+    queen.on("queen", move |_context| {
         let mut hasemit = hasemit2.lock().unwrap();
         *hasemit = true;
     });
@@ -134,16 +134,16 @@ fn push() {
     queen.run(2, false);
 
     let hasemit2 = hasemit.clone();
-    queen.on("pub:hello", move |_context| {
+    queen.on("hello", move |_context| {
         let mut hasemit = hasemit2.lock().unwrap();
         *hasemit = true;
     });
 
-    queen.emit("pub:hello", msg!{"hello": "world"});
+    queen.emit("hello", msg!{"hello": "world"});
 
     thread::sleep(Duration::from_secs(1));
     let hasemit = hasemit.lock().unwrap();
-    assert!(!*hasemit);
+    assert!(*hasemit);
 
 
     let hasemit: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
@@ -164,7 +164,7 @@ fn push() {
     assert!(*hasemit);
 
 
-    let hasemit: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+    let hasemit: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
 
     let queen = Queen::new().unwrap();
     queen.run(2, false);
@@ -172,19 +172,18 @@ fn push() {
     let hasemit2 = hasemit.clone();
     queen.on("pub:hello", move |_context| {
         let mut hasemit = hasemit2.lock().unwrap();
-        *hasemit = true;
+        *hasemit += 1;
     });
 
-    queen.on("queen:emit", |context| {
-        let event = context.message.get_str("event").unwrap();
-        assert_eq!(event, "pub:hello");
-
-        context.queen.push("pub:hello", context.message.get_message("message").unwrap().to_owned());
+    let hasemit2 = hasemit.clone();
+    queen.on("queen", move |_context| {
+        let mut hasemit = hasemit2.lock().unwrap();
+        *hasemit += 1;
     });
 
     queen.emit("pub:hello", msg!{"hello": "world"});
 
     thread::sleep(Duration::from_secs(1));
     let hasemit = hasemit.lock().unwrap();
-    assert!(*hasemit);
+    assert!(*hasemit == 3);
 }

@@ -16,13 +16,17 @@ use nson::{Array, Message};
 
 use log::warn;
 
+use rand;
+use rand::seq::SliceRandom;
+
 use crate::poll::{poll, Ready, Events};
 use crate::network::Network;
 
 pub struct Session {
     listens: HashMap<i32, ListenState>,
     links: HashMap<i32, LinkState>,
-    chan: HashMap<String, Vec<i32>>
+    chan: HashMap<String, Vec<i32>>,
+    rand: rand::rngs::ThreadRng
 }
 
 #[derive(Debug)]
@@ -32,7 +36,7 @@ struct ListenState {
 }
 
 #[derive(Debug)]
-pub struct LinkState {
+struct LinkState {
     proto: String,
     addr: String,
     hand: bool,
@@ -46,6 +50,7 @@ impl Session {
             listens: HashMap::new(),
             links: HashMap::new(),
             chan: HashMap::new(),
+            rand: rand::thread_rng()
         }
     }
 
@@ -88,7 +93,8 @@ pub struct Node {
     pub network: Network,
     pub session: Session,
     pub timer: Timer<Message>,
-    pub callback: Callback
+    pub callback: Callback,
+    pub run: bool
 }
 
 pub struct Callback {
@@ -125,7 +131,8 @@ impl Node {
                 attach_fn: None,
                 detach_fn: None,
                 recv_fn: None
-            }
+            },
+            run: true
         };
 
         Ok(node)
@@ -265,7 +272,7 @@ impl Node {
         let timer_fd = self.timer.as_raw_fd();
         events.put(timer_fd, Ready::readable());
 
-        loop {
+        while self.run {
             if poll(&mut events, None).unwrap() > 0 {
                 for event in &events {
                     match event.fd() {
@@ -284,6 +291,8 @@ impl Node {
                 }
             }
         }
+
+        Ok(())
     }
 
     #[inline]
@@ -601,25 +610,50 @@ impl Node {
     }
 
     fn relay(&mut self, event: &str, message: Message) -> io::Result<()> {
-        let mut array: Array = Array::new();
+        let mut array: Vec<i32> = Vec::new();
 
         if let Some(conns) = self.session.chan.get(event) {
             for id in conns {
                 if let Some(link) = self.session.links.get(id) {
                     if link.hand {
-                        array.push((*id).into());
+                        array.push(*id);
                     }
                 }
             }
         }
 
-        if !array.is_empty() {
-            self.send(msg!{
-                "event": "net:send",
-                "conns": array,
-                "data": message.to_vec().unwrap()
-            })?;
+        if array.is_empty() {
+            return Ok(())
         }
+
+        // if has share and share == true
+        if let Ok(share) = message.get_bool("_share") {
+            if share {
+                if array.len() == 1 {
+                    self.send(msg!{
+                        "event": "net:send",
+                        "conns": array,
+                        "data": message.to_vec().unwrap()
+                    })?;
+                } else {
+                    if let Some(id) = array.choose(&mut self.session.rand) {
+                        self.send(msg!{
+                            "event": "net:send",
+                            "conns": [*id],
+                            "data": message.to_vec().unwrap()
+                        })?;
+                    }
+                }
+
+                return Ok(())
+            }
+        }
+
+        self.send(msg!{
+            "event": "net:send",
+            "conns": array,
+            "data": message.to_vec().unwrap()
+        })?;
 
         Ok(())
     }
