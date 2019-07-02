@@ -27,8 +27,23 @@ fn main() {
 
 
     let msg = msg!{
-        "event": "node::attach",
-        "value": "aaa"
+        "event": "aaa",
+        "haha": "bb",
+        "_id": 123,
+        "_time": 10000u32,
+        "_timeid": "123"
+    };
+
+    msg.encode(&mut socket).unwrap();
+
+    let recv = Message::decode(&mut socket).unwrap();
+    println!("{:?}", recv);
+
+    let msg = msg!{
+        "event": "aaa",
+        "haha": "bb",
+        "_id": 123,
+        "_time": 10000u32,
     };
 
     msg.encode(&mut socket).unwrap();
@@ -37,8 +52,13 @@ fn main() {
     println!("{:?}", recv);
 
 
-    loop {
-        let recv = Message::decode(&mut socket).unwrap();
-        println!("{:?}", recv);
-    }
+    let msg = msg!{
+        "event": "node::deltime",
+        "_timeid": "123"
+    };
+
+    msg.encode(&mut socket).unwrap();
+
+    let recv = Message::decode(&mut socket).unwrap();
+    println!("{:?}", recv);
 }

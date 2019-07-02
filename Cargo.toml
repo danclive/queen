@@ -19,7 +19,7 @@ edition       = "2018"
 autobins      = false
 
 [dependencies]
-nson = "0.2.4"
+nson = "0.2"
 queen-io = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
@@ -27,6 +27,7 @@ libc = "0.2"
 log = "0.4"
 rand = "0.6"
 queen-log = "0.2"
+slab = "0.4"
 
 [[bin]]
 name = "queen"
