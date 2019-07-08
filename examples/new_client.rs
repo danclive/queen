@@ -30,7 +30,7 @@ fn main() {
         "event": "aaa",
         "haha": "bb",
         "_id": 123,
-        "_time": 10000u32,
+        "_time": 1000u32,
         "_timeid": "123"
     };
 
@@ -43,7 +43,7 @@ fn main() {
         "event": "aaa",
         "haha": "bb",
         "_id": 123,
-        "_time": 10000u32,
+        "_time": 1000u32,
     };
 
     msg.encode(&mut socket).unwrap();
