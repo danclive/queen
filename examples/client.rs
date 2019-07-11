@@ -4,7 +4,7 @@ use queen::nson::msg;
 use queen::nson::Message;
 
 fn main() {
-    let mut socket = TcpStream::connect("127.0.0.1:8888").unwrap();
+    let mut socket = TcpStream::connect("m.danclive.com:8888").unwrap();
 
     println!("{:?}", socket);
     let mut i = 0;

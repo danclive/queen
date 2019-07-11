@@ -306,6 +306,7 @@ impl Node {
                         "node::attach" => self.node_attach(id, message)?,
                         "node::detach" => self.node_detach(id, message)?,
                         "node::deltime" => self.node_deltime(id, message)?,
+                        "node::ping" => self.node_ping(id, message)?,
                         _ => {
                             message.insert("ok", false);
                             message.insert("error", "Event unsupport!");
@@ -473,6 +474,14 @@ impl Node {
             message.insert("ok", false);
             message.insert("error", "Can not get _timeid!");
         }
+
+        self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+        Ok(())
+    }
+
+    fn node_ping(&mut self, id: usize, mut message: Message) -> io::Result<()> {
+        message.insert("ok", true);
 
         self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
@@ -672,9 +681,9 @@ impl Connection {
                         return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "ConnectionAborted"))
                     } else if size == front.len() {
                         self.write_buffer.pop_front();
-                    } else {
+                    } else if size < front.len() {
                         // size < front.len()
-                        assert!(size > front.len());
+                        // assert!(size > front.len());
                         *front = front[size..].to_vec();
                     }
                 }
