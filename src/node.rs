@@ -31,6 +31,7 @@ pub struct Node {
     read_buffer: VecDeque<Message>,
     callback: Callback,
     channels: HashMap<String, Vec<usize>>,
+    clients: HashMap<String, usize>,
     rand: rand::rngs::ThreadRng,
     run: bool
 }
@@ -87,6 +88,7 @@ impl Node {
                 emit_fn: None
             },
             channels: HashMap::new(),
+            clients: HashMap::new(),
             rand: rand::thread_rng(),
             run: true
         };
@@ -271,6 +273,23 @@ impl Node {
         if self.conns.contains(id) {
             let conn = self.conns.remove(id);
             conn.deregister(&self.poll)?;
+
+            if let Some(clientid) = &conn.clientid {
+                self.clients.remove(clientid);
+            }
+
+            for event in conn.events.keys() {
+                //let a: i32 = event;
+                if let Some(channel) = self.channels.get_mut(event) {
+                    if let Some(pos) = channel.iter().position(|x| *x == id) {
+                        channel.remove(pos);
+                    }
+
+                    if channel.is_empty() {
+                        self.channels.remove(event);
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -279,96 +298,120 @@ impl Node {
     fn handle_message_from_conn(&mut self, id: usize) -> io::Result<()> {
         while let Some(mut message) = self.read_buffer.pop_front() {
 
-            let success = if let Some(recv_fn) = self.callback.recv_fn.clone() {
-                recv_fn(id, &mut message)
-            } else {
-                true
-            };
+            if !self.can_recv(id, &mut message)? {
+                return Ok(())
+            }
 
-            if !success {
-                message.insert("ok", false);
-                message.insert("error", "Refuse to receive message!");
-                self.push_data_to_conn(id, message.to_vec().unwrap())?;
-            } else {
-                let event = match message.get_str("event") {
-                    Ok(message) => message,
-                    Err(_) => {
-                        message.insert("ok", false);
-                        message.insert("error", "Can not get event!");
-                        self.push_data_to_conn(id, message.to_vec().unwrap())?;
-                        continue;
-                    }
-                };
+            if let Ok(to) = message.get_str("_to").map(|to| to.to_string()) {
+                if !self.check_auth(id, &mut message)? {
+                    return Ok(())
+                }
 
-                if event.starts_with("node::") {
-                    match event {
-                        "node::auth" => self.node_auth(id, message)?,
-                        "node::attach" => self.node_attach(id, message)?,
-                        "node::detach" => self.node_detach(id, message)?,
-                        "node::deltime" => self.node_deltime(id, message)?,
-                        "node::ping" => self.node_ping(id, message)?,
-                        _ => {
-                            message.insert("ok", false);
-                            message.insert("error", "Event unsupport!");
+                if !self.clients.contains_key(&to) {
+                    message.insert("ok", false);
+                    message.insert("error", "Client not exist!");
 
-                            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                    return Ok(())
+                } 
+
+                // _reply: bool
+                message.remove("_to");
+
+                if let Some(conn) = self.conns.get(id) {
+                    if let Some(clientid) = &conn.clientid {
+                        message.insert("_from", clientid);
+
+                        if let Some(to_id) = self.clients.get(&to).map(|id| *id) {
+                            self.push_data_to_conn(to_id, message.to_vec().unwrap())?;
                         }
-                    }
-                } else {
-                    let access = self.conns.get(id).map(|conn| conn.auth == true).unwrap_or_default();
-
-                    if !access {
-                        message.insert("ok", false);
-                        message.insert("error", "No permission!");
-
-                        self.push_data_to_conn(id, message.to_vec().unwrap())?;
-
-                        return Ok(())
-                    }
-
-                    let success = if let Some(emit_fn) = self.callback.emit_fn.clone() {
-                        emit_fn(id, &mut message)
-                    } else {
-                        true
-                    };
-
-                    if !success {
-                        message.insert("ok", false);
-                        message.insert("error", "Not auth!");
-                        self.push_data_to_conn(id, message.to_vec().unwrap())?;
-                    } else {
-                        if let Some(message_id) = message.get("_id") {
-                            let reply_msg = msg!{
-                                "_id": message_id.clone(),
-                                "ok": true
-                            };
-
-                            self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
-                        }
-
-                        if let Ok(time) = message.get_u32("_time") {
-                            if time > 0 {
-                                let mut timeid = None;
-
-                                if let Ok(tid) = message.get_str("_timeid") {
-                                    timeid = Some(tid.to_owned());
-                                }
-
-                                let task = Task {
-                                    data: message,
-                                    time: Duration::from_millis(u64::from(time)),
-                                    id: timeid
-                                };
-
-                                self.timer.push(task)?;
-
-                                continue;
-                            }
-                        }
-
-                        self.relay_message(message)?;
                     }
                 }
+
+                return Ok(())
+            }
+
+            let event = match message.get_str("event") {
+                Ok(event) => event,
+                Err(_) => {
+                    message.insert("ok", false);
+                    message.insert("error", "Can not get event!");
+
+                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
+                    continue;
+                }
+            };
+
+            if event.starts_with("node::") {
+                match event {
+                    "node::auth" => self.node_auth(id, message)?,
+                    "node::attach" => self.node_attach(id, message)?,
+                    "node::detach" => self.node_detach(id, message)?,
+                    "node::deltime" => self.node_deltime(id, message)?,
+                    "node::ping" => self.node_ping(id, message)?,
+                    // "node::query" => self.node_query(id, message)?,
+                    _ => {
+                        message.insert("ok", false);
+                        message.insert("error", "Event unsupport!");
+
+                        self.push_data_to_conn(id, message.to_vec().unwrap())?;
+                    }
+                }
+            } else {
+                let mut has_channel = false;
+
+                if self.channels.contains_key(event) {
+                    has_channel = true;
+                }
+
+                if !self.check_auth(id, &mut message)? {
+                    return Ok(())
+                }
+
+                if !self.can_emit(id, &mut message)? {
+                    return Ok(())
+                }
+
+                if !has_channel {
+                    message.insert("ok", false);
+                    message.insert("error", "No subscribers!");
+
+                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                    return Ok(())
+                }
+
+                if let Some(message_id) = message.get("_id") {
+                    let reply_msg = msg!{
+                        "_id": message_id.clone(),
+                        "ok": true
+                    };
+
+                    self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
+                }
+
+                if let Ok(time) = message.get_u32("_time") {
+                    if time > 0 {
+                        let mut timeid = None;
+
+                        if let Ok(tid) = message.get_str("_timeid") {
+                            timeid = Some(tid.to_owned());
+                        }
+
+                        let task = Task {
+                            data: message,
+                            time: Duration::from_millis(u64::from(time)),
+                            id: timeid
+                        };
+
+                        self.timer.push(task)?;
+
+                        continue;
+                    }
+                }
+
+                self.relay_message(message)?;
             }
         }
 
@@ -385,58 +428,51 @@ impl Node {
     }
 
     fn node_auth(&mut self, id: usize, mut message: Message) -> io::Result<()> {
-        let success = if let Some(auth_fn) = self.callback.auth_fn.clone() {
-            auth_fn(id, &mut message)
-        } else {
-            true
-        };
+        if !self.can_auth(id, &mut message)? {
+            return Ok(())
+        }
 
-        if !success {
-            message.insert("ok", false);
-            message.insert("error", "Authentication failed!");
+        if let Some(conn) = self.conns.get_mut(id) {
+            if let Ok(clientid) = message.get_str("_clientid") {
+                if self.clients.contains_key(clientid) {
+                    message.insert("ok", false);
+                    message.insert("error", "Client id repeat!");
+
+                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                    return Ok(())
+                }
+
+                self.clients.insert(clientid.to_string(), id);
+
+                conn.clientid = Some(clientid.to_string());
+            }
+
+            conn.auth = true;
+
+            message.insert("ok", true);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
-        } else {
-            if let Some(conn) = self.conns.get_mut(id) {
-                conn.auth = true;
-
-                message.insert("ok", true);
-
-                self.push_data_to_conn(id, message.to_vec().unwrap())?;
-            }
         }
 
         Ok(())
     }
 
     fn node_attach(&mut self, id: usize, mut message: Message) -> io::Result<()> {
+        if !self.check_auth(id, &mut message)? {
+            return Ok(())
+        }
+
         if let Ok(event) = message.get_str("value").map(ToOwned::to_owned) {
-            let access = self.conns.get(id).map(|conn| conn.auth == true).unwrap_or_default();
-
-            if !access {
-                message.insert("ok", false);
-                message.insert("error", "No permission!");
-
-                self.push_data_to_conn(id, message.to_vec().unwrap())?;
-            } else {
-                let success = if let Some(attach_fn) = self.callback.attach_fn.clone() {
-                    attach_fn(id, &mut message)
-                } else {
-                    true
-                };
-
-                if !success {
-                    message.insert("ok", false);
-                    message.insert("error", "Not auth!");
-                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
-                } else {
-
-                    self.session_attach(id, event);
-
-                    message.insert("ok", true);
-                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
-                }
+            if !self.can_attach(id, &mut message)? {
+                return Ok(())
             }
+
+            self.session_attach(id, event);
+
+            message.insert("ok", true);
+            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
         } else {
             message.insert("ok", false);
             message.insert("error", "Can not get value from message!");
@@ -465,6 +501,10 @@ impl Node {
     }
 
     fn node_deltime(&mut self, id: usize, mut message: Message) -> io::Result<()> {
+        if !self.check_auth(id, &mut message)? {
+            return Ok(())
+        }
+
         if let Ok(timeid) = message.get_str("_timeid") {
             self.timer.remove(timeid.to_owned());
             self.timer.refresh()?;
@@ -577,9 +617,91 @@ impl Node {
     }
 }
 
+impl Node {
+    fn check_auth(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
+        let access = self.conns.get(id).map(|conn| conn.auth == true).unwrap_or_default();
+
+        if !access {
+            message.insert("ok", false);
+            message.insert("error", "No permission!");
+
+            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+        }
+
+        Ok(access)
+    }
+
+    fn can_recv(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
+        let success = if let Some(recv_fn) = self.callback.recv_fn.clone() {
+            recv_fn(id, message)
+        } else {
+            true
+        };
+
+        if !success {
+            message.insert("ok", false);
+            message.insert("error", "Refuse to receive message!");
+
+            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+        }
+
+        Ok(success)
+    }
+
+    fn can_auth(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
+        let success = if let Some(auth_fn) = self.callback.auth_fn.clone() {
+            auth_fn(id, message)
+        } else {
+            true
+        };
+
+        if !success {
+            message.insert("ok", false);
+            message.insert("error", "Authentication failed!");
+
+            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+        }
+
+        Ok(success)
+    }
+
+    fn can_attach(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
+         let success = if let Some(attach_fn) = self.callback.attach_fn.clone() {
+            attach_fn(id, message)
+        } else {
+            true
+        };
+
+        if !success {
+            message.insert("ok", false);
+            message.insert("error", "Not auth!");
+            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+        }
+
+        Ok(success)
+    }
+
+    fn can_emit(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
+        let success = if let Some(emit_fn) = self.callback.emit_fn.clone() {
+            emit_fn(id, message)
+        } else {
+            true
+        };
+
+        if !success {
+            message.insert("ok", false);
+            message.insert("error", "Not auth!");
+            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+        }
+
+        Ok(success)
+    }
+}
+
 #[derive(Debug)]
 struct Connection {
     id: usize,
+    clientid: Option<String>,
     addr: Addr,
     stream: Stream,
     interest: Ready,
@@ -600,6 +722,7 @@ impl Connection {
     fn new(id: usize, addr: Addr, stream: Stream) -> io::Result<Connection> {
         let conn = Connection {
             id,
+            clientid: None,
             addr,
             stream,
             interest: Ready::readable() | Ready::hup(),
