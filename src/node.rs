@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::collections::{VecDeque, HashMap};
-use std::io::{self, Read, Write, ErrorKind::WouldBlock};
+use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe}};
 use std::usize;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -19,7 +19,7 @@ use slab::Slab;
 use rand;
 use rand::seq::SliceRandom;
 
-use crate::util::split_message;
+use crate::util::slice_msg;
 
 pub struct Node {
     poll: Poll,
@@ -764,11 +764,12 @@ impl Connection {
             match self.stream.read(&mut buf) {
                 Ok(size) => {
                     if size == 0 {
-                        return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "ConnectionAborted"))
+                        return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
                     } else {
-                        let messages = split_message(&mut self.read_buffer, &buf[..size]);
-                    
-                        for message in  messages {
+                        //let messages = split_message(&mut self.read_buffer, &buf[..size]);
+                        let messages = slice_msg(&mut self.read_buffer, &buf[..size])?;
+
+                        for message in messages {
                             match Message::from_slice(&message) {
                                 Ok(message) => read_buffer.push_back(message),
                                 Err(err) => {
@@ -801,7 +802,7 @@ impl Connection {
             match self.stream.write(front) {
                 Ok(size) => {
                     if size == 0 {
-                        return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "ConnectionAborted"))
+                        return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
                     } else if size == front.len() {
                         self.write_buffer.pop_front();
                     } else if size < front.len() {

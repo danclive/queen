@@ -3,9 +3,10 @@ pub mod queen;
 pub mod node;
 pub mod center;
 pub mod bridge;
-mod util;
+pub mod util;
 
 pub use nson;
-pub type Message = nson::Message;
+pub use node::Node;
 pub use crate::queen::{Queen, Context};
-pub use crate::node::Node;
+
+pub const MAX_MESSAGE_LEN: usize = 16777216; // 16 MB

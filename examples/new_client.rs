@@ -23,59 +23,21 @@ fn main() {
     i += 1;
     println!("i: {:?}", i);
 
-    //std::thread::sleep_ms(1000 * 5);
-
-/*
-    let msg = msg!{
-        "event": "aaa",
-        "haha": "bb",
-        "_id": 123,
-        "_time": 1000u32,
-        "_timeid": "123"
-    };
-
-    msg.encode(&mut socket).unwrap();
-
-    let recv = Message::decode(&mut socket).unwrap();
-    println!("{:?}", recv);
-
-    let msg = msg!{
-        "event": "aaa",
-        "haha": "bb",
-        "_id": 123,
-        "_time": 1000u32,
-    };
-
-    msg.encode(&mut socket).unwrap();
-
-    let recv = Message::decode(&mut socket).unwrap();
-    println!("{:?}", recv);
-
-
-    let msg = msg!{
-        "event": "node::deltime",
-        "_timeid": "123"
-    };
-
-    msg.encode(&mut socket).unwrap();
-
-    let recv = Message::decode(&mut socket).unwrap();
-    println!("{:?}", recv);
-*/
     let mut i = 0;
-//loop {
-    let msg = msg!{
-        "event": "aaa",
-        "haha": "bb",
-        "_id": 123,
-        "i": i
-    };
+    loop {
+        let msg = msg!{
+            "event": "aaa",
+            "haha": "bb",
+            "i": i,
+            "_id": 123,
+            "_share": true
+        };
 
-    msg.encode(&mut socket).unwrap();
+        msg.encode(&mut socket).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
-    println!("{:?}", recv);
+        let recv = Message::decode(&mut socket).unwrap();
+        println!("{:?}", recv);
 
-    i += 1;
-//}
+        i += 1;
+    }
 }

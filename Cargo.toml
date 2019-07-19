@@ -2,11 +2,11 @@
 name          = "queen"
 version       = "0.3.11"
 license       = "MIT"
-authors       = ["mitum <dangcheng@hotmail.com>"]
+authors       = ["danclive <dangcheng@hotmail.com>"]
 description   = "server"
 documentation = "https://docs.rs/queen"
-homepage      = "https://github.com/mitum/queen"
-repository    = "https://github.com/mitum/queen"
+homepage      = "https://github.com/danclive/queen"
+repository    = "https://github.com/danclive/queen"
 readme        = "README.md"
 keywords      = ["message-queue", "rpc", "event-emiter"]
 exclude       = [

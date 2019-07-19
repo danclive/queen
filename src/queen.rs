@@ -9,10 +9,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::cmp::Ordering;
 
 use nson::msg;
-use nson::Value;
+use nson::{Value, Message};
 use queen_io::plus::block_queue::BlockQueue;
-
-use crate::Message;
 
 #[derive(Clone)]
 pub struct Queen {
