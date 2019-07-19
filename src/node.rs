@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use std::collections::{VecDeque, HashMap};
+use std::collections::{VecDeque, HashMap, HashSet};
 use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe}};
 use std::usize;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -278,15 +278,14 @@ impl Node {
                 self.clients.remove(clientid);
             }
 
-            for event in conn.events.keys() {
-                //let a: i32 = event;
-                if let Some(channel) = self.channels.get_mut(event) {
+            for event in conn.events {
+                if let Some(channel) = self.channels.get_mut(&event) {
                     if let Some(pos) = channel.iter().position(|x| *x == id) {
                         channel.remove(pos);
                     }
 
                     if channel.is_empty() {
-                        self.channels.remove(event);
+                        self.channels.remove(&event);
                     }
                 }
             }
@@ -535,28 +534,21 @@ impl Node {
         }
 
         if let Some(conn) = self.conns.get_mut(id) {
-            let count = conn.events.entry(event).or_insert(0);
-            *count += 1;
+            conn.events.insert(event);
         }
     }
 
     fn session_detach(&mut self, id: usize, event: String) {
         if let Some(conn) = self.conns.get_mut(id) {
-            if let Some(count) = conn.events.get_mut(&event) {
-                *count -= 1;
+            conn.events.remove(&event);
 
-                if *count == 0 {
-                    conn.events.remove(&event);
+            if let Some(channel) = self.channels.get_mut(&event) {
+                if let Some(pos) = channel.iter().position(|x| *x == id) {
+                    channel.remove(pos);
+                }
 
-                    if let Some(channel) = self.channels.get_mut(&event) {
-                        if let Some(pos) = channel.iter().position(|x| *x == id) {
-                            channel.remove(pos);
-                        }
-
-                        if channel.is_empty() {
-                            self.channels.remove(&event);
-                        }
-                    }
+                if channel.is_empty() {
+                    self.channels.remove(&event);
                 }
             }
         }
@@ -709,7 +701,7 @@ struct Connection {
     write_buffer: VecDeque<Vec<u8>>,
     // session
     auth: bool,
-    events: HashMap<String, usize>
+    events: HashSet<String>
 }
 
 #[derive(Debug)]
@@ -729,7 +721,7 @@ impl Connection {
             read_buffer: Vec::new(),
             write_buffer: VecDeque::new(),
             auth: false,
-            events: HashMap::new()
+            events: HashSet::new()
         };
 
         Ok(conn)
@@ -766,7 +758,6 @@ impl Connection {
                     if size == 0 {
                         return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
                     } else {
-                        //let messages = split_message(&mut self.read_buffer, &buf[..size]);
                         let messages = slice_msg(&mut self.read_buffer, &buf[..size])?;
 
                         for message in messages {
