@@ -10,7 +10,7 @@ fn main() {
     let mut i = 0;
 
     let msg = msg!{
-        "event": "node::auth",
+        "chan": "node::auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -27,7 +27,7 @@ fn main() {
 
 
     let msg = msg!{
-        "event": "node::attach",
+        "chan": "node::attach",
         "value": "aaa"
     };
 

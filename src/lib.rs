@@ -4,6 +4,7 @@ pub mod node;
 pub mod center;
 pub mod bridge;
 pub mod util;
+pub mod error;
 
 pub use nson;
 pub use node::Node;

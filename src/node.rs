@@ -20,6 +20,7 @@ use rand;
 use rand::seq::SliceRandom;
 
 use crate::util::slice_msg;
+use crate::error::ErrorCode;
 
 pub struct Node {
     poll: Poll,
@@ -30,7 +31,7 @@ pub struct Node {
     conns: Slab<Connection>,
     read_buffer: VecDeque<Message>,
     callback: Callback,
-    channels: HashMap<String, Vec<usize>>,
+    chans: HashMap<String, Vec<usize>>,
     clients: HashMap<String, usize>,
     rand: rand::rngs::ThreadRng,
     run: bool
@@ -87,7 +88,7 @@ impl Node {
                 detach_fn: None,
                 emit_fn: None
             },
-            channels: HashMap::new(),
+            chans: HashMap::new(),
             clients: HashMap::new(),
             rand: rand::thread_rng(),
             run: true
@@ -202,8 +203,6 @@ impl Node {
                     }
                 };
 
-                //socket.set_nodelay(true)?;
-
                 let entry = self.conns.vacant_entry();
 
                 let success = if let Some(accept_fn) = self.callback.accept_fn.clone() {
@@ -278,14 +277,14 @@ impl Node {
                 self.clients.remove(clientid);
             }
 
-            for event in conn.events {
-                if let Some(channel) = self.channels.get_mut(&event) {
-                    if let Some(pos) = channel.iter().position(|x| *x == id) {
-                        channel.remove(pos);
+            for chan in conn.chans {
+                if let Some(ids) = self.chans.get_mut(&chan) {
+                    if let Some(pos) = ids.iter().position(|x| *x == id) {
+                        ids.remove(pos);
                     }
 
-                    if channel.is_empty() {
-                        self.channels.remove(&event);
+                    if ids.is_empty() {
+                        self.chans.remove(&chan);
                     }
                 }
             }
@@ -307,8 +306,8 @@ impl Node {
                 }
 
                 if !self.clients.contains_key(&to) {
-                    message.insert("ok", false);
-                    message.insert("error", "Client not exist!");
+
+                    ErrorCode::ClientNotExist.to_message(&mut message);
 
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
@@ -331,19 +330,19 @@ impl Node {
                 return Ok(())
             }
 
-            let event = match message.get_str("event") {
-                Ok(event) => event,
+            let chan = match message.get_str("chan") {
+                Ok(chan) => chan,
                 Err(_) => {
-                    message.insert("ok", false);
-                    message.insert("error", "Can not get event!");
+
+                    ErrorCode::CannotGetChanField.to_message(&mut message);
 
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
                     continue;
                 }
             };
 
-            if event.starts_with("node::") {
-                match event {
+            if chan.starts_with("node::") {
+                match chan {
                     "node::auth" => self.node_auth(id, message)?,
                     "node::attach" => self.node_attach(id, message)?,
                     "node::detach" => self.node_detach(id, message)?,
@@ -351,17 +350,17 @@ impl Node {
                     "node::ping" => self.node_ping(id, message)?,
                     // "node::query" => self.node_query(id, message)?,
                     _ => {
-                        message.insert("ok", false);
-                        message.insert("error", "Event unsupport!");
+
+                        ErrorCode::UnsupportedChan.to_message(&mut message);
 
                         self.push_data_to_conn(id, message.to_vec().unwrap())?;
                     }
                 }
             } else {
-                let mut has_channel = false;
+                let mut has_chan = false;
 
-                if self.channels.contains_key(event) {
-                    has_channel = true;
+                if self.chans.contains_key(chan) {
+                    has_chan = true;
                 }
 
                 if !self.check_auth(id, &mut message)? {
@@ -372,9 +371,9 @@ impl Node {
                     return Ok(())
                 }
 
-                if !has_channel {
-                    message.insert("ok", false);
-                    message.insert("error", "No subscribers!");
+                if !has_chan {
+
+                    ErrorCode::NoConsumers.to_message(&mut message);
 
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
@@ -382,10 +381,11 @@ impl Node {
                 }
 
                 if let Some(message_id) = message.get("_id") {
-                    let reply_msg = msg!{
-                        "_id": message_id.clone(),
-                        "ok": true
+                    let mut reply_msg = msg!{
+                        "_id": message_id.clone()
                     };
+
+                    ErrorCode::OK.to_message(&mut reply_msg);
 
                     self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
                 }
@@ -434,8 +434,8 @@ impl Node {
         if let Some(conn) = self.conns.get_mut(id) {
             if let Ok(clientid) = message.get_str("_clientid") {
                 if self.clients.contains_key(clientid) {
-                    message.insert("ok", false);
-                    message.insert("error", "Client id repeat!");
+
+                    ErrorCode::DuplicateClientId.to_message(&mut message);
 
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
@@ -449,7 +449,7 @@ impl Node {
 
             conn.auth = true;
 
-            message.insert("ok", true);
+            ErrorCode::OK.to_message(&mut message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
@@ -462,19 +462,20 @@ impl Node {
             return Ok(())
         }
 
-        if let Ok(event) = message.get_str("value").map(ToOwned::to_owned) {
+        if let Ok(chan) = message.get_str("value").map(ToOwned::to_owned) {
             if !self.can_attach(id, &mut message)? {
                 return Ok(())
             }
 
-            self.session_attach(id, event);
+            self.session_attach(id, chan);
 
-            message.insert("ok", true);
+            ErrorCode::OK.to_message(&mut message);
+
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
         } else {
-            message.insert("ok", false);
-            message.insert("error", "Can not get value from message!");
+
+            ErrorCode::CannotGetValueField.to_message(&mut message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
@@ -483,15 +484,15 @@ impl Node {
     }
 
     fn node_detach(&mut self, id: usize, mut message: Message) -> io::Result<()> {
-        if let Ok(event) = message.get_str("value").map(ToOwned::to_owned) {
+        if let Ok(chan) = message.get_str("value").map(ToOwned::to_owned) {
             if let Some(detach_fn) = self.callback.detach_fn.clone() {
                 detach_fn(id, &mut message);
             }
 
-            self.session_detach(id, event)
+            self.session_detach(id, chan)
         } else {
-            message.insert("ok", false);
-            message.insert("error", "Can not get value from message!");
+
+            ErrorCode::CannotGetValueField.to_message(&mut message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
@@ -508,10 +509,9 @@ impl Node {
             self.timer.remove(timeid.to_owned());
             self.timer.refresh()?;
 
-            message.insert("ok", true);
+            ErrorCode::OK.to_message(&mut message);
         } else {
-            message.insert("ok", false);
-            message.insert("error", "Can not get _timeid!");
+            ErrorCode::CannotGetTimeidField.to_message(&mut message);
         }
 
         self.push_data_to_conn(id, message.to_vec().unwrap())?;
@@ -520,49 +520,49 @@ impl Node {
     }
 
     fn node_ping(&mut self, id: usize, mut message: Message) -> io::Result<()> {
-        message.insert("ok", true);
+        ErrorCode::OK.to_message(&mut message);
 
         self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
         Ok(())
     }
 
-    fn session_attach(&mut self, id: usize, event: String) {
-        let channel = self.channels.entry(event.to_owned()).or_insert_with(Vec::new); 
-        if !channel.contains(&id) {
-            channel.push(id);
+    fn session_attach(&mut self, id: usize, chan: String) {
+        let chans = self.chans.entry(chan.to_owned()).or_insert_with(Vec::new); 
+        if !chans.contains(&id) {
+            chans.push(id);
         }
 
         if let Some(conn) = self.conns.get_mut(id) {
-            conn.events.insert(event);
+            conn.chans.insert(chan);
         }
     }
 
-    fn session_detach(&mut self, id: usize, event: String) {
+    fn session_detach(&mut self, id: usize, chan: String) {
         if let Some(conn) = self.conns.get_mut(id) {
-            conn.events.remove(&event);
+            conn.chans.remove(&chan);
 
-            if let Some(channel) = self.channels.get_mut(&event) {
-                if let Some(pos) = channel.iter().position(|x| *x == id) {
-                    channel.remove(pos);
+            if let Some(chans) = self.chans.get_mut(&chan) {
+                if let Some(pos) = chans.iter().position(|x| *x == id) {
+                    chans.remove(pos);
                 }
 
-                if channel.is_empty() {
-                    self.channels.remove(&event);
+                if chans.is_empty() {
+                    self.chans.remove(&chan);
                 }
             }
         }
     }
 
     fn relay_message(&mut self, message: Message) -> io::Result<()> {
-        if let Ok(event) = message.get_str("event") {
+        if let Ok(chan) = message.get_str("chan") {
             if let Ok(share) = message.get_bool("_share") {
                 if share {
 
                     let mut array: Vec<usize> = Vec::new();
 
-                    if let Some(channel) = self.channels.get(event) {
-                        for id in channel {
+                    if let Some(ids) = self.chans.get(chan) {
+                        for id in ids {
                             if let Some(conn) = self.conns.get_mut(*id) {
                                 if conn.auth {
                                     array.push(*id);
@@ -593,8 +593,8 @@ impl Node {
                 }
             }
 
-            if let Some(channel) = self.channels.get(event) {
-                for id in channel {
+            if let Some(ids) = self.chans.get(chan) {
+                for id in ids {
                     if let Some(conn) = self.conns.get_mut(*id) {
                         if conn.auth {
                             conn.push_data(message.to_vec().unwrap());
@@ -607,15 +607,12 @@ impl Node {
 
         Ok(())
     }
-}
 
-impl Node {
     fn check_auth(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
         let access = self.conns.get(id).map(|conn| conn.auth == true).unwrap_or_default();
 
         if !access {
-            message.insert("ok", false);
-            message.insert("error", "No permission!");
+            ErrorCode::Unauthorized.to_message(message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
@@ -631,8 +628,7 @@ impl Node {
         };
 
         if !success {
-            message.insert("ok", false);
-            message.insert("error", "Refuse to receive message!");
+            ErrorCode::RefuseReceiveMessage.to_message(message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
@@ -648,8 +644,8 @@ impl Node {
         };
 
         if !success {
-            message.insert("ok", false);
-            message.insert("error", "Authentication failed!");
+
+            ErrorCode::AuthenticationFailed.to_message(message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
@@ -665,8 +661,8 @@ impl Node {
         };
 
         if !success {
-            message.insert("ok", false);
-            message.insert("error", "Not auth!");
+            ErrorCode::Unauthorized.to_message(message);
+
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
 
@@ -681,8 +677,8 @@ impl Node {
         };
 
         if !success {
-            message.insert("ok", false);
-            message.insert("error", "Not auth!");
+            ErrorCode::Unauthorized.to_message(message);
+
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
 
@@ -699,9 +695,8 @@ struct Connection {
     interest: Ready,
     read_buffer: Vec<u8>,
     write_buffer: VecDeque<Vec<u8>>,
-    // session
     auth: bool,
-    events: HashSet<String>
+    chans: HashSet<String>
 }
 
 #[derive(Debug)]
@@ -721,7 +716,7 @@ impl Connection {
             read_buffer: Vec::new(),
             write_buffer: VecDeque::new(),
             auth: false,
-            events: HashSet::new()
+            chans: HashSet::new()
         };
 
         Ok(conn)
@@ -764,10 +759,13 @@ impl Connection {
                             match Message::from_slice(&message) {
                                 Ok(message) => read_buffer.push_back(message),
                                 Err(err) => {
-                                    let error = msg!{
-                                        "ok": false,
-                                        "error": err.to_string()
-                                    };
+                    
+                                    let mut error = msg!{};
+
+                                    #[cfg(debug_assertions)]
+                                    error.insert("error_info", err.to_string());
+
+                                    ErrorCode::UnsupportedFormat.to_message(&mut error);
 
                                     let _ = error.encode(&mut self.stream);
                                 }

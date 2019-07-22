@@ -8,7 +8,6 @@ use std::fmt;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::cmp::Ordering;
 
-use nson::msg;
 use nson::{Value, Message};
 use queen_io::plus::block_queue::BlockQueue;
 
@@ -56,22 +55,14 @@ impl Queen {
         let vector = handles.entry(event.to_owned()).or_insert_with(|| vec![]);
         vector.push((id, Arc::new(handle)));
 
-        if event.starts_with("pub:") || event.starts_with("sys:") {
-            self.emit("queen", msg!{"event": "on", "value": event});
-        }
-
         id
     }
 
     pub fn off(&self, id: i32) -> bool {
         let mut handles = self.inner.handles.write().unwrap();
-        for (event, vector) in handles.iter_mut() {
+        for (_, vector) in handles.iter_mut() {
             if let Some(position) = vector.iter().position(|(x, _)| x == &id) {
                 vector.remove(position);
-
-                if event.starts_with("pub:") || event.starts_with("sys:") {
-                    self.emit("queen", msg!{"event": "off", "value": event});
-                }
 
                 return true
             }
@@ -85,9 +76,6 @@ impl Queen {
 
         if let Some(Value::I32(delay)) = message.remove("_delay") {
             self.inner.timer.push((event.to_owned(), message), delay);
-        } else if event.starts_with("pub:") || event.starts_with("sys:") {
-            self.emit("queen", msg!{"event": "emit", "value": event, "msg": message.clone()});
-            self.push(event, message);
         } else {
             self.push(event, message);
         }
