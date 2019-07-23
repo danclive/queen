@@ -499,12 +499,20 @@ impl Node {
     }
 
     fn node_detach(&mut self, id: usize, mut message: Message) -> io::Result<()> {
+        if !self.check_auth(id, &mut message)? {
+            return Ok(())
+        }
+
         if let Ok(chan) = message.get_str("value").map(ToOwned::to_owned) {
             if let Some(detach_fn) = self.callback.detach_fn.clone() {
                 detach_fn(id, &mut message);
             }
 
-            self.session_detach(id, chan)
+            self.session_detach(id, chan);
+
+            ErrorCode::OK.to_message(&mut message);
+
+            self.push_data_to_conn(id, message.to_vec().unwrap())?;
         } else {
 
             ErrorCode::CannotGetValueField.to_message(&mut message);
