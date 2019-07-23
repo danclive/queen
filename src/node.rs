@@ -27,7 +27,7 @@ pub struct Node {
     events: Events,
     tcp_listen: Option<TcpListener>,
     unix_listen: Option<UnixListener>,
-    timer: Timer<Message>,
+    timer: Timer<(Option<usize>, Message)>,
     conns: Slab<Connection>,
     read_buffer: VecDeque<Message>,
     callback: Callback,
@@ -227,7 +227,7 @@ impl Node {
         self.timer.done()?;
 
         if let Some(task) = self.timer.pop() {
-            self.relay_message(task.data)?;
+            self.relay_message(task.data.0, task.data.1)?;
         }
 
         self.timer.refresh()?;
@@ -390,6 +390,11 @@ impl Node {
                     self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
                 }
 
+                let back = match message.get_bool("_back") {
+                    Ok(back) => back,
+                    Err(_) => false
+                };
+
                 if let Ok(time) = message.get_u32("_time") {
                     if time > 0 {
                         let mut timeid = None;
@@ -398,8 +403,14 @@ impl Node {
                             timeid = Some(tid.to_owned());
                         }
 
+                        let data = if back {
+                            (None, message)
+                        } else {
+                            (Some(id), message)
+                        };
+
                         let task = Task {
-                            data: message,
+                            data,
                             time: Duration::from_millis(u64::from(time)),
                             id: timeid
                         };
@@ -410,7 +421,11 @@ impl Node {
                     }
                 }
 
-                self.relay_message(message)?;
+                if back {
+                    self.relay_message(None, message)?;
+                } else {
+                    self.relay_message(Some(id), message)?;
+                }
             }
         }
 
@@ -554,7 +569,7 @@ impl Node {
         }
     }
 
-    fn relay_message(&mut self, message: Message) -> io::Result<()> {
+    fn relay_message(&mut self, self_id: Option<usize>, message: Message) -> io::Result<()> {
         if let Ok(chan) = message.get_str("chan") {
             if let Ok(share) = message.get_bool("_share") {
                 if share {
@@ -563,6 +578,13 @@ impl Node {
 
                     if let Some(ids) = self.chans.get(chan) {
                         for id in ids {
+
+                            if let Some(self_id) = self_id {
+                                if self_id == *id {
+                                    continue;
+                                }
+                            } 
+
                             if let Some(conn) = self.conns.get_mut(*id) {
                                 if conn.auth {
                                     array.push(*id);
@@ -582,10 +604,7 @@ impl Node {
                         }
                     } else {
                         if let Some(id) = array.choose(&mut self.rand) {
-                            if let Some(conn) = self.conns.get_mut(*id) {
-                                conn.push_data(message.to_vec().unwrap());
-                                conn.reregister(&self.poll)?;
-                            }
+                            self.push_data_to_conn(*id, message.to_vec().unwrap())?;
                         }
                     }
 
@@ -595,6 +614,12 @@ impl Node {
 
             if let Some(ids) = self.chans.get(chan) {
                 for id in ids {
+                    if let Some(self_id) = self_id {
+                        if self_id == *id {
+                            continue;
+                        }
+                    }
+
                     if let Some(conn) = self.conns.get_mut(*id) {
                         if conn.auth {
                             conn.push_data(message.to_vec().unwrap());
