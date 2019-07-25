@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::collections::{VecDeque, HashMap, HashSet};
 use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe}};
 use std::usize;
@@ -43,14 +42,15 @@ pub enum Addr {
     Unix(std::os::unix::net::SocketAddr)
 }
 
+#[derive(Default)]
 pub struct Callback {
-    pub accept_fn: Option<Rc<dyn Fn(usize, Addr) -> bool>>,
-    pub remove_fn: Option<Rc<dyn Fn(usize, Addr)>>,
-    pub recv_fn: Option<Rc<dyn Fn(usize, &mut Message) -> bool>>,
-    pub auth_fn: Option<Rc<dyn Fn(usize, &mut Message) -> bool>>,
-    pub attach_fn: Option<Rc<dyn Fn(usize, &mut Message) -> bool>>,
-    pub detach_fn: Option<Rc<dyn Fn(usize, &mut Message)>>,
-    pub emit_fn: Option<Rc<dyn Fn(usize, &mut Message) -> bool>>
+    pub accept_fn: Option<Box<dyn Fn(usize, Addr) -> bool>>,
+    pub remove_fn: Option<Box<dyn Fn(usize, Addr)>>,
+    pub recv_fn: Option<Box<dyn Fn(usize, &mut Message) -> bool>>,
+    pub auth_fn: Option<Box<dyn Fn(usize, &mut Message) -> bool>>,
+    pub attach_fn: Option<Box<dyn Fn(usize, &mut Message) -> bool>>,
+    pub detach_fn: Option<Box<dyn Fn(usize, &mut Message)>>,
+    pub emit_fn: Option<Box<dyn Fn(usize, &mut Message) -> bool>>
 }
 
 impl Node {
@@ -95,6 +95,10 @@ impl Node {
         };
 
         Ok(node)
+    }
+
+    pub fn set_callback(&mut self, callback: Callback) {
+        self.callback = callback;
     }
 
     pub fn run(&mut self) -> io::Result<()> {
@@ -171,7 +175,7 @@ impl Node {
 
                 let entry = self.conns.vacant_entry();
 
-                let success = if let Some(accept_fn) = self.callback.accept_fn.clone() {
+                let success = if let Some(accept_fn) = &self.callback.accept_fn {
                     accept_fn(entry.key(), Addr::Tcp(addr))
                 } else {
                     true
@@ -205,7 +209,7 @@ impl Node {
 
                 let entry = self.conns.vacant_entry();
 
-                let success = if let Some(accept_fn) = self.callback.accept_fn.clone() {
+                let success = if let Some(accept_fn) = &self.callback.accept_fn {
                     accept_fn(entry.key(), Addr::Unix(addr.clone()))
                 } else {
                     true
@@ -287,6 +291,10 @@ impl Node {
                         self.chans.remove(&chan);
                     }
                 }
+            }
+
+            if let Some(remove_fn) = &self.callback.remove_fn {
+                remove_fn(id, conn.addr);
             }
         }
 
@@ -504,7 +512,7 @@ impl Node {
         }
 
         if let Ok(chan) = message.get_str("value").map(ToOwned::to_owned) {
-            if let Some(detach_fn) = self.callback.detach_fn.clone() {
+            if let Some(detach_fn) = &self.callback.detach_fn {
                 detach_fn(id, &mut message);
             }
 
@@ -654,7 +662,7 @@ impl Node {
     }
 
     fn can_recv(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
-        let success = if let Some(recv_fn) = self.callback.recv_fn.clone() {
+        let success = if let Some(recv_fn) = &self.callback.recv_fn {
             recv_fn(id, message)
         } else {
             true
@@ -670,7 +678,7 @@ impl Node {
     }
 
     fn can_auth(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
-        let success = if let Some(auth_fn) = self.callback.auth_fn.clone() {
+        let success = if let Some(auth_fn) = &self.callback.auth_fn {
             auth_fn(id, message)
         } else {
             true
@@ -687,7 +695,7 @@ impl Node {
     }
 
     fn can_attach(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
-         let success = if let Some(attach_fn) = self.callback.attach_fn.clone() {
+         let success = if let Some(attach_fn) = &self.callback.attach_fn {
             attach_fn(id, message)
         } else {
             true
@@ -703,7 +711,7 @@ impl Node {
     }
 
     fn can_emit(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
-        let success = if let Some(emit_fn) = self.callback.emit_fn.clone() {
+        let success = if let Some(emit_fn) = &self.callback.emit_fn {
             emit_fn(id, message)
         } else {
             true
@@ -1026,5 +1034,35 @@ impl<T: Clone> Timer<T> {
 impl<T> AsRawFd for Timer<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.timerfd.as_raw_fd()
+    }
+}
+
+impl Callback {
+    pub fn accept<F>(&mut self, f: F) where F: Fn(usize, Addr) -> bool + 'static {
+        self.accept_fn = Some(Box::new(f))
+    }
+
+    pub fn remove<F>(&mut self, f: F) where F: Fn(usize, Addr) + 'static {
+        self.remove_fn = Some(Box::new(f))
+    }
+
+    pub fn recv<F>(&mut self, f: F) where F: Fn(usize, &mut Message) -> bool + 'static {
+        self.recv_fn = Some(Box::new(f))
+    }
+
+    pub fn auth<F>(&mut self, f: F) where F: Fn(usize, &mut Message) -> bool + 'static {
+        self.auth_fn = Some(Box::new(f))
+    }
+
+    pub fn attach<F>(&mut self, f: F) where F: Fn(usize, &mut Message) -> bool + 'static {
+        self.attach_fn = Some(Box::new(f))
+    }
+
+    pub fn detach<F>(&mut self, f: F) where F: Fn(usize, &mut Message) + 'static {
+        self.detach_fn = Some(Box::new(f))
+    }
+
+    pub fn emit<F>(&mut self, f: F) where F: Fn(usize, &mut Message) -> bool + 'static {
+        self.emit_fn = Some(Box::new(f))
     }
 }

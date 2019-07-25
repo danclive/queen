@@ -1,6 +1,7 @@
 use std::net::TcpListener;
 
 mod test_event_emit;
+mod test_node_accept;
 mod test_node_auth;
 mod test_node_back;
 
