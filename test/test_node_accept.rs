@@ -17,7 +17,7 @@ fn tcp_accept() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::new(Some(&addr2), None).unwrap();
+        let mut node = Node::bind(Some(&addr2), None).unwrap();
 
         let mut callback = Callback::default();
 
@@ -35,7 +35,7 @@ fn tcp_accept() {
     let mut socket = TcpStream::connect(addr).unwrap();
 
     let msg = msg!{
-        "chan": "node::ping",
+        "_chan": "node::ping",
         "_timeid": "aaa"
     };
 
@@ -49,7 +49,7 @@ fn unix_accept() {
 
     let rand_path2 = rand_path.clone();
     thread::spawn(move || {
-        let mut node = Node::new(None, Some(&rand_path2)).unwrap();
+        let mut node = Node::bind(None, Some(&rand_path2)).unwrap();
 
         let mut callback = Callback::default();
 
@@ -62,12 +62,12 @@ fn unix_accept() {
         node.run().unwrap();
     });
 
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(Duration::from_secs(1));
 
     let mut socket = UnixStream::connect(&rand_path).unwrap();
 
     let msg = msg!{
-        "chan": "node::ping",
+        "_chan": "node::ping",
         "_timeid": "aaa"
     };
 

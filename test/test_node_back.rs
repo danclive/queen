@@ -14,7 +14,7 @@ fn back() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::new(Some(&addr2), None).unwrap();
+        let mut node = Node::bind(Some(&addr2), None).unwrap();
 
         node.run().unwrap();
     });
@@ -25,7 +25,7 @@ fn back() {
 
     // auth
     let msg = msg!{
-        "chan": "node::auth",
+        "_chan": "node::auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -37,8 +37,8 @@ fn back() {
 
     // attach
     let msg = msg!{
-        "chan": "node::attach",
-        "value": "aaa"
+        "_chan": "node::attach",
+        "_value": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -48,7 +48,7 @@ fn back() {
 
     // send
     let msg = msg!{
-        "chan": "aaa",
+        "_chan": "aaa",
         "hello": "world",
         "_id": 123
     };
@@ -77,7 +77,7 @@ fn back() {
 
     // send2
     let msg = msg!{
-        "chan": "aaa",
+        "_chan": "aaa",
         "hello": "world",
         "_id": 123,
         "_back": true
@@ -99,7 +99,7 @@ fn back_time() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::new(Some(&addr2), None).unwrap();
+        let mut node = Node::bind(Some(&addr2), None).unwrap();
 
         node.run().unwrap();
     });
@@ -110,7 +110,7 @@ fn back_time() {
 
     // auth
     let msg = msg!{
-        "chan": "node::auth",
+        "_chan": "node::auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -122,8 +122,8 @@ fn back_time() {
 
     // attach
     let msg = msg!{
-        "chan": "node::attach",
-        "value": "aaa"
+        "_chan": "node::attach",
+        "_value": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -133,7 +133,7 @@ fn back_time() {
 
     // send
     let msg = msg!{
-        "chan": "aaa",
+        "_chan": "aaa",
         "hello": "world",
         "_id": 123,
         "_time": 100u32
@@ -163,7 +163,7 @@ fn back_time() {
 
     // send2
     let msg = msg!{
-        "chan": "aaa",
+        "_chan": "aaa",
         "hello": "world",
         "_id": 123,
         "_time": 100u32,

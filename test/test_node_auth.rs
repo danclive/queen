@@ -15,7 +15,7 @@ fn no_auth() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::new(Some(&addr2), None).unwrap();
+        let mut node = Node::bind(Some(&addr2), None).unwrap();
 
         node.run().unwrap();
     });
@@ -26,8 +26,8 @@ fn no_auth() {
 
     // attach
     let msg = msg!{
-        "chan": "node::attach",
-        "value": "aaa"
+        "_chan": "node::attach",
+        "_value": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -37,8 +37,8 @@ fn no_auth() {
 
     // detach
     let msg = msg!{
-        "chan": "node::detach",
-        "value": "aaa"
+        "_chan": "node::detach",
+        "_value": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -48,7 +48,7 @@ fn no_auth() {
 
     // deltime
     let msg = msg!{
-        "chan": "node::deltime",
+        "_chan": "node::deltime",
         "_timeid": "aaa"
     };
 
@@ -59,7 +59,7 @@ fn no_auth() {
 
     // ping
     let msg = msg!{
-        "chan": "node::ping",
+        "_chan": "node::ping",
         "_timeid": "aaa"
     };
 
@@ -70,7 +70,7 @@ fn no_auth() {
 
     // send
     let msg = msg!{
-        "chan": "aaa"
+        "_chan": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -85,7 +85,7 @@ fn do_auth() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::new(Some(&addr2), None).unwrap();
+        let mut node = Node::bind(Some(&addr2), None).unwrap();
 
         node.run().unwrap();
     });
@@ -96,8 +96,8 @@ fn do_auth() {
 
     // attach
     let msg = msg!{
-        "chan": "node::attach",
-        "value": "aaa"
+        "_chan": "node::attach",
+        "_value": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -106,7 +106,7 @@ fn do_auth() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     let msg = msg!{
-        "chan": "node::auth",
+        "_chan": "node::auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -118,8 +118,8 @@ fn do_auth() {
 
     // attach
     let msg = msg!{
-        "chan": "node::attach",
-        "value": "aaa"
+        "_chan": "node::attach",
+        "_value": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -134,7 +134,7 @@ fn can_auth() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::new(Some(&addr2), None).unwrap();
+        let mut node = Node::bind(Some(&addr2), None).unwrap();
 
         let mut callback = Callback::default();
 
@@ -160,8 +160,8 @@ fn can_auth() {
 
     // attach
     let msg = msg!{
-        "chan": "node::attach",
-        "value": "aaa"
+        "_chan": "node::attach",
+        "_value": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -170,7 +170,7 @@ fn can_auth() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     let msg = msg!{
-        "chan": "node::auth",
+        "_chan": "node::auth",
         "username": "aaabbb",
         "password": "bbbccc"
     };
@@ -181,7 +181,7 @@ fn can_auth() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::AuthenticationFailed));
 
     let msg = msg!{
-        "chan": "node::auth",
+        "_chan": "node::auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -193,8 +193,8 @@ fn can_auth() {
 
     // attach
     let msg = msg!{
-        "chan": "node::attach",
-        "value": "aaa"
+        "_chan": "node::attach",
+        "_value": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();

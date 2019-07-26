@@ -10,7 +10,7 @@ fn main() {
     let mut i = 0;
 
     let msg = msg!{
-        "chan": "node::auth",
+        "_chan": "node::auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -27,8 +27,8 @@ fn main() {
 
 
     let msg = msg!{
-        "chan": "node::attach",
-        "value": "aaa"
+        "_chan": "node::attach",
+        "_value": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();

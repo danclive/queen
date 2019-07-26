@@ -58,7 +58,7 @@ impl Node {
     const UNIX_LISTEN: Token = Token(usize::MAX - 2);
     const TIMER: Token = Token(usize::MAX - 3);
 
-    pub fn new(addr: Option<&str>, path: Option<&str>) -> io::Result<Node> {
+    pub fn bind(addr: Option<&str>, path: Option<&str>) -> io::Result<Node> {
         let tcp_listen = if let Some(addr) = addr {
             Some(TcpListener::bind(addr)?)
         } else {
@@ -338,7 +338,7 @@ impl Node {
                 return Ok(())
             }
 
-            let chan = match message.get_str("chan") {
+            let chan = match message.get_str("_chan") {
                 Ok(chan) => chan,
                 Err(_) => {
 
@@ -485,7 +485,7 @@ impl Node {
             return Ok(())
         }
 
-        if let Ok(chan) = message.get_str("value").map(ToOwned::to_owned) {
+        if let Ok(chan) = message.get_str("_value").map(ToOwned::to_owned) {
             if !self.can_attach(id, &mut message)? {
                 return Ok(())
             }
@@ -511,7 +511,7 @@ impl Node {
             return Ok(())
         }
 
-        if let Ok(chan) = message.get_str("value").map(ToOwned::to_owned) {
+        if let Ok(chan) = message.get_str("_value").map(ToOwned::to_owned) {
             if let Some(detach_fn) = &self.callback.detach_fn {
                 detach_fn(id, &mut message);
             }
@@ -586,7 +586,7 @@ impl Node {
     }
 
     fn relay_message(&mut self, self_id: Option<usize>, message: Message) -> io::Result<()> {
-        if let Ok(chan) = message.get_str("chan") {
+        if let Ok(chan) = message.get_str("_chan") {
             if let Ok(share) = message.get_bool("_share") {
                 if share {
 
