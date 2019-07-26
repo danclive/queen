@@ -2,7 +2,6 @@ use std::thread;
 use std::net::TcpStream;
 use std::time::Duration;
 
-
 use queen::{Node, node::Callback};
 use queen::nson::{msg, Message};
 use queen::error::ErrorCode;
@@ -105,6 +104,7 @@ fn do_auth() {
     let recv = Message::decode(&mut socket).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
+    // auth
     let msg = msg!{
         "_chan": "node::auth",
         "username": "aaa",

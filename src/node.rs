@@ -15,7 +15,7 @@ use nson::{Message, msg};
 
 use slab::Slab;
 
-use rand;
+use rand::{self, thread_rng,rngs::ThreadRng};
 use rand::seq::SliceRandom;
 
 use crate::util::slice_msg;
@@ -32,7 +32,7 @@ pub struct Node {
     callback: Callback,
     chans: HashMap<String, Vec<usize>>,
     clients: HashMap<String, usize>,
-    rand: rand::rngs::ThreadRng,
+    rand: ThreadRng,
     run: bool
 }
 
@@ -90,7 +90,7 @@ impl Node {
             },
             chans: HashMap::new(),
             clients: HashMap::new(),
-            rand: rand::thread_rng(),
+            rand: thread_rng(),
             run: true
         };
 
@@ -320,7 +320,17 @@ impl Node {
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
                     return Ok(())
-                } 
+                }
+
+                if let Some(message_id) = message.get("_id") {
+                    let mut reply_msg = msg!{
+                        "_id": message_id.clone()
+                    };
+
+                    ErrorCode::OK.to_message(&mut reply_msg);
+
+                    self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
+                }
 
                 // _reply: bool
                 message.remove("_to");
@@ -537,10 +547,15 @@ impl Node {
         }
 
         if let Ok(timeid) = message.get_str("_timeid") {
-            self.timer.remove(timeid.to_owned());
-            self.timer.refresh()?;
+            let has = self.timer.remove(timeid.to_owned());
 
-            ErrorCode::OK.to_message(&mut message);
+            if has {
+                self.timer.refresh()?;
+
+                ErrorCode::OK.to_message(&mut message);
+            } else {
+                ErrorCode::TimeidNotExist.to_message(&mut message);
+            }
         } else {
             ErrorCode::CannotGetTimeidField.to_message(&mut message);
         }
@@ -1007,16 +1022,21 @@ impl<T: Clone> Timer<T> {
         self.timerfd.read()
     }
 
-    pub fn remove(&mut self, id: String) {
+    pub fn remove(&mut self, id: String) -> bool {
         let id = Some(id);
 
         let mut tasks_vec: Vec<Task<T>> = Vec::from(self.tasks.clone());
 
+        let mut has = false;
+
         if let Some(pos) = tasks_vec.iter().position(|x| x.id == id) {
             tasks_vec.remove(pos);
+            has  = true;
         }
 
         self.tasks = tasks_vec.into();
+
+        has
     }
 
     pub fn refresh(&mut self) -> io::Result<()> {

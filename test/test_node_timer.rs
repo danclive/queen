@@ -5,11 +5,12 @@ use std::io::ErrorKind::WouldBlock;
 
 use queen::Node;
 use queen::nson::{msg, Message, decode::DecodeError};
+use queen::error::ErrorCode;
 
 use super::get_free_addr;
 
 #[test]
-fn back() {
+fn timer() {
     let addr = get_free_addr();
 
     let addr2 = addr.clone();
@@ -21,9 +22,10 @@ fn back() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let mut socket = TcpStream::connect(addr).unwrap();
+    // client 1
+    let mut socket = TcpStream::connect(&addr).unwrap();
 
-    // auth
+    // client 1 auth
     let msg = msg!{
         "_chan": "node::auth",
         "username": "aaa",
@@ -35,7 +37,7 @@ fn back() {
     let recv = Message::decode(&mut socket).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
-    // attach
+    // client 1 attach
     let msg = msg!{
         "_chan": "node::attach",
         "_value": "aaa"
@@ -46,18 +48,40 @@ fn back() {
     let recv = Message::decode(&mut socket).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
-    // send
+    // no time
+
+    // client 1 send
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123
+        "_id": 123,
+        "_back": true
     };
 
     msg.encode(&mut socket).unwrap();
     let recv = Message::decode(&mut socket).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
-    // try recv
+    // client 1 recv
+    let recv = Message::decode(&mut socket).unwrap();
+    assert!(recv.get_i32("_id").unwrap() == 123);
+
+    // with time
+
+    // client 1 send
+    let msg = msg!{
+        "_chan": "aaa",
+        "hello": "world",
+        "_id": 123,
+        "_back": true,
+        "_time": 1000 * 2u32
+    };
+
+    msg.encode(&mut socket).unwrap();
+    let recv = Message::decode(&mut socket).unwrap();
+    assert!(recv.get_i32("ok").unwrap() == 0);
+
+    // client 1 try recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
     let recv = Message::decode(&mut socket);
     match recv {
@@ -75,26 +99,14 @@ fn back() {
        }
     }
 
-    // send2
-    let msg = msg!{
-        "_chan": "aaa",
-        "hello": "world",
-        "_id": 123,
-        "_back": true
-    };
-
-    msg.encode(&mut socket).unwrap();
+    // client 1 recv
+    socket.set_read_timeout(None).unwrap();
     let recv = Message::decode(&mut socket).unwrap();
-    assert!(recv.get_i32("ok").unwrap() == 0);
-
-    // try recv
-    socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
-    assert!(recv.get_bool("_back").unwrap() == true);
+    assert!(recv.get_i32("_id").unwrap() == 123);
 }
 
 #[test]
-fn back_time() {
+fn del_time_id() {
     let addr = get_free_addr();
 
     let addr2 = addr.clone();
@@ -106,9 +118,10 @@ fn back_time() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let mut socket = TcpStream::connect(addr).unwrap();
+    // client 1
+    let mut socket = TcpStream::connect(&addr).unwrap();
 
-    // auth
+    // client 1 auth
     let msg = msg!{
         "_chan": "node::auth",
         "username": "aaa",
@@ -120,7 +133,7 @@ fn back_time() {
     let recv = Message::decode(&mut socket).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
-    // attach
+    // client 1 attach
     let msg = msg!{
         "_chan": "node::attach",
         "_value": "aaa"
@@ -131,20 +144,62 @@ fn back_time() {
     let recv = Message::decode(&mut socket).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
-    // send
+    // client 1 send
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
         "_id": 123,
-        "_time": 100u32
+        "_back": true,
+        "_time": 1000u32,
+        "_timeid": "123"
     };
 
     msg.encode(&mut socket).unwrap();
     let recv = Message::decode(&mut socket).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
-    // try recv
-    socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+    // client 1 recv
+    socket.set_read_timeout(None).unwrap();
+    let recv = Message::decode(&mut socket).unwrap();
+    assert!(recv.get_i32("_id").unwrap() == 123);
+
+    // del time id
+
+    // client 1 send
+    let msg = msg!{
+        "_chan": "aaa",
+        "hello": "world",
+        "_id": 123,
+        "_back": true,
+        "_time": 1000 * 2u32,
+        "_timeid": "123"
+    };
+
+    msg.encode(&mut socket).unwrap();
+    let recv = Message::decode(&mut socket).unwrap();
+    assert!(recv.get_i32("ok").unwrap() == 0);
+
+    // del time
+    let msg = msg!{
+        "_chan": "node::deltime",
+        "_timeid": "1234"
+    };
+
+    msg.encode(&mut socket).unwrap();
+    let recv = Message::decode(&mut socket).unwrap();
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TimeidNotExist));
+
+    let msg = msg!{
+        "_chan": "node::deltime",
+        "_timeid": "123"
+    };
+
+    msg.encode(&mut socket).unwrap();
+    let recv = Message::decode(&mut socket).unwrap();
+    assert!(recv.get_i32("ok").unwrap() == 0);
+
+    // client 1 try recv
+    socket.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
     let recv = Message::decode(&mut socket);
     match recv {
        Ok(recv) => panic!("{:?}", recv),
@@ -160,22 +215,4 @@ fn back_time() {
             }
        }
     }
-
-    // send2
-    let msg = msg!{
-        "_chan": "aaa",
-        "hello": "world",
-        "_id": 123,
-        "_time": 100u32,
-        "_back": true
-    };
-
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
-    assert!(recv.get_i32("ok").unwrap() == 0);
-
-    // try recv
-    socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
-    assert!(recv.get_bool("_back").unwrap() == true);
 }
