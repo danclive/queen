@@ -61,9 +61,10 @@ impl ErrorCode {
         let code = self.code();
         msg.insert("ok", code);
 
-        if code > 0 {
+        #[cfg(debug_assertions)]
+        {if code > 0 {
             msg.insert("error", self.to_str());
-        }
+        }}
     }
 
     pub fn has_error(msg: &Message) -> Option<ErrorCode> {

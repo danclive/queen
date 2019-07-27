@@ -27,7 +27,7 @@ fn timer() {
 
     // client 1 auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -39,8 +39,8 @@ fn timer() {
 
     // client 1 attach
     let msg = msg!{
-        "_chan": "node::attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -123,7 +123,7 @@ fn del_time_id() {
 
     // client 1 auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -135,8 +135,8 @@ fn del_time_id() {
 
     // client 1 attach
     let msg = msg!{
-        "_chan": "node::attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -151,7 +151,7 @@ fn del_time_id() {
         "_id": 123,
         "_back": true,
         "_time": 1000u32,
-        "_timeid": "123"
+        "_tmid": "123"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -172,7 +172,7 @@ fn del_time_id() {
         "_id": 123,
         "_back": true,
         "_time": 1000 * 2u32,
-        "_timeid": "123"
+        "_tmid": "123"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -181,8 +181,8 @@ fn del_time_id() {
 
     // del time
     let msg = msg!{
-        "_chan": "node::deltime",
-        "_timeid": "1234"
+        "_chan": "_delt",
+        "_tmid": "1234"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -190,8 +190,8 @@ fn del_time_id() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TimeidNotExist));
 
     let msg = msg!{
-        "_chan": "node::deltime",
-        "_timeid": "123"
+        "_chan": "_delt",
+        "_tmid": "123"
     };
 
     msg.encode(&mut socket).unwrap();

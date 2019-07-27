@@ -30,7 +30,7 @@ fn attach() {
 
     // client 1 auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -42,7 +42,7 @@ fn attach() {
 
     // client 2 auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -65,8 +65,8 @@ fn attach() {
 
     // client 1 attach
     let msg = msg!{
-        "_chan": "node::attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -92,8 +92,8 @@ fn attach() {
 
     // client1 detach
     let msg = msg!{
-        "_chan": "node::detach",
-        "_value": "aaa"
+        "_chan": "_deta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();

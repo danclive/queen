@@ -35,8 +35,8 @@ fn tcp_accept() {
     let mut socket = TcpStream::connect(addr).unwrap();
 
     let msg = msg!{
-        "_chan": "node::ping",
-        "_timeid": "aaa"
+        "_chan": "_ping",
+        "_tmid": "aaa"
     };
 
     assert!(msg.encode(&mut socket).is_err() || Message::decode(&mut socket).is_err());
@@ -67,8 +67,8 @@ fn unix_accept() {
     let mut socket = UnixStream::connect(&rand_path).unwrap();
 
     let msg = msg!{
-        "_chan": "node::ping",
-        "_timeid": "aaa"
+        "_chan": "_ping",
+        "_tmid": "aaa"
     };
 
     assert!(msg.encode(&mut socket).is_err() || Message::decode(&mut socket).is_err());

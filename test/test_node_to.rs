@@ -30,10 +30,10 @@ fn duplicate_clientid() {
 
     // client 1 auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_clientid": "abc"
+        "_clid": "abc"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -43,10 +43,10 @@ fn duplicate_clientid() {
 
     // client 2 auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_clientid": "abc"
+        "_clid": "abc"
     };
 
     msg.encode(&mut socket2).unwrap();
@@ -56,10 +56,10 @@ fn duplicate_clientid() {
 
     // client 2 auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_clientid": "def"
+        "_clid": "def"
     };
 
     msg.encode(&mut socket2).unwrap();
@@ -86,10 +86,10 @@ fn to() {
 
     // client 1 auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_clientid": "abc"
+        "_clid": "abc"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -112,10 +112,10 @@ fn to() {
 
     // client 2 auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_clientid": "def"
+        "_clid": "def"
     };
 
     msg.encode(&mut socket2).unwrap();

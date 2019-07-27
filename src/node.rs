@@ -30,8 +30,10 @@ pub struct Node {
     conns: Slab<Connection>,
     read_buffer: VecDeque<Message>,
     callback: Callback,
-    chans: HashMap<String, Vec<usize>>,
+    // chans: HashMap<String, Vec<usize>>,
+    chans: HashMap<String, HashSet<usize>>,
     clients: HashMap<String, usize>,
+    bridges: HashSet<usize>,
     rand: ThreadRng,
     run: bool
 }
@@ -90,6 +92,7 @@ impl Node {
             },
             chans: HashMap::new(),
             clients: HashMap::new(),
+            bridges: HashSet::new(),
             rand: thread_rng(),
             run: true
         };
@@ -283,12 +286,12 @@ impl Node {
 
             for chan in conn.chans {
                 if let Some(ids) = self.chans.get_mut(&chan) {
-                    if let Some(pos) = ids.iter().position(|x| *x == id) {
-                        ids.remove(pos);
-                    }
+                    ids.remove(&id);
 
                     if ids.is_empty() {
                         self.chans.remove(&chan);
+
+                        self.to_bridge_detach(&chan)?;
                     }
                 }
             }
@@ -359,14 +362,14 @@ impl Node {
                 }
             };
 
-            if chan.starts_with("node::") {
+            if chan.starts_with("_") {
                 match chan {
-                    "node::auth" => self.node_auth(id, message)?,
-                    "node::attach" => self.node_attach(id, message)?,
-                    "node::detach" => self.node_detach(id, message)?,
-                    "node::deltime" => self.node_deltime(id, message)?,
-                    "node::ping" => self.node_ping(id, message)?,
-                    // "node::query" => self.node_query(id, message)?,
+                    "_auth" => self.node_auth(id, message)?,
+                    "_atta" => self.node_attach(id, message)?,
+                    "_deta" => self.node_detach(id, message)?,
+                    "_delt" => self.node_deltime(id, message)?,
+                    "_ping" => self.node_ping(id, message)?,
+                    // "_quer" => self.node_query(id, message)?,
                     _ => {
 
                         ErrorCode::UnsupportedChan.to_message(&mut message);
@@ -417,7 +420,7 @@ impl Node {
                     if time > 0 {
                         let mut timeid = None;
 
-                        if let Ok(tid) = message.get_str("_timeid") {
+                        if let Ok(tid) = message.get_str("_tmid") {
                             timeid = Some(tid.to_owned());
                         }
 
@@ -465,7 +468,7 @@ impl Node {
         }
 
         if let Some(conn) = self.conns.get_mut(id) {
-            if let Ok(clientid) = message.get_str("_clientid") {
+            if let Ok(clientid) = message.get_str("_clid") {
                 if self.clients.contains_key(clientid) {
 
                     ErrorCode::DuplicateClientId.to_message(&mut message);
@@ -478,6 +481,14 @@ impl Node {
                 self.clients.insert(clientid.to_string(), id);
 
                 conn.clientid = Some(clientid.to_string());
+            }
+
+            if let Ok(bridge) = message.get_bool("_brge") {
+                if bridge {
+                    conn.bridge = true;
+
+                    self.bridges.insert(id);
+                }
             }
 
             conn.auth = true;
@@ -495,12 +506,12 @@ impl Node {
             return Ok(())
         }
 
-        if let Ok(chan) = message.get_str("_value").map(ToOwned::to_owned) {
+        if let Ok(chan) = message.get_str("_valu").map(ToOwned::to_owned) {
             if !self.can_attach(id, &mut message)? {
                 return Ok(())
             }
 
-            self.session_attach(id, chan);
+            self.session_attach(id, chan)?;
 
             ErrorCode::OK.to_message(&mut message);
 
@@ -521,12 +532,12 @@ impl Node {
             return Ok(())
         }
 
-        if let Ok(chan) = message.get_str("_value").map(ToOwned::to_owned) {
+        if let Ok(chan) = message.get_str("_valu").map(ToOwned::to_owned) {
             if let Some(detach_fn) = &self.callback.detach_fn {
                 detach_fn(id, &mut message);
             }
 
-            self.session_detach(id, chan);
+            self.session_detach(id, chan)?;
 
             ErrorCode::OK.to_message(&mut message);
 
@@ -546,7 +557,7 @@ impl Node {
             return Ok(())
         }
 
-        if let Ok(timeid) = message.get_str("_timeid") {
+        if let Ok(timeid) = message.get_str("_tmid") {
             let has = self.timer.remove(timeid.to_owned());
 
             if has {
@@ -573,36 +584,48 @@ impl Node {
         Ok(())
     }
 
-    fn session_attach(&mut self, id: usize, chan: String) {
-        let chans = self.chans.entry(chan.to_owned()).or_insert_with(Vec::new); 
-        if !chans.contains(&id) {
-            chans.push(id);
+    fn session_attach(&mut self, id: usize, chan: String) -> io::Result<()> {
+        let ids = self.chans.entry(chan.to_owned()).or_insert_with(HashSet::new);
+
+        let mut to_bridge = false;
+        if ids.is_empty() {
+            to_bridge = true;
+        }
+
+        ids.insert(id);
+
+        if to_bridge {
+            self.to_bridge_attach(&chan)?;
         }
 
         if let Some(conn) = self.conns.get_mut(id) {
             conn.chans.insert(chan);
         }
+
+        Ok(())
     }
 
-    fn session_detach(&mut self, id: usize, chan: String) {
+    fn session_detach(&mut self, id: usize, chan: String) -> io::Result<()> {
         if let Some(conn) = self.conns.get_mut(id) {
             conn.chans.remove(&chan);
 
-            if let Some(chans) = self.chans.get_mut(&chan) {
-                if let Some(pos) = chans.iter().position(|x| *x == id) {
-                    chans.remove(pos);
-                }
+            if let Some(ids) = self.chans.get_mut(&chan) {
+                ids.remove(&id);
 
-                if chans.is_empty() {
+                if ids.is_empty() {
                     self.chans.remove(&chan);
+
+                    self.to_bridge_detach(&chan)?;
                 }
             }
         }
+
+        Ok(())
     }
 
     fn relay_message(&mut self, self_id: Option<usize>, message: Message) -> io::Result<()> {
         if let Ok(chan) = message.get_str("_chan") {
-            if let Ok(share) = message.get_bool("_share") {
+            if let Ok(share) = message.get_bool("_shar") {
                 if share {
 
                     let mut array: Vec<usize> = Vec::new();
@@ -740,6 +763,38 @@ impl Node {
 
         Ok(success)
     }
+
+    fn to_bridge_attach(&mut self, chan: &str) -> io::Result<()> {
+        let msg = msg!{
+            "_chan": "_brge_atta",
+            "_valu": chan,
+        };
+
+        for id in &self.bridges {
+            if let Some(conn) = self.conns.get_mut(*id) {
+                conn.push_data(msg.to_vec().unwrap());
+                conn.reregister(&self.poll)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn to_bridge_detach(&mut self, chan: &str) -> io::Result<()>{
+        let msg = msg!{
+            "_chan": "_brge_deta",
+            "_valu": chan,
+        };
+
+        for id in &self.bridges {
+            if let Some(conn) = self.conns.get_mut(*id) {
+                conn.push_data(msg.to_vec().unwrap());
+                conn.reregister(&self.poll)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -752,6 +807,7 @@ struct Connection {
     read_buffer: Vec<u8>,
     write_buffer: VecDeque<Vec<u8>>,
     auth: bool,
+    bridge: bool,
     chans: HashSet<String>
 }
 
@@ -772,6 +828,7 @@ impl Connection {
             read_buffer: Vec::new(),
             write_buffer: VecDeque::new(),
             auth: false,
+            bridge: false,
             chans: HashSet::new()
         };
 
@@ -814,12 +871,12 @@ impl Connection {
                         for message in messages {
                             match Message::from_slice(&message) {
                                 Ok(message) => read_buffer.push_back(message),
-                                Err(err) => {
+                                Err(_err) => {
                     
                                     let mut error = msg!{};
 
                                     #[cfg(debug_assertions)]
-                                    error.insert("error_info", err.to_string());
+                                    error.insert("error_info", _err.to_string());
 
                                     ErrorCode::UnsupportedFormat.to_message(&mut error);
 

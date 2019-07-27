@@ -25,8 +25,8 @@ fn no_auth() {
 
     // attach
     let msg = msg!{
-        "_chan": "node::attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -36,8 +36,8 @@ fn no_auth() {
 
     // detach
     let msg = msg!{
-        "_chan": "node::detach",
-        "_value": "aaa"
+        "_chan": "_deta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -47,7 +47,7 @@ fn no_auth() {
 
     // deltime
     let msg = msg!{
-        "_chan": "node::deltime",
+        "_chan": "_delt",
         "_timeid": "aaa"
     };
 
@@ -58,7 +58,7 @@ fn no_auth() {
 
     // ping
     let msg = msg!{
-        "_chan": "node::ping",
+        "_chan": "_ping",
         "_timeid": "aaa"
     };
 
@@ -95,8 +95,8 @@ fn do_auth() {
 
     // attach
     let msg = msg!{
-        "_chan": "node::attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -106,7 +106,7 @@ fn do_auth() {
 
     // auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -118,8 +118,8 @@ fn do_auth() {
 
     // attach
     let msg = msg!{
-        "_chan": "node::attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -160,8 +160,8 @@ fn can_auth() {
 
     // attach
     let msg = msg!{
-        "_chan": "node::attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -170,7 +170,7 @@ fn can_auth() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaabbb",
         "password": "bbbccc"
     };
@@ -181,7 +181,7 @@ fn can_auth() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::AuthenticationFailed));
 
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -193,8 +193,8 @@ fn can_auth() {
 
     // attach
     let msg = msg!{
-        "_chan": "node::attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();

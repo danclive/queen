@@ -9,7 +9,7 @@ fn main() {
     println!("{:?}", socket);
 
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -21,7 +21,7 @@ fn main() {
     println!("{:?}", recv);
 
     let msg = msg!{
-        "_chan": "node::attach",
+        "_chan": "_attach",
         "_value": "aaa"
     };
 

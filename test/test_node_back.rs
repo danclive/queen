@@ -25,7 +25,7 @@ fn back() {
 
     // auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -37,8 +37,8 @@ fn back() {
 
     // attach
     let msg = msg!{
-        "_chan": "node::attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
@@ -110,7 +110,7 @@ fn back_time() {
 
     // auth
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -122,8 +122,8 @@ fn back_time() {
 
     // attach
     let msg = msg!{
-        "_chan": "node::attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();
