@@ -30,9 +30,7 @@ pub struct Node {
     conns: Slab<Connection>,
     read_buffer: VecDeque<Message>,
     callback: Callback,
-    // chans: HashMap<String, Vec<usize>>,
     chans: HashMap<String, HashSet<usize>>,
-    clients: HashMap<String, usize>,
     bridges: HashSet<usize>,
     rand: ThreadRng,
     run: bool
@@ -91,7 +89,6 @@ impl Node {
                 emit_fn: None
             },
             chans: HashMap::new(),
-            clients: HashMap::new(),
             bridges: HashSet::new(),
             rand: thread_rng(),
             run: true
@@ -280,10 +277,6 @@ impl Node {
             let conn = self.conns.remove(id);
             conn.deregister(&self.poll)?;
 
-            if let Some(clientid) = &conn.clientid {
-                self.clients.remove(clientid);
-            }
-
             for chan in conn.chans {
                 if let Some(ids) = self.chans.get_mut(&chan) {
                     ids.remove(&id);
@@ -308,46 +301,6 @@ impl Node {
         while let Some(mut message) = self.read_buffer.pop_front() {
 
             if !self.can_recv(id, &mut message)? {
-                return Ok(())
-            }
-
-            if let Ok(to) = message.get_str("_to").map(|to| to.to_string()) {
-                if !self.check_auth(id, &mut message)? {
-                    return Ok(())
-                }
-
-                if !self.clients.contains_key(&to) {
-
-                    ErrorCode::ClientNotExist.to_message(&mut message);
-
-                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
-
-                    return Ok(())
-                }
-
-                if let Some(message_id) = message.get("_id") {
-                    let mut reply_msg = msg!{
-                        "_id": message_id.clone()
-                    };
-
-                    ErrorCode::OK.to_message(&mut reply_msg);
-
-                    self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
-                }
-
-                // _reply: bool
-                message.remove("_to");
-
-                if let Some(conn) = self.conns.get(id) {
-                    if let Some(clientid) = &conn.clientid {
-                        message.insert("_from", clientid);
-
-                        if let Some(to_id) = self.clients.get(&to).map(|id| *id) {
-                            self.push_data_to_conn(to_id, message.to_vec().unwrap())?;
-                        }
-                    }
-                }
-
                 return Ok(())
             }
 
@@ -467,27 +420,16 @@ impl Node {
             return Ok(())
         }
 
+        let mut is_bridge = false;
+
         if let Some(conn) = self.conns.get_mut(id) {
-            if let Ok(clientid) = message.get_str("_clid") {
-                if self.clients.contains_key(clientid) {
-
-                    ErrorCode::DuplicateClientId.to_message(&mut message);
-
-                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
-
-                    return Ok(())
-                }
-
-                self.clients.insert(clientid.to_string(), id);
-
-                conn.clientid = Some(clientid.to_string());
-            }
-
             if let Ok(bridge) = message.get_bool("_brge") {
                 if bridge {
                     conn.bridge = true;
 
                     self.bridges.insert(id);
+
+                    is_bridge = true;
                 }
             }
 
@@ -496,6 +438,21 @@ impl Node {
             ErrorCode::OK.to_message(&mut message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
+        }
+
+        if is_bridge {
+            if let Some(conn) = self.conns.get_mut(id) {
+                for (chan, _) in &self.chans {
+                    let msg = msg!{
+                        "_chan": "_brge_atta",
+                        "_valu": chan,
+                    };
+
+                    conn.push_data(msg.to_vec().unwrap());
+                }
+
+                conn.reregister(&self.poll)?;
+            }
         }
 
         Ok(())
@@ -800,7 +757,6 @@ impl Node {
 #[derive(Debug)]
 struct Connection {
     id: usize,
-    clientid: Option<String>,
     addr: Addr,
     stream: Stream,
     interest: Ready,
@@ -821,7 +777,6 @@ impl Connection {
     fn new(id: usize, addr: Addr, stream: Stream) -> io::Result<Connection> {
         let conn = Connection {
             id,
-            clientid: None,
             addr,
             stream,
             interest: Ready::readable() | Ready::hup(),
