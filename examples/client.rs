@@ -21,8 +21,8 @@ fn main() {
     println!("{:?}", recv);
 
     let msg = msg!{
-        "_chan": "_attach",
-        "_value": "aaa"
+        "_chan": "_atta",
+        "_valu": "aaa"
     };
 
     msg.encode(&mut socket).unwrap();

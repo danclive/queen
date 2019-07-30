@@ -5,6 +5,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
+use std::net::SocketAddr as TcpSocketAddr;
+use std::os::unix::net::SocketAddr as UnixSocketAddr;
 
 use queen_io::sys::timerfd::{TimerFd, TimerSpec};
 use queen_io::tcp::{TcpListener, TcpStream};
@@ -38,8 +40,8 @@ pub struct Node {
 
 #[derive(Debug, Clone)]
 pub enum Addr {
-    Tcp(std::net::SocketAddr),
-    Unix(std::os::unix::net::SocketAddr)
+    Tcp(TcpSocketAddr),
+    Unix(UnixSocketAddr)
 }
 
 #[derive(Default)]
@@ -724,7 +726,7 @@ impl Node {
     fn to_bridge_attach(&mut self, chan: &str) -> io::Result<()> {
         let msg = msg!{
             "_chan": "_brge_atta",
-            "_valu": chan,
+            "_valu": chan
         };
 
         for id in &self.bridges {

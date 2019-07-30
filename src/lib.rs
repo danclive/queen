@@ -4,7 +4,6 @@ pub mod node;
 pub mod center;
 pub mod bridge;
 pub mod channel;
-pub mod router;
 pub mod util;
 pub mod error;
 
