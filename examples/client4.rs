@@ -23,7 +23,7 @@ fn main() {
 
     let time1 = Instant::now();
 
-    let mut i = 100000;
+    let mut i = 1000000;
     while i > 0 {
         let msg = msg!{
             "_chan": "aaa",

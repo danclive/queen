@@ -5,7 +5,6 @@ mod test_node_accept;
 mod test_node_auth;
 mod test_node_attach;
 mod test_node_back;
-mod test_node_bridge;
 mod test_node_timer;
 
 pub fn get_free_addr() -> String {

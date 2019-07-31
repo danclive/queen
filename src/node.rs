@@ -5,12 +5,11 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
-use std::net::SocketAddr as TcpSocketAddr;
-use std::os::unix::net::SocketAddr as UnixSocketAddr;
+use std::net::ToSocketAddrs;
 
 use queen_io::sys::timerfd::{TimerFd, TimerSpec};
-use queen_io::tcp::{TcpListener, TcpStream};
-use queen_io::unix::{UnixListener, UnixStream};
+use queen_io::tcp::TcpListener;
+use queen_io::unix::UnixListener;
 use queen_io::{Poll, Events, Token, Ready, PollOpt, Event, Evented};
 
 use nson::{Message, msg};
@@ -20,28 +19,22 @@ use slab::Slab;
 use rand::{self, thread_rng,rngs::ThreadRng};
 use rand::seq::SliceRandom;
 
+use crate::net::{Addr, Stream};
 use crate::util::slice_msg;
 use crate::error::ErrorCode;
 
 pub struct Node {
     poll: Poll,
     events: Events,
-    tcp_listen: Option<TcpListener>,
-    unix_listen: Option<UnixListener>,
+    listens: HashMap<usize, Listen>,
+    token: usize,
     timer: Timer<(Option<usize>, Message)>,
     conns: Slab<Connection>,
     read_buffer: VecDeque<Message>,
     callback: Callback,
     chans: HashMap<String, HashSet<usize>>,
-    bridges: HashSet<usize>,
     rand: ThreadRng,
     run: bool
-}
-
-#[derive(Debug, Clone)]
-pub enum Addr {
-    Tcp(TcpSocketAddr),
-    Unix(UnixSocketAddr)
 }
 
 #[derive(Default)]
@@ -55,29 +48,51 @@ pub struct Callback {
     pub emit_fn: Option<Box<dyn Fn(usize, &mut Message) -> bool>>
 }
 
+pub struct NodeConfig {
+    pub addrs: Vec<Addr>
+}
+
+impl NodeConfig {
+    pub fn new() -> NodeConfig {
+        NodeConfig {
+            addrs: Vec::new()
+        }
+    }
+
+    pub fn tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<()> {
+        let addr = Addr::tcp(addr)?;
+        self.addrs.push(addr);
+        Ok(())
+    }
+
+    pub fn unix(&mut self, path: String) {
+        self.addrs.push(Addr::Unix(path))
+    }
+}
+
 impl Node {
-    const TCP_LISTEN: Token = Token(usize::MAX - 1);
-    const UNIX_LISTEN: Token = Token(usize::MAX - 2);
-    const TIMER: Token = Token(usize::MAX - 3);
+    const TIMER: Token = Token(usize::MAX);
 
-    pub fn bind(addr: Option<&str>, path: Option<&str>) -> io::Result<Node> {
-        let tcp_listen = if let Some(addr) = addr {
-            Some(TcpListener::bind(addr)?)
-        } else {
-            None
-        };
+    pub fn bind(config: NodeConfig) -> io::Result<Node> {
 
-        let unix_listen = if let Some(path) = path {
-            Some(UnixListener::bind(path)?)
-        } else {
-            None
-        };
+        if config.addrs.len() == 0 {
+            panic!("{:?}", "config.addrs must >= 1");
+        }
+
+        let mut listens = HashMap::new();
+        let mut token = usize::MAX - 1;
+
+        for addr in config.addrs {
+            let listen = addr.bind()?;
+            listens.insert(token, listen);
+            token -= 1;
+        }
 
         let node = Node {
             poll: Poll::new()?,
             events: Events::with_capacity(1024),
-            tcp_listen,
-            unix_listen,
+            listens,
+            token,
             timer: Timer::new()?,
             conns: Slab::new(),
             read_buffer: VecDeque::new(),
@@ -91,7 +106,6 @@ impl Node {
                 emit_fn: None
             },
             chans: HashMap::new(),
-            bridges: HashSet::new(),
             rand: thread_rng(),
             run: true
         };
@@ -104,23 +118,9 @@ impl Node {
     }
 
     pub fn run(&mut self) -> io::Result<()> {
-        if let Some(tcp) = &self.tcp_listen {
-            self.poll.register(
-                tcp,
-                Self::TCP_LISTEN,
-                Ready::readable(),
-                PollOpt::edge()
-            )?;
-        };
-
-        if let Some(unix) = &self.unix_listen {
-            self.poll.register(
-                unix,
-                Self::UNIX_LISTEN,
-                Ready::readable(),
-                PollOpt::edge()
-            )?;
-        };
+        for (id, listen) in &self.listens {
+            listen.register(&self.poll, Token(*id), Ready::readable(), PollOpt::edge())?;
+        }
 
         self.poll.register(
             &self.timer.as_raw_fd(),
@@ -150,55 +150,18 @@ impl Node {
 
     fn dispatch(&mut self, event: Event) -> io::Result<()> {
         match event.token() {
-            Self::TCP_LISTEN => self.dispatch_tcp_listen()?,
-            Self::UNIX_LISTEN => self.dispatch_unix_listen()?,
             Self::TIMER => self.dispatch_timer()?,
+            token if token.0 >= self.token => self.dispatch_listen(token.0)?,
             token => self.dispatch_conn(token, event)?
         }
 
         Ok(())
     }
 
-    fn dispatch_tcp_listen(&mut self) -> io::Result<()> {
-        if let Some(tcp) = &self.tcp_listen {
+    fn dispatch_listen(&mut self, id: usize) -> io::Result<()> {
+        if let Some(listener) = self.listens.get(&id) {
             loop {
-                let (socket, addr) = match tcp.accept() {
-                    Ok((socket, addr)) => (socket, addr),
-                    Err(err) => {
-                        if let WouldBlock = err.kind() {
-                            break;
-                        } else {
-                            return Err(err)
-                        }
-                    }
-                };
-
-                socket.set_nodelay(true)?;
-
-                let entry = self.conns.vacant_entry();
-
-                let success = if let Some(accept_fn) = &self.callback.accept_fn {
-                    accept_fn(entry.key(), Addr::Tcp(addr))
-                } else {
-                    true
-                };
-
-                if success {
-                    let conn = Connection::new(entry.key(), Addr::Tcp(addr), Stream::Tcp(socket))?;
-                    conn.register(&self.poll)?;
-
-                    entry.insert(conn);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn dispatch_unix_listen(&mut self) -> io::Result<()> {
-        if let Some(unix) = &self.unix_listen {
-            loop {
-                let (socket, addr) = match unix.accept() {
+                let (socket, addr) = match listener.accept() {
                     Ok((socket, addr)) => (socket, addr),
                     Err(err) => {
                         if let WouldBlock = err.kind() {
@@ -212,13 +175,13 @@ impl Node {
                 let entry = self.conns.vacant_entry();
 
                 let success = if let Some(accept_fn) = &self.callback.accept_fn {
-                    accept_fn(entry.key(), Addr::Unix(addr.clone()))
+                    accept_fn(entry.key(), addr.clone())
                 } else {
                     true
                 };
 
                 if success {
-                    let conn = Connection::new(entry.key(), Addr::Unix(addr), Stream::Unix(socket))?;
+                    let conn = Connection::new(entry.key(), addr, socket);
                     conn.register(&self.poll)?;
 
                     entry.insert(conn);
@@ -243,14 +206,17 @@ impl Node {
 
     fn dispatch_conn(&mut self, token: Token, event: Event) -> io::Result<()> {
         let readiness = event.readiness();
+        
+        let mut remove = false;
+
         if readiness.is_hup() || readiness.is_error() {
-            self.remove_conn(token.0)?;
+            remove = true;
         }
 
         if readiness.is_readable() {
             if let Some(conn) = self.conns.get_mut(token.0) {
                 if conn.read(&mut self.read_buffer).is_err() {
-                    self.remove_conn(token.0)?;
+                    remove = true;
                 } else {
                     conn.reregister(&self.poll)?;
                 }
@@ -264,11 +230,15 @@ impl Node {
         if readiness.is_writable() {
             if let Some(conn) = self.conns.get_mut(token.0) {
                 if conn.write().is_err() {
-                    self.remove_conn(token.0)?;
+                    remove = true;
                 } else {
                     conn.reregister(&self.poll)?;
                 }
             }
+        }
+
+        if remove {
+            self.remove_conn(token.0)?;
         }
 
         Ok(())
@@ -285,8 +255,6 @@ impl Node {
 
                     if ids.is_empty() {
                         self.chans.remove(&chan);
-
-                        self.to_bridge_detach(&chan)?;
                     }
                 }
             }
@@ -367,7 +335,10 @@ impl Node {
                 }
 
                 let back = match message.get_bool("_back") {
-                    Ok(back) => back,
+                    Ok(back) => {
+                        message.remove("_back");
+                        back
+                    }
                     Err(_) => false
                 };
 
@@ -422,39 +393,14 @@ impl Node {
             return Ok(())
         }
 
-        let mut is_bridge = false;
-
         if let Some(conn) = self.conns.get_mut(id) {
-            if let Ok(bridge) = message.get_bool("_brge") {
-                if bridge {
-                    conn.bridge = true;
-
-                    self.bridges.insert(id);
-
-                    is_bridge = true;
-                }
-            }
-
             conn.auth = true;
 
             ErrorCode::OK.to_message(&mut message);
 
-            self.push_data_to_conn(id, message.to_vec().unwrap())?;
-        }
+            conn.push_data(message.to_vec().unwrap());
 
-        if is_bridge {
-            if let Some(conn) = self.conns.get_mut(id) {
-                for (chan, _) in &self.chans {
-                    let msg = msg!{
-                        "_chan": "_brge_atta",
-                        "_valu": chan,
-                    };
-
-                    conn.push_data(msg.to_vec().unwrap());
-                }
-
-                conn.reregister(&self.poll)?;
-            }
+            conn.reregister(&self.poll)?;
         }
 
         Ok(())
@@ -477,7 +423,6 @@ impl Node {
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
         } else {
-
             ErrorCode::CannotGetValueField.to_message(&mut message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
@@ -502,7 +447,6 @@ impl Node {
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         } else {
-
             ErrorCode::CannotGetValueField.to_message(&mut message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
@@ -546,16 +490,7 @@ impl Node {
     fn session_attach(&mut self, id: usize, chan: String) -> io::Result<()> {
         let ids = self.chans.entry(chan.to_owned()).or_insert_with(HashSet::new);
 
-        let mut to_bridge = false;
-        if ids.is_empty() {
-            to_bridge = true;
-        }
-
         ids.insert(id);
-
-        if to_bridge {
-            self.to_bridge_attach(&chan)?;
-        }
 
         if let Some(conn) = self.conns.get_mut(id) {
             conn.chans.insert(chan);
@@ -573,8 +508,6 @@ impl Node {
 
                 if ids.is_empty() {
                     self.chans.remove(&chan);
-
-                    self.to_bridge_detach(&chan)?;
                 }
             }
         }
@@ -647,15 +580,18 @@ impl Node {
     }
 
     fn check_auth(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
-        let access = self.conns.get(id).map(|conn| conn.auth == true).unwrap_or_default();
+        if let Some(conn) = self.conns.get_mut(id) {
+            if conn.auth == true {
+                return Ok(true)
+            }
 
-        if !access {
             ErrorCode::Unauthorized.to_message(message);
 
-            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+            conn.push_data(message.to_vec().unwrap());
+            conn.reregister(&self.poll)?;
         }
 
-        Ok(access)
+        Ok(false)
     }
 
     fn can_recv(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
@@ -722,37 +658,48 @@ impl Node {
 
         Ok(success)
     }
+}
 
-    fn to_bridge_attach(&mut self, chan: &str) -> io::Result<()> {
-        let msg = msg!{
-            "_chan": "_brge_atta",
-            "_valu": chan
-        };
-
-        for id in &self.bridges {
-            if let Some(conn) = self.conns.get_mut(*id) {
-                conn.push_data(msg.to_vec().unwrap());
-                conn.reregister(&self.poll)?;
-            }
+impl Addr {
+    fn bind(&self) -> io::Result<Listen> {
+        match self {
+            Addr::Tcp(addr) => Ok(Listen::Tcp(TcpListener::bind(addr)?)),
+            Addr::Unix(addr) => Ok(Listen::Unix(UnixListener::bind(addr)?))
         }
+    }
+}
 
-        Ok(())
+#[derive(Debug)]
+enum Listen {
+    Tcp(TcpListener),
+    Unix(UnixListener)
+}
+
+impl Listen {
+    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+        match self {
+            Listen::Tcp(tcp) => poll.register(tcp, token, interest, opts),
+            Listen::Unix(unix) => poll.register(unix, token, interest, opts)
+        }
     }
 
-    fn to_bridge_detach(&mut self, chan: &str) -> io::Result<()>{
-        let msg = msg!{
-            "_chan": "_brge_deta",
-            "_valu": chan,
-        };
+    fn accept(&self) -> io::Result<(Stream, Addr)> {
+        match self {
+            Listen::Tcp(tcp) => {
+                tcp.accept().and_then(|(socket, addr)| {
+                    socket.set_nodelay(true)?;
+                    Ok((Stream::Tcp(socket), Addr::Tcp(addr))) 
+                })
+            }
+            Listen::Unix(unix) => {
+                unix.accept().and_then(|(socket, addr)| {
+                   
+                    let addr = addr.as_pathname().map(|p| p.display().to_string()).unwrap_or("unnamed".to_string());
 
-        for id in &self.bridges {
-            if let Some(conn) = self.conns.get_mut(*id) {
-                conn.push_data(msg.to_vec().unwrap());
-                conn.reregister(&self.poll)?;
+                    Ok((Stream::Unix(socket), Addr::Unix(addr)))
+                })
             }
         }
-
-        Ok(())
     }
 }
 
@@ -769,14 +716,8 @@ struct Connection {
     chans: HashSet<String>
 }
 
-#[derive(Debug)]
-enum Stream {
-    Tcp(TcpStream),
-    Unix(UnixStream)
-}
-
 impl Connection {
-    fn new(id: usize, addr: Addr, stream: Stream) -> io::Result<Connection> {
+    fn new(id: usize, addr: Addr, stream: Stream) -> Connection {
         let conn = Connection {
             id,
             addr,
@@ -789,7 +730,7 @@ impl Connection {
             chans: HashSet::new()
         };
 
-        Ok(conn)
+        conn
     }
 
     fn register(&self, poll: &Poll) -> io::Result<()>{
@@ -892,31 +833,6 @@ impl Connection {
     fn push_data(&mut self, data: Vec<u8>) {
         self.write_buffer.push_back(data.clone());
         self.interest.insert(Ready::writable());
-    }
-}
-
-impl Read for Stream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match self {
-            Stream::Tcp(tcp) => tcp.read(buf),
-            Stream::Unix(unix) => unix.read(buf)
-        }
-    }
-}
-
-impl Write for Stream {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match self {
-            Stream::Tcp(tcp) => tcp.write(buf),
-            Stream::Unix(unix) => unix.write(buf)
-        }
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        match self {
-            Stream::Tcp(tcp) => tcp.flush(),
-            Stream::Unix(unix) => unix.flush()
-        }
     }
 }
 

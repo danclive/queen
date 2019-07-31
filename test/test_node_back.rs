@@ -3,7 +3,7 @@ use std::net::TcpStream;
 use std::time::Duration;
 use std::io::ErrorKind::WouldBlock;
 
-use queen::Node;
+use queen::{Node, node::NodeConfig};
 use queen::nson::{msg, Message, decode::DecodeError};
 
 use super::get_free_addr;
@@ -14,7 +14,11 @@ fn back() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::bind(Some(&addr2), None).unwrap();
+        let mut config = NodeConfig::new();
+
+        config.tcp(addr2).unwrap();
+
+        let mut node = Node::bind(config).unwrap();
 
         node.run().unwrap();
     });
@@ -90,7 +94,7 @@ fn back() {
     // try recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
     let recv = Message::decode(&mut socket).unwrap();
-    assert!(recv.get_bool("_back").unwrap() == true);
+    assert!(recv.get_i32("_id").unwrap() == 123);
 }
 
 #[test]
@@ -99,7 +103,11 @@ fn back_time() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::bind(Some(&addr2), None).unwrap();
+        let mut config = NodeConfig::new();
+
+        config.tcp(addr2).unwrap();
+
+        let mut node = Node::bind(config).unwrap();
 
         node.run().unwrap();
     });
@@ -177,5 +185,5 @@ fn back_time() {
     // try recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
     let recv = Message::decode(&mut socket).unwrap();
-    assert!(recv.get_bool("_back").unwrap() == true);
+    assert!(recv.get_i32("_id").unwrap() == 123);
 }

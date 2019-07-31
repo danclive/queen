@@ -1,9 +1,8 @@
-use std::collections::{VecDeque, HashMap, HashSet};
-
-// use std::net::ToSocketAddrs;
-// use std::path::Path;
+use std::collections::{VecDeque, HashSet};
 use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
 use std::os::unix::io::AsRawFd;
+use std::time::Duration;
+use std::thread::sleep;
 
 use queen_io::tcp::TcpStream;
 use queen_io::unix::UnixStream;
@@ -11,17 +10,22 @@ use queen_io::unix::UnixStream;
 use nson::{Message, msg};
 
 use crate::poll::{poll, Ready, Events};
+use crate::net::{Addr, Stream};
 use crate::util::slice_msg;
 
 pub struct Bridge {
+    session_a: Session,
+    session_b: Session,
     read_buffer: VecDeque<Message>,
+    white_list: HashSet<String>,
     run: bool,
 }
 
 struct Session {
-    fd: i32,
-    conn: Option<Connection>,
-    state: SessionState
+    conn: Option<(i32, Connection)>,
+    state: SessionState,
+    addr: Addr,
+    auth_msg: Message
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -31,102 +35,47 @@ enum SessionState {
     Authed
 }
 
-impl Bridge {
-
-}
-// white list
-/*
-pub struct Bridge {
-    conns: HashMap<i32, Connection>,
-    sessions: Vec<Session>,
-    read_buffer: VecDeque<Message>,
-    run: bool,
-
-    conn_a: Option<(i32, Connection)>,
-    conn_b: Option<(i32, Connection)>
+#[derive(Clone)]
+pub struct LinkConfig {
+    pub addr: Addr,
+    pub auth_msg: Message
 }
 
 #[derive(Clone)]
-pub struct ConnConfig {
-    pub addr: ConnConfigAddr,
-    pub auth_msg: Message 
-}
-
-#[derive(Clone)]
-pub enum ConnConfigAddr {
+pub enum ConfigAddr {
     Tcp(String),
     Unix(String)
 }
 
-struct Session {
-    config: ConnConfig,
-    conn_id: Option<i32>,
-    state: SessionState,
-    chans: HashSet<String>
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum SessionState {
-    UnAuth,
-    Authing,
-    Authed
+pub struct BridgeConfig {
+    pub addr1: Addr,
+    pub auth_msg1: Message,
+    pub addr2: Addr,
+    pub auth_msg2: Message,
+    pub white_list: HashSet<String>
 }
 
 impl Bridge {
-    pub fn link(configs: &[ConnConfig]) -> io::Result<Bridge> {
-        let mut bridge = Bridge {
-            conns: HashMap::new(),
-            conn_a: None,
-            conn_b: None,
-            sessions: Vec::new(),
+    pub fn link(config: BridgeConfig) -> Bridge {
+        let bridge = Bridge {
+            session_a: Session {
+                conn: None,
+                state: SessionState::UnAuth,
+                addr: config.addr1,
+                auth_msg: config.auth_msg1
+            },
+            session_b: Session {
+                conn: None,
+                state: SessionState::UnAuth,
+                addr: config.addr2,
+                auth_msg: config.auth_msg2
+            },
             read_buffer: VecDeque::new(),
+            white_list: config.white_list,
             run: true
         };
 
-        if configs.len() != 2 {
-            panic!("{:?}", "configs must equal 2");
-        }
-
-        for conn_config in configs.iter() {
-            match conn_config.addr {
-                ConnConfigAddr::Tcp(ref addr) => {
-                    let socket = TcpStream::connect(addr)?;
-                    let fd = socket.as_raw_fd();
-
-                    let conn = Connection::new(Stream::Tcp(socket))?;
-
-                    bridge.conn_a = Some((fd, conn));
-
-                    // bridge.conns.insert(fd, conn);
-
-                    // bridge.sessions.push(Session {
-                    //     config: conn_config.clone(),
-                    //     conn_id: Some(fd),
-                    //     state: SessionState::UnAuth,
-                    //     chans: HashSet::new(),
-                    // });
-                },
-                ConnConfigAddr::Unix(ref addr) => {
-                    let socket = UnixStream::connect(addr)?;
-                    let fd = socket.as_raw_fd();
-
-                    let conn = Connection::new(Stream::Unix(socket))?;
-
-                    bridge.conn_b = Some((fd, conn));
-
-                    // bridge.conns.insert(fd, conn);
-
-                    // bridge.sessions.push(Session {
-                    //     config: conn_config.clone(),
-                    //     conn_id: Some(fd),
-                    //     state: SessionState::UnAuth,
-                    //     chans: HashSet::new(),
-                    // });
-                }
-            }
-        }
-
-        Ok(bridge)
+        bridge
     }
 
     pub fn run(&mut self) -> io::Result<()> {
@@ -137,247 +86,219 @@ impl Bridge {
         Ok(())
     }
 
-    fn run_once(&mut self) -> io::Result<()> {
+    pub fn run_once(&mut self) -> io::Result<()> {
         {
-            for session in &mut self.sessions {
-                if let Some(id) = session.conn_id {
-                    match session.state {
-                        SessionState::UnAuth => {
+            macro_rules! link {
+                ($session:ident) => {
+                    if self.$session.conn.is_none() {
+                        let conn = match self.$session.addr.connect() {
+                            Ok(conn) => conn,
+                            Err(err) => {
+                                println!("link: {:?} err: {}", self.$session.addr, err);
 
-                            let mut msg = msg!{
-                                "_chan": "_auth",
-                                "_brge": true
-                            };
+                                sleep(Duration::from_secs(1));
 
-                            msg.extend(session.config.auth_msg.clone());
+                                return Ok(())
+                            }
+                        };
 
-                            println!("{:?}", msg);
+                        let fd = conn.fd();
 
-                            self.conns.get_mut(&id).unwrap()
-                                .write_buffer.push_back(msg.to_vec().unwrap());
-
-                            session.state = SessionState::Authing;
-
-                            println!("{:?}", session.state);
-                        },
-                        _ => ()
+                        self.$session.conn = Some((fd, conn));
                     }
-                } else {
-                    // todo
-                }
+                };
             }
+
+            link!(session_a);
+            link!(session_b);
+        }
+
+        {
+            macro_rules! auth {
+                ($session:ident) => {
+                    if self.$session.state == SessionState::UnAuth {
+                        let mut msg = msg!{
+                            "_chan": "_auth",
+                            "_brge": true
+                        };
+
+                        msg.extend(self.$session.auth_msg.clone());
+
+                        self.$session.conn
+                            .as_mut().unwrap()
+                            .1.write_buffer.push_back(msg.to_vec().unwrap());
+
+                        self.$session.state = SessionState::Authing;
+                    }
+                };
+            }
+
+            auth!(session_a);
+            auth!(session_b);
         }
 
         let mut events = Events::new();
 
-        for (id, conn) in &self.conns {
-            let mut interest = Ready::readable() | Ready::hup();
+        {
+            macro_rules! event_put {
+                ($session:ident) => {
+                    let (fd, conn) = self.$session.conn.as_ref().unwrap();
 
-            if conn.write_buffer.len() > 0 {
-                interest.insert(Ready::writable());
+                    let mut interest = Ready::readable() | Ready::hup();
+
+                    if !conn.write_buffer.is_empty() {
+                        interest = interest | Ready::writable();
+                    }
+
+                    events.put(*fd, interest);
+                };
             }
-
-            events.put(*id, interest);
+            event_put!(session_a);
+            event_put!(session_b);
         }
 
-        if poll(&mut events, None)? > 0 {
+        if poll(&mut events, Some(<Duration>::from_secs(1)))? > 0 {
             for event in &events {
-                let readiness = event.readiness();
+                macro_rules! event {
+                    ($session:ident) => {
+                        if self.$session.conn.as_ref().map(|(id, _)| { *id == event.fd() }).unwrap_or(false) {
+                            let readiness = event.readiness();
 
-                if readiness.is_hup() || readiness.is_error() {
-                    self.remove_conn(event.fd())?;
+                            if readiness.is_hup() || readiness.is_error() {
+                                self.$session.conn = None;
+                                self.$session.state = SessionState::UnAuth;
 
-                    continue;
+                                continue;
+                            }
+
+                            if readiness.is_readable() {
+                                if let Some((_, conn)) = &mut self.$session.conn {
+                                    if conn.read(&mut self.read_buffer).is_err() {
+                                        self.$session.conn = None;
+                                        self.$session.state = SessionState::UnAuth;
+                                    }
+
+                                    if !self.read_buffer.is_empty() {
+                                        self.handle_message_from_conn(stringify!($session))?;
+                                    }
+                                }
+                            }
+
+                            if readiness.is_writable() {
+                                if let Some((_, conn)) = &mut self.$session.conn {
+                                    if conn.write().is_err() {
+                                        self.$session.conn = None;
+                                        self.$session.state = SessionState::UnAuth;
+                                    }
+                                }
+                            }
+                        }
+                    };
                 }
 
-                if readiness.is_readable() {
-                    if let Some(conn) = self.conns.get_mut(&event.fd()) {
-                        if conn.read(&mut self.read_buffer).is_err() {
-                            self.remove_conn(event.fd())?;
-                        }
-
-                        if !self.read_buffer.is_empty() {
-                            self.handle_message_from_conn(event.fd())?;
-                        }
-                    }
-                }
-
-                if readiness.is_writable() {
-                    if let Some(conn) = self.conns.get_mut(&event.fd()) {
-                        if conn.write().is_err() {
-                            self.remove_conn(event.fd())?;
-                        }
-                    }
-                }
+                event!(session_a);
+                event!(session_b);
             }
         }
- 
+
         Ok(())
     }
 
-    fn remove_conn(&mut self, id: i32) -> io:: Result<()> {
-        for session in &mut self.sessions {
-            if session.conn_id == Some(id) {
-                session.conn_id = None;
-                session.state = SessionState::UnAuth;
-            }
-        }
+    fn handle_message_from_conn(&mut self, s: &str) -> io::Result<()> {
+        macro_rules! handle_message {
+            ($session_a:ident, $session_b:ident) => {
+                while let Some(message) = self.read_buffer.pop_front() {
+                    if let Ok(chan) = message.get_str("_chan") {
+                        if chan.starts_with("_") {
+                            match chan {
+                                "_auth" => {
+                                    if let Ok(ok) = message.get_i32("ok") {
+                                        if ok == 0 {
 
-        self.conns.remove(&id);
+                                            self.$session_a.state = SessionState::Authed;
 
-        Ok(())
-    }
+                                            for chan in &self.white_list {
+                                                let msg = msg!{
+                                                    "_chan": "_atta",
+                                                    "_valu": chan
+                                                };
 
-    fn handle_message_from_conn(&mut self, id: i32) -> io::Result<()> {
-        while let Some(message) = self.read_buffer.pop_front() {
-            println!("{:?}", message);
-            if let Ok(chan) = message.get_str("_chan") {
-                if chan.starts_with("_") {
-                    match chan {
-                        "_auth" => {
-                            if let Ok(ok) = message.get_i32("ok") {
-                                if ok == 0 {
-                                    let mut chans: HashSet<String> = HashSet::new();
-
-                                    for session in &mut self.sessions {
-                                        if session.conn_id == None {
-                                            continue;
-                                        } else if session.conn_id == Some(id) {
-                                            session.state = SessionState::Authed;
-                                        } else {
-                                            chans.extend(session.chans.clone());
-                                        }
-                                    }
-
-                                    let conn = self.conns.get_mut(&id).unwrap();
-
-                                    for chan in chans {
-                                        let msg = msg!{
-                                            "_chan": "_atta",
-                                            "_valu": chan
-                                        };
-
-                                        conn.write_buffer.push_back(msg.to_vec().unwrap());
-                                    }
-                                } else {
-                                    // error
-                                    panic!("{:?}", "Auth failed!");
-                                }
-                            }
-                        },
-                        "_brge_atta" => {
-                            if let Ok(value) = message.get_str("_valu") {
-                                let mut already_atta = false;
-
-                                for session in &mut self.sessions {
-                                    if session.conn_id == Some(id) {
-                                        session.chans.insert(value.to_string());
-                                    } else {
-                                        if session.chans.contains(value) {
-                                            already_atta = true;
-                                        }
-                                    }
-                                }
-
-                                if !already_atta {
-                                    for (key, conn) in &mut self.conns {
-                                        if *key == id {
+                                                self.$session_a.conn
+                                                    .as_mut().unwrap()
+                                                    .1.write_buffer
+                                                    .push_back(msg.to_vec().unwrap());
+                                            }
                                             continue;
                                         }
-
-                                        let msg = msg!{
-                                            "_chan": "_atta",
-                                            "_valu": value
-                                        };
-
-                                        conn.write_buffer.push_back(msg.to_vec().unwrap());
                                     }
+
+                                    self.$session_a.state = SessionState::UnAuth;
                                 }
+                                "_atta" => {
+                                    println!("_atta: {:?}", message);
+                                }
+                                _ => ()
                             }
-                        },
-                        "_brge_deta" => {
-                            if let Ok(value) = message.get_str("_valu") {
-                                let mut should_deta = true;
-
-                                for session in &mut self.sessions {
-                                    if session.conn_id == Some(id) {
-                                        session.chans.insert(value.to_string());
-                                    } else {
-                                        if session.chans.contains(value) {
-                                            should_deta = false;
-                                        }
-                                    }
-                                }
-
-                                if should_deta {
-                                    for (key, conn) in &mut self.conns {
-                                        if *key == id {
-                                            continue;
-                                        }
-
-                                        let msg = msg!{
-                                            "_chan": "_deta",
-                                            "_valu": value
-                                        };
-
-                                        conn.write_buffer.push_back(msg.to_vec().unwrap());
-                                    }
-                                }
+                        } else {
+                            if self.$session_a.state != SessionState::Authed || self.$session_b.state != SessionState::Authed {
+                                continue;
                             }
-                        },
-                        "_atta" => (println!("{:?}", "_atta")),
-                        "_deta" => (println!("{:?}", "_deta")),
-                        _ => ()
-                    }
-                } else {
-                    for session in &mut self.sessions {
-                        if session.conn_id == Some(id) {
-                            continue;
-                        }
 
-                        if session.state != SessionState::Authed {
-                            continue;
-                        }
-
-                        if !session.chans.contains(chan) {
-                            continue;
-                        }
-
-                        if let Some(conn) = self.conns.get_mut(&id) {
-                            conn.write_buffer.push_back(message.to_vec().unwrap());
+                            if let Some((_, conn)) = &mut self.$session_b.conn {            
+                                conn.write_buffer.push_back(message.to_vec().unwrap());
+                            }
                         }
                     }
                 }
-            }
+
+            };
+        }
+
+        if s == "session_a" {
+            handle_message!(session_a, session_b);
+        } else if s == "session_b" {
+            handle_message!(session_b, session_a);
         }
 
         Ok(())
     }
 }
-*/
-#[derive(Debug)]
-enum Stream {
-    Tcp(TcpStream),
-    Unix(UnixStream)
+
+impl Addr {
+    fn connect(&self) -> io::Result<Connection> {
+        match self {
+            Addr::Tcp(addr) => {
+                let socket = TcpStream::connect(addr)?;
+                socket.set_nodelay(true)?;
+                Ok(Connection::new(Stream::Tcp(socket)))
+            }
+            Addr::Unix(path) => {
+                let socket = UnixStream::connect(path)?;
+                Ok(Connection::new(Stream::Unix(socket)))
+            }
+        }
+    }
 }
 
 struct Connection {
     stream: Stream,
-    // interest: Ready,
     read_buffer: Vec<u8>,
     write_buffer: VecDeque<Vec<u8>>,
 }
 
 impl Connection {
-    fn new(stream: Stream) -> io::Result<Connection> {
+    fn new(stream: Stream) -> Connection {
         let conn = Connection {
             stream,
-            // interest: Ready::readable() | Ready::hup(),
             read_buffer: Vec::new(),
             write_buffer: VecDeque::new(),
         };
 
-        Ok(conn)
+        conn
+    }
+
+    fn fd(&self) -> i32 {
+        self.stream.as_raw_fd()
     }
 
     fn read(&mut self, read_buffer: &mut VecDeque<Message>) -> io::Result<()> {
@@ -439,30 +360,5 @@ impl Connection {
         }
 
         Ok(())
-    }
-}
-
-impl Read for Stream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match self {
-            Stream::Tcp(tcp) => tcp.read(buf),
-            Stream::Unix(unix) => unix.read(buf)
-        }
-    }
-}
-
-impl Write for Stream {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match self {
-            Stream::Tcp(tcp) => tcp.write(buf),
-            Stream::Unix(unix) => unix.write(buf)
-        }
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        match self {
-            Stream::Tcp(tcp) => tcp.flush(),
-            Stream::Unix(unix) => unix.flush()
-        }
     }
 }

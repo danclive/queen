@@ -6,7 +6,7 @@ use std::fs;
 
 use rand::random;
 
-use queen::{Node, node::Callback};
+use queen::{Node, node::Callback, node::NodeConfig};
 use queen::nson::{msg, Message};
 
 use super::get_free_addr;
@@ -17,7 +17,11 @@ fn tcp_accept() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::bind(Some(&addr2), None).unwrap();
+        let mut config = NodeConfig::new();
+
+        config.tcp(addr2).unwrap();
+
+        let mut node = Node::bind(config).unwrap();
 
         let mut callback = Callback::default();
 
@@ -45,11 +49,15 @@ fn tcp_accept() {
 #[test]
 fn unix_accept() {
 
-    let rand_path = format!("/tmp/.queen-{}", random::<u32>());
+    let rand_path = format!("/tmp/.queen-{}.socket", random::<u32>());
 
     let rand_path2 = rand_path.clone();
     thread::spawn(move || {
-        let mut node = Node::bind(None, Some(&rand_path2)).unwrap();
+        let mut config = NodeConfig::new();
+
+        config.unix(rand_path2);
+
+        let mut node = Node::bind(config).unwrap();
 
         let mut callback = Callback::default();
 

@@ -2,7 +2,7 @@ use std::thread;
 use std::net::TcpStream;
 use std::time::Duration;
 
-use queen::{Node, node::Callback};
+use queen::{Node, node::Callback, node::NodeConfig};
 use queen::nson::{msg, Message};
 use queen::error::ErrorCode;
 
@@ -14,7 +14,11 @@ fn no_auth() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::bind(Some(&addr2), None).unwrap();
+        let mut config = NodeConfig::new();
+
+        config.tcp(addr2).unwrap();
+
+        let mut node = Node::bind(config).unwrap();
 
         node.run().unwrap();
     });
@@ -84,7 +88,11 @@ fn do_auth() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::bind(Some(&addr2), None).unwrap();
+        let mut config = NodeConfig::new();
+
+        config.tcp(addr2).unwrap();
+
+        let mut node = Node::bind(config).unwrap();
 
         node.run().unwrap();
     });
@@ -134,7 +142,11 @@ fn can_auth() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::bind(Some(&addr2), None).unwrap();
+        let mut config = NodeConfig::new();
+
+        config.tcp(addr2).unwrap();
+
+        let mut node = Node::bind(config).unwrap();
 
         let mut callback = Callback::default();
 

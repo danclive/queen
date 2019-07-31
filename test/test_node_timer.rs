@@ -3,7 +3,7 @@ use std::net::TcpStream;
 use std::time::Duration;
 use std::io::ErrorKind::WouldBlock;
 
-use queen::Node;
+use queen::{Node, node::NodeConfig};
 use queen::nson::{msg, Message, decode::DecodeError};
 use queen::error::ErrorCode;
 
@@ -15,7 +15,11 @@ fn timer() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::bind(Some(&addr2), None).unwrap();
+        let mut config = NodeConfig::new();
+
+        config.tcp(addr2).unwrap();
+
+        let mut node = Node::bind(config).unwrap();
 
         node.run().unwrap();
     });
@@ -111,7 +115,11 @@ fn del_time_id() {
 
     let addr2 = addr.clone();
     thread::spawn(move || {
-        let mut node = Node::bind(Some(&addr2), None).unwrap();
+        let mut config = NodeConfig::new();
+
+        config.tcp(addr2).unwrap();
+
+        let mut node = Node::bind(config).unwrap();
 
         node.run().unwrap();
     });

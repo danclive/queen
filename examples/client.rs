@@ -33,6 +33,6 @@ fn main() {
 
     loop {
         let recv = Message::decode(&mut socket).unwrap();
-        println!("{:?}", recv);
+        // println!("{:?}", recv);
     }
 }
