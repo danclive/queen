@@ -8,7 +8,7 @@ use queen_io::unix::UnixStream;
 #[derive(Debug, Clone)]
 pub enum Addr {
     Tcp(SocketAddr),
-    Unix(String)
+    Uds(String)
 }
 
 impl Addr {
@@ -17,8 +17,8 @@ impl Addr {
         Ok(Addr::Tcp(addr.next().expect("can't paser addr!")))
     }
 
-    pub fn unix(path: String) -> Addr {
-        Addr::Unix(path)
+    pub fn uds(path: String) -> Addr {
+        Addr::Uds(path)
     }
 
     pub fn is_tcp(&self) -> bool {

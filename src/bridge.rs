@@ -44,7 +44,7 @@ pub struct LinkConfig {
 #[derive(Clone)]
 pub enum ConfigAddr {
     Tcp(String),
-    Unix(String)
+    Uds(String)
 }
 
 pub struct BridgeConfig {
@@ -272,7 +272,7 @@ impl Addr {
                 socket.set_nodelay(true)?;
                 Ok(Connection::new(Stream::Tcp(socket)))
             }
-            Addr::Unix(path) => {
+            Addr::Uds(path) => {
                 let socket = UnixStream::connect(path)?;
                 Ok(Connection::new(Stream::Unix(socket)))
             }

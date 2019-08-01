@@ -55,7 +55,7 @@ fn unix_accept() {
     thread::spawn(move || {
         let mut config = NodeConfig::new();
 
-        config.unix(rand_path2);
+        config.uds(rand_path2);
 
         let mut node = Node::bind(config).unwrap();
 

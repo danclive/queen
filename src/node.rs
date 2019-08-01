@@ -65,8 +65,8 @@ impl NodeConfig {
         Ok(())
     }
 
-    pub fn unix(&mut self, path: String) {
-        self.addrs.push(Addr::Unix(path))
+    pub fn uds(&mut self, path: String) {
+        self.addrs.push(Addr::Uds(path))
     }
 }
 
@@ -664,7 +664,7 @@ impl Addr {
     fn bind(&self) -> io::Result<Listen> {
         match self {
             Addr::Tcp(addr) => Ok(Listen::Tcp(TcpListener::bind(addr)?)),
-            Addr::Unix(addr) => Ok(Listen::Unix(UnixListener::bind(addr)?))
+            Addr::Uds(addr) => Ok(Listen::Unix(UnixListener::bind(addr)?))
         }
     }
 }
@@ -696,7 +696,7 @@ impl Listen {
                    
                     let addr = addr.as_pathname().map(|p| p.display().to_string()).unwrap_or("unnamed".to_string());
 
-                    Ok((Stream::Unix(socket), Addr::Unix(addr)))
+                    Ok((Stream::Unix(socket), Addr::Uds(addr)))
                 })
             }
         }
