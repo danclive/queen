@@ -24,9 +24,19 @@ pub struct Context<'a> {
 struct InnerCenter {
     queue: BlockQueue<(String, Option<Value>, Value, bool, bool)>,
     map: Mutex<HashMap<String, Value>>,
-    handles: RwLock<HashMap<String, Vec<(i32, Arc<dyn Fn(Context) + Send + Sync + 'static>)>>>,
-    all: RwLock<Vec<(i32, Arc<dyn Fn(Context) + Send + Sync + 'static>)>>,
+    handles: Handles,
+    all: RwLock<Vec<(i32, Arc<AllFn>)>>,
     next_id: AtomicIsize
+}
+
+type Handles = RwLock<HashMap<String, Vec<(i32, Arc<HandleFn>)>>>;
+type HandleFn = dyn Fn(Context) + Send + Sync + 'static;
+type AllFn = dyn Fn(Context) + Send + Sync + 'static;
+
+impl Default for Center {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Center {
@@ -87,7 +97,7 @@ impl Center {
 
     pub fn get(&self, key: &str) -> Option<Value>{
         let map = self.inner.map.lock().unwrap();
-        map.get(key).map(|v| v.clone())
+        map.get(key).cloned()
     }
 
     pub fn remove(&self, key: &str) -> Option<Value> {
@@ -99,7 +109,7 @@ impl Center {
         let mut handles = self.inner.handles.write().unwrap();
         let id = self.inner.next_id.fetch_add(1, SeqCst) as i32;
 
-        let vector = handles.entry(key.to_owned()).or_insert(vec![]);
+        let vector = handles.entry(key.to_owned()).or_insert_with(|| vec![]);
         vector.push((id, Arc::new(handle)));
 
         id

@@ -12,4 +12,4 @@ pub use nson;
 pub use node::Node;
 pub use crate::queen::{Queen, Context};
 
-pub const MAX_MESSAGE_LEN: usize = 16777216; // 16 MB
+pub const MAX_MESSAGE_LEN: usize = 16_777_216; // 16 MB

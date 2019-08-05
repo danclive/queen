@@ -57,7 +57,7 @@ pub struct BridgeConfig {
 
 impl Bridge {
     pub fn link(config: BridgeConfig) -> Bridge {
-        let bridge = Bridge {
+        Bridge {
             session_a: Session {
                 conn: None,
                 state: SessionState::UnAuth,
@@ -73,9 +73,7 @@ impl Bridge {
             read_buffer: VecDeque::new(),
             white_list: config.white_list,
             run: true
-        };
-
-        bridge
+        }
     }
 
     pub fn run(&mut self) -> io::Result<()> {
@@ -288,13 +286,11 @@ struct Connection {
 
 impl Connection {
     fn new(stream: Stream) -> Connection {
-        let conn = Connection {
+        Connection {
             stream,
             read_buffer: Vec::new(),
             write_buffer: VecDeque::new(),
-        };
-
-        conn
+        }
     }
 
     fn fd(&self) -> i32 {

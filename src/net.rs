@@ -26,7 +26,7 @@ impl Addr {
             return true
         }
 
-        return false
+        false
     }
 }
 

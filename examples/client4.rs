@@ -5,7 +5,7 @@ use queen::nson::msg;
 use queen::nson::Message;
 
 fn main() {
-    let mut socket = TcpStream::connect("127.0.0.1:8888").unwrap();
+    let mut socket = TcpStream::connect("10.254.22.39:8888").unwrap();
 
     println!("{:?}", socket);
 
@@ -36,7 +36,7 @@ fn main() {
         msg.encode(&mut socket).unwrap();
 
         let recv = Message::decode(&mut socket).unwrap();
-        //println!("{:?}", recv);
+        println!("{:?}", recv);
 
         i -= 1;
     }

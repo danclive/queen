@@ -39,15 +39,24 @@ pub struct Node {
 
 #[derive(Default)]
 pub struct Callback {
-    pub accept_fn: Option<Box<dyn Fn(usize, Addr) -> bool>>,
-    pub remove_fn: Option<Box<dyn Fn(usize, Addr)>>,
-    pub recv_fn: Option<Box<dyn Fn(usize, &mut Message) -> bool>>,
-    pub auth_fn: Option<Box<dyn Fn(usize, &mut Message) -> bool>>,
-    pub attach_fn: Option<Box<dyn Fn(usize, &mut Message) -> bool>>,
-    pub detach_fn: Option<Box<dyn Fn(usize, &mut Message)>>,
-    pub emit_fn: Option<Box<dyn Fn(usize, &mut Message) -> bool>>
+    pub accept_fn: Option<AcceptFn>,
+    pub remove_fn: Option<RemoveFn>,
+    pub recv_fn: Option<RecvFn>,
+    pub auth_fn: Option<AuthFn>,
+    pub attach_fn: Option<AttachFn>,
+    pub detach_fn: Option<DetachFn>,
+    pub emit_fn: Option<EmitFn>
 }
 
+type AcceptFn = Box<dyn Fn(usize, &Addr) -> bool>;
+type RemoveFn = Box<dyn Fn(usize, &Addr)>;
+type RecvFn = Box<dyn Fn(usize, &Addr, &mut Message) -> bool>;
+type AuthFn = Box<dyn Fn(usize, &Addr, &mut Message) -> bool>;
+type AttachFn = Box<dyn Fn(usize, &Addr, &mut Message) -> bool>;
+type DetachFn = Box<dyn Fn(usize, &Addr, &mut Message)>;
+type EmitFn = Box<dyn Fn(usize, &Addr, &mut Message) -> bool>;
+
+#[derive(Default)]
 pub struct NodeConfig {
     pub addrs: Vec<Addr>
 }
@@ -75,7 +84,7 @@ impl Node {
 
     pub fn bind(config: NodeConfig) -> io::Result<Node> {
 
-        if config.addrs.len() == 0 {
+        if config.addrs.is_empty() {
             panic!("{:?}", "config.addrs must >= 1");
         }
 
@@ -175,7 +184,7 @@ impl Node {
                 let entry = self.conns.vacant_entry();
 
                 let success = if let Some(accept_fn) = &self.callback.accept_fn {
-                    accept_fn(entry.key(), addr.clone())
+                    accept_fn(entry.key(), &addr)
                 } else {
                     true
                 };
@@ -207,11 +216,7 @@ impl Node {
     fn dispatch_conn(&mut self, token: Token, event: Event) -> io::Result<()> {
         let readiness = event.readiness();
         
-        let mut remove = false;
-
-        if readiness.is_hup() || readiness.is_error() {
-            remove = true;
-        }
+        let mut remove = readiness.is_hup() || readiness.is_error();
 
         if readiness.is_readable() {
             if let Some(conn) = self.conns.get_mut(token.0) {
@@ -221,8 +226,10 @@ impl Node {
                     conn.reregister(&self.poll)?;
                 }
 
+                let addr = conn.addr.clone();
+
                 if !self.read_buffer.is_empty() {
-                    self.handle_message_from_conn(token.0)?;
+                    self.handle_message_from_conn(token.0, addr)?;
                 }
             }
         }
@@ -260,17 +267,17 @@ impl Node {
             }
 
             if let Some(remove_fn) = &self.callback.remove_fn {
-                remove_fn(id, conn.addr);
+                remove_fn(id, &conn.addr);
             }
         }
 
         Ok(())
     }
 
-    fn handle_message_from_conn(&mut self, id: usize) -> io::Result<()> {
+    fn handle_message_from_conn(&mut self, id: usize, addr: Addr) -> io::Result<()> {
         while let Some(mut message) = self.read_buffer.pop_front() {
 
-            if !self.can_recv(id, &mut message)? {
+            if !self.can_recv(id, &addr, &mut message)? {
                 return Ok(())
             }
 
@@ -285,11 +292,11 @@ impl Node {
                 }
             };
 
-            if chan.starts_with("_") {
+            if chan.starts_with('_') {
                 match chan {
-                    "_auth" => self.node_auth(id, message)?,
-                    "_atta" => self.node_attach(id, message)?,
-                    "_deta" => self.node_detach(id, message)?,
+                    "_auth" => self.node_auth(id, &addr, message)?,
+                    "_atta" => self.node_attach(id, &addr, message)?,
+                    "_deta" => self.node_detach(id, &addr, message)?,
                     "_delt" => self.node_deltime(id, message)?,
                     "_ping" => self.node_ping(id, message)?,
                     // "_quer" => self.node_query(id, message)?,
@@ -301,17 +308,13 @@ impl Node {
                     }
                 }
             } else {
-                let mut has_chan = false;
-
-                if self.chans.contains_key(chan) {
-                    has_chan = true;
-                }
+                let has_chan = self.chans.contains_key(chan);
 
                 if !self.check_auth(id, &mut message)? {
                     return Ok(())
                 }
 
-                if !self.can_emit(id, &mut message)? {
+                if !self.can_emit(id, &addr, &mut message)? {
                     return Ok(())
                 }
 
@@ -388,8 +391,8 @@ impl Node {
         Ok(())
     }
 
-    fn node_auth(&mut self, id: usize, mut message: Message) -> io::Result<()> {
-        if !self.can_auth(id, &mut message)? {
+    fn node_auth(&mut self, id: usize, addr: &Addr,mut message: Message) -> io::Result<()> {
+        if !self.can_auth(id, addr, &mut message)? {
             return Ok(())
         }
 
@@ -406,13 +409,13 @@ impl Node {
         Ok(())
     }
 
-    fn node_attach(&mut self, id: usize, mut message: Message) -> io::Result<()> {
+    fn node_attach(&mut self, id: usize, addr: &Addr, mut message: Message) -> io::Result<()> {
         if !self.check_auth(id, &mut message)? {
             return Ok(())
         }
 
         if let Ok(chan) = message.get_str("_valu").map(ToOwned::to_owned) {
-            if !self.can_attach(id, &mut message)? {
+            if !self.can_attach(id, addr, &mut message)? {
                 return Ok(())
             }
 
@@ -431,14 +434,14 @@ impl Node {
         Ok(())
     }
 
-    fn node_detach(&mut self, id: usize, mut message: Message) -> io::Result<()> {
+    fn node_detach(&mut self, id: usize, addr: &Addr, mut message: Message) -> io::Result<()> {
         if !self.check_auth(id, &mut message)? {
             return Ok(())
         }
 
         if let Ok(chan) = message.get_str("_valu").map(ToOwned::to_owned) {
             if let Some(detach_fn) = &self.callback.detach_fn {
-                detach_fn(id, &mut message);
+                detach_fn(id, addr, &mut message);
             }
 
             self.session_detach(id, chan)?;
@@ -548,10 +551,8 @@ impl Node {
                             conn.push_data(message.to_vec().unwrap());
                             conn.reregister(&self.poll)?;
                         }
-                    } else {
-                        if let Some(id) = array.choose(&mut self.rand) {
-                            self.push_data_to_conn(*id, message.to_vec().unwrap())?;
-                        }
+                    } else if let Some(id) = array.choose(&mut self.rand) {
+                        self.push_data_to_conn(*id, message.to_vec().unwrap())?;
                     }
 
                     return Ok(())
@@ -581,7 +582,7 @@ impl Node {
 
     fn check_auth(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
         if let Some(conn) = self.conns.get_mut(id) {
-            if conn.auth == true {
+            if conn.auth {
                 return Ok(true)
             }
 
@@ -594,9 +595,9 @@ impl Node {
         Ok(false)
     }
 
-    fn can_recv(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
+    fn can_recv(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
         let success = if let Some(recv_fn) = &self.callback.recv_fn {
-            recv_fn(id, message)
+            recv_fn(id, addr, message)
         } else {
             true
         };
@@ -610,9 +611,9 @@ impl Node {
         Ok(success)
     }
 
-    fn can_auth(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
+    fn can_auth(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
         let success = if let Some(auth_fn) = &self.callback.auth_fn {
-            auth_fn(id, message)
+            auth_fn(id, addr, message)
         } else {
             true
         };
@@ -627,9 +628,9 @@ impl Node {
         Ok(success)
     }
 
-    fn can_attach(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
+    fn can_attach(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
          let success = if let Some(attach_fn) = &self.callback.attach_fn {
-            attach_fn(id, message)
+            attach_fn(id, addr, message)
         } else {
             true
         };
@@ -643,9 +644,9 @@ impl Node {
         Ok(success)
     }
 
-    fn can_emit(&mut self, id: usize, message: &mut Message) -> io::Result<bool> {
+    fn can_emit(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
         let success = if let Some(emit_fn) = &self.callback.emit_fn {
-            emit_fn(id, message)
+            emit_fn(id, addr, message)
         } else {
             true
         };
@@ -694,7 +695,7 @@ impl Listen {
             Listen::Unix(unix) => {
                 unix.accept().and_then(|(socket, addr)| {
                    
-                    let addr = addr.as_pathname().map(|p| p.display().to_string()).unwrap_or("unnamed".to_string());
+                    let addr = addr.as_pathname().map(|p| p.display().to_string()).unwrap_or_else(|| "unnamed".to_string());
 
                     Ok((Stream::Unix(socket), Addr::Uds(addr)))
                 })
@@ -718,7 +719,7 @@ struct Connection {
 
 impl Connection {
     fn new(id: usize, addr: Addr, stream: Stream) -> Connection {
-        let conn = Connection {
+        Connection {
             id,
             addr,
             stream,
@@ -728,9 +729,7 @@ impl Connection {
             auth: false,
             bridge: false,
             chans: HashSet::new()
-        };
-
-        conn
+        }
     }
 
     fn register(&self, poll: &Poll) -> io::Result<()>{
@@ -988,31 +987,31 @@ impl<T> AsRawFd for Timer<T> {
 }
 
 impl Callback {
-    pub fn accept<F>(&mut self, f: F) where F: Fn(usize, Addr) -> bool + 'static {
+    pub fn accept<F>(&mut self, f: F) where F: Fn(usize, &Addr) -> bool + 'static {
         self.accept_fn = Some(Box::new(f))
     }
 
-    pub fn remove<F>(&mut self, f: F) where F: Fn(usize, Addr) + 'static {
+    pub fn remove<F>(&mut self, f: F) where F: Fn(usize, &Addr) + 'static {
         self.remove_fn = Some(Box::new(f))
     }
 
-    pub fn recv<F>(&mut self, f: F) where F: Fn(usize, &mut Message) -> bool + 'static {
+    pub fn recv<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message) -> bool + 'static {
         self.recv_fn = Some(Box::new(f))
     }
 
-    pub fn auth<F>(&mut self, f: F) where F: Fn(usize, &mut Message) -> bool + 'static {
+    pub fn auth<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message) -> bool + 'static {
         self.auth_fn = Some(Box::new(f))
     }
 
-    pub fn attach<F>(&mut self, f: F) where F: Fn(usize, &mut Message) -> bool + 'static {
+    pub fn attach<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message) -> bool + 'static {
         self.attach_fn = Some(Box::new(f))
     }
 
-    pub fn detach<F>(&mut self, f: F) where F: Fn(usize, &mut Message) + 'static {
+    pub fn detach<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message) + 'static {
         self.detach_fn = Some(Box::new(f))
     }
 
-    pub fn emit<F>(&mut self, f: F) where F: Fn(usize, &mut Message) -> bool + 'static {
+    pub fn emit<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message) -> bool + 'static {
         self.emit_fn = Some(Box::new(f))
     }
 }

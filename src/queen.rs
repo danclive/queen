@@ -18,10 +18,13 @@ pub struct Queen {
 
 struct QueenInner {
     queue: BlockQueue<(String, Message)>,
-    handles: RwLock<HashMap<String, Vec<(i32, Arc<dyn Fn(Context) + Send + Sync + 'static>)>>>,
+    handles: Handles,
     next_id: AtomicIsize,
     timer: Timer
 }
+
+type Handles = RwLock<HashMap<String, Vec<(i32, Arc<HandleFn>)>>>;
+type HandleFn = dyn Fn(Context) + Send + Sync + 'static;
 
 pub struct Context<'a> {
     pub queen: &'a Queen,

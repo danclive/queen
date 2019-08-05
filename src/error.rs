@@ -25,8 +25,8 @@ pub enum ErrorCode {
 }
 
 impl ErrorCode {
-    pub fn code(&self) -> i32 {
-        *self as i32
+    pub fn code(self) -> i32 {
+        self as i32
     }
 
     pub fn to_str(&self) -> &str{
