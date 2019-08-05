@@ -19,7 +19,7 @@ fn attach() {
 
         config.tcp(addr2).unwrap();
 
-        let mut node = Node::bind(config).unwrap();
+        let mut node = Node::bind(config, ()).unwrap();
 
         node.run().unwrap();
     });

@@ -18,7 +18,7 @@ fn no_auth() {
 
         config.tcp(addr2).unwrap();
 
-        let mut node = Node::bind(config).unwrap();
+        let mut node = Node::bind(config, ()).unwrap();
 
         node.run().unwrap();
     });
@@ -92,7 +92,7 @@ fn do_auth() {
 
         config.tcp(addr2).unwrap();
 
-        let mut node = Node::bind(config).unwrap();
+        let mut node = Node::bind(config, ()).unwrap();
 
         node.run().unwrap();
     });
@@ -146,11 +146,11 @@ fn can_auth() {
 
         config.tcp(addr2).unwrap();
 
-        let mut node = Node::bind(config).unwrap();
+        let mut node = Node::bind(config, ()).unwrap();
 
         let mut callback = Callback::default();
 
-        callback.auth(|_id, msg| {
+        callback.auth(|_id, _, msg, _,| {
             let username = msg.get_str("username").unwrap();
             let password = msg.get_str("password").unwrap();
 

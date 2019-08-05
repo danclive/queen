@@ -6,21 +6,21 @@ fn main() {
 
     config.tcp("0.0.0.0:8888").unwrap();
 
-    let mut node = Node::bind(config).unwrap();
+    let mut node = Node::bind(config, ()).unwrap();
 
-    let mut callback = Callback::default();
+    let mut callback = Callback::new();
 
-    callback.accept(|id, addr| {
+    callback.accept(move |id, addr, _| {
         println!("accept, id: {:?}, addr: {:?}", id, addr);
         return true
     });
 
-    callback.recv(|id, msg| {
+    callback.recv(|id, _addr, msg, _| {
         println!("recv:, id: {:?}, addr: {:?}", id, msg);
         return true;
     });
 
-    callback.auth(|id, msg| {
+    callback.auth(|id, _addr, msg, _| {
         println!("auth, id: {:?}, addr: {:?}", id, msg);
         return true;
     });

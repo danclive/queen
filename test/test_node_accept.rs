@@ -21,11 +21,11 @@ fn tcp_accept() {
 
         config.tcp(addr2).unwrap();
 
-        let mut node = Node::bind(config).unwrap();
+        let mut node = Node::bind(config, ()).unwrap();
 
         let mut callback = Callback::default();
 
-        callback.accept(|_id, _msg| {
+        callback.accept(|_id, _msg, _| {
             return false;
         });
 
@@ -57,11 +57,11 @@ fn unix_accept() {
 
         config.uds(rand_path2);
 
-        let mut node = Node::bind(config).unwrap();
+        let mut node = Node::bind(config, ()).unwrap();
 
         let mut callback = Callback::default();
 
-        callback.accept(|_id, _msg| {
+        callback.accept(|_id, _msg, _| {
             return false;
         });
 

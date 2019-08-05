@@ -6,7 +6,7 @@ fn main() {
 
     config.tcp("10.254.22.39:8888").unwrap();
 
-    let mut node = Node::bind(config).unwrap();
+    let mut node = Node::bind(config, ()).unwrap();
 
     node.run().unwrap();
 }

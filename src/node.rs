@@ -23,7 +23,7 @@ use crate::net::{Addr, Stream};
 use crate::util::slice_msg;
 use crate::error::ErrorCode;
 
-pub struct Node {
+pub struct Node<T> {
     poll: Poll,
     events: Events,
     listens: HashMap<usize, Listen>,
@@ -31,30 +31,31 @@ pub struct Node {
     timer: Timer<(Option<usize>, Message)>,
     conns: Slab<Connection>,
     read_buffer: VecDeque<Message>,
-    callback: Callback,
+    callback: Callback<T>,
     chans: HashMap<String, HashSet<usize>>,
     rand: ThreadRng,
+    user_data: T,
     run: bool
 }
 
 #[derive(Default)]
-pub struct Callback {
-    pub accept_fn: Option<AcceptFn>,
-    pub remove_fn: Option<RemoveFn>,
-    pub recv_fn: Option<RecvFn>,
-    pub auth_fn: Option<AuthFn>,
-    pub attach_fn: Option<AttachFn>,
-    pub detach_fn: Option<DetachFn>,
-    pub emit_fn: Option<EmitFn>
+pub struct Callback<T> {
+    pub accept_fn: Option<AcceptFn<T>>,
+    pub remove_fn: Option<RemoveFn<T>>,
+    pub recv_fn: Option<RecvFn<T>>,
+    pub auth_fn: Option<AuthFn<T>>,
+    pub attach_fn: Option<AttachFn<T>>,
+    pub detach_fn: Option<DetachFn<T>>,
+    pub emit_fn: Option<EmitFn<T>>
 }
 
-type AcceptFn = Box<dyn Fn(usize, &Addr) -> bool>;
-type RemoveFn = Box<dyn Fn(usize, &Addr)>;
-type RecvFn = Box<dyn Fn(usize, &Addr, &mut Message) -> bool>;
-type AuthFn = Box<dyn Fn(usize, &Addr, &mut Message) -> bool>;
-type AttachFn = Box<dyn Fn(usize, &Addr, &mut Message) -> bool>;
-type DetachFn = Box<dyn Fn(usize, &Addr, &mut Message)>;
-type EmitFn = Box<dyn Fn(usize, &Addr, &mut Message) -> bool>;
+type AcceptFn<T> = Box<dyn Fn(usize, &Addr, &mut T) -> bool>;
+type RemoveFn<T> = Box<dyn Fn(usize, &Addr, &mut T)>;
+type RecvFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
+type AuthFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
+type AttachFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
+type DetachFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T)>;
+type EmitFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
 
 #[derive(Default)]
 pub struct NodeConfig {
@@ -79,10 +80,10 @@ impl NodeConfig {
     }
 }
 
-impl Node {
+impl<T> Node<T> {
     const TIMER: Token = Token(usize::MAX);
 
-    pub fn bind(config: NodeConfig) -> io::Result<Node> {
+    pub fn bind(config: NodeConfig, user_data: T) -> io::Result<Node<T>> {
 
         if config.addrs.is_empty() {
             panic!("{:?}", "config.addrs must >= 1");
@@ -116,13 +117,14 @@ impl Node {
             },
             chans: HashMap::new(),
             rand: thread_rng(),
+            user_data,
             run: true
         };
 
         Ok(node)
     }
 
-    pub fn set_callback(&mut self, callback: Callback) {
+    pub fn set_callback(&mut self, callback: Callback<T>) {
         self.callback = callback;
     }
 
@@ -184,7 +186,7 @@ impl Node {
                 let entry = self.conns.vacant_entry();
 
                 let success = if let Some(accept_fn) = &self.callback.accept_fn {
-                    accept_fn(entry.key(), &addr)
+                    accept_fn(entry.key(), &addr, &mut self.user_data)
                 } else {
                     true
                 };
@@ -267,7 +269,7 @@ impl Node {
             }
 
             if let Some(remove_fn) = &self.callback.remove_fn {
-                remove_fn(id, &conn.addr);
+                remove_fn(id, &conn.addr, &mut self.user_data);
             }
         }
 
@@ -441,7 +443,7 @@ impl Node {
 
         if let Ok(chan) = message.get_str("_valu").map(ToOwned::to_owned) {
             if let Some(detach_fn) = &self.callback.detach_fn {
-                detach_fn(id, addr, &mut message);
+                detach_fn(id, addr, &mut message, &mut self.user_data);
             }
 
             self.session_detach(id, chan)?;
@@ -597,7 +599,7 @@ impl Node {
 
     fn can_recv(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
         let success = if let Some(recv_fn) = &self.callback.recv_fn {
-            recv_fn(id, addr, message)
+            recv_fn(id, addr, message, &mut self.user_data)
         } else {
             true
         };
@@ -613,7 +615,7 @@ impl Node {
 
     fn can_auth(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
         let success = if let Some(auth_fn) = &self.callback.auth_fn {
-            auth_fn(id, addr, message)
+            auth_fn(id, addr, message, &mut self.user_data)
         } else {
             true
         };
@@ -630,7 +632,7 @@ impl Node {
 
     fn can_attach(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
          let success = if let Some(attach_fn) = &self.callback.attach_fn {
-            attach_fn(id, addr, message)
+            attach_fn(id, addr, message, &mut self.user_data)
         } else {
             true
         };
@@ -646,7 +648,7 @@ impl Node {
 
     fn can_emit(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
         let success = if let Some(emit_fn) = &self.callback.emit_fn {
-            emit_fn(id, addr, message)
+            emit_fn(id, addr, message, &mut self.user_data)
         } else {
             true
         };
@@ -986,32 +988,44 @@ impl<T> AsRawFd for Timer<T> {
     }
 }
 
-impl Callback {
-    pub fn accept<F>(&mut self, f: F) where F: Fn(usize, &Addr) -> bool + 'static {
+impl<T> Callback<T> {
+    pub fn new() -> Callback<T> {
+        Callback {
+            accept_fn: None,
+            remove_fn: None,
+            recv_fn: None,
+            auth_fn: None,
+            attach_fn: None,
+            detach_fn: None,
+            emit_fn: None
+        }
+    }
+
+    pub fn accept<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut T) -> bool + 'static {
         self.accept_fn = Some(Box::new(f))
     }
 
-    pub fn remove<F>(&mut self, f: F) where F: Fn(usize, &Addr) + 'static {
+    pub fn remove<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut T) + 'static {
         self.remove_fn = Some(Box::new(f))
     }
 
-    pub fn recv<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message) -> bool + 'static {
+    pub fn recv<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
         self.recv_fn = Some(Box::new(f))
     }
 
-    pub fn auth<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message) -> bool + 'static {
+    pub fn auth<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
         self.auth_fn = Some(Box::new(f))
     }
 
-    pub fn attach<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message) -> bool + 'static {
+    pub fn attach<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
         self.attach_fn = Some(Box::new(f))
     }
 
-    pub fn detach<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message) + 'static {
+    pub fn detach<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) + 'static {
         self.detach_fn = Some(Box::new(f))
     }
 
-    pub fn emit<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message) -> bool + 'static {
+    pub fn emit<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
         self.emit_fn = Some(Box::new(f))
     }
 }

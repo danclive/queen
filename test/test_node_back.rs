@@ -18,7 +18,7 @@ fn back() {
 
         config.tcp(addr2).unwrap();
 
-        let mut node = Node::bind(config).unwrap();
+        let mut node = Node::bind(config, ()).unwrap();
 
         node.run().unwrap();
     });
@@ -107,7 +107,7 @@ fn back_time() {
 
         config.tcp(addr2).unwrap();
 
-        let mut node = Node::bind(config).unwrap();
+        let mut node = Node::bind(config, ()).unwrap();
 
         node.run().unwrap();
     });
