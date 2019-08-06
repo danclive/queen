@@ -7,6 +7,8 @@ use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 use std::net::ToSocketAddrs;
 
+use libc;
+
 use queen_io::sys::timerfd::{TimerFd, TimerSpec};
 use queen_io::tcp::TcpListener;
 use queen_io::unix::UnixListener;
@@ -23,6 +25,11 @@ use crate::net::{Addr, Stream};
 use crate::util::slice_msg;
 use crate::error::ErrorCode;
 
+const KEEP_ALIVE: i32 = 1; // 开启keepalive属性
+const KEEP_IDLE: i32 = 60; // 如该连接在60秒内没有任何数据往来,则进行探测 
+const KEEP_INTERVAL: i32 = 5; // 探测时发包的时间间隔为5秒
+const KEEP_COUNT: i32 = 3; // 探测尝试的次数.如果第1次探测包就收到响应了,则后2次的不再发.
+
 pub struct Node<T> {
     poll: Poll,
     events: Events,
@@ -38,11 +45,11 @@ pub struct Node<T> {
     run: bool
 }
 
-#[derive(Default)]
 pub struct Callback<T> {
     pub accept_fn: Option<AcceptFn<T>>,
     pub remove_fn: Option<RemoveFn<T>>,
     pub recv_fn: Option<RecvFn<T>>,
+    pub send_fn: Option<SendFn<T>>,
     pub auth_fn: Option<AuthFn<T>>,
     pub attach_fn: Option<AttachFn<T>>,
     pub detach_fn: Option<DetachFn<T>>,
@@ -52,6 +59,7 @@ pub struct Callback<T> {
 type AcceptFn<T> = Box<dyn Fn(usize, &Addr, &mut T) -> bool>;
 type RemoveFn<T> = Box<dyn Fn(usize, &Addr, &mut T)>;
 type RecvFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
+type SendFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
 type AuthFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
 type AttachFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
 type DetachFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T)>;
@@ -106,15 +114,7 @@ impl<T> Node<T> {
             timer: Timer::new()?,
             conns: Slab::new(),
             read_buffer: VecDeque::new(),
-            callback: Callback {
-                accept_fn: None,
-                remove_fn: None,
-                recv_fn: None,
-                auth_fn: None,
-                attach_fn: None,
-                detach_fn: None,
-                emit_fn: None
-            },
+            callback: Callback::new(),
             chans: HashMap::new(),
             rand: thread_rng(),
             user_data,
@@ -321,7 +321,6 @@ impl<T> Node<T> {
                 }
 
                 if !has_chan {
-
                     ErrorCode::NoConsumers.to_message(&mut message);
 
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
@@ -520,7 +519,7 @@ impl<T> Node<T> {
         Ok(())
     }
 
-    fn relay_message(&mut self, self_id: Option<usize>, message: Message) -> io::Result<()> {
+    fn relay_message(&mut self, self_id: Option<usize>, mut message: Message) -> io::Result<()> {
         if let Ok(chan) = message.get_str("_chan") {
             if let Ok(share) = message.get_bool("_shar") {
                 if share {
@@ -550,11 +549,32 @@ impl<T> Node<T> {
 
                     if array.len() == 1 {
                         if let Some(conn) = self.conns.get_mut(array[0]) {
-                            conn.push_data(message.to_vec().unwrap());
-                            conn.reregister(&self.poll)?;
+                            // check can send
+                            let success = if let Some(send_fn) = &self.callback.send_fn {
+                                send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
+                            } else {
+                                true
+                            };
+
+                            if success {
+                                conn.push_data(message.to_vec().unwrap());
+                                conn.reregister(&self.poll)?;
+                            }
                         }
                     } else if let Some(id) = array.choose(&mut self.rand) {
-                        self.push_data_to_conn(*id, message.to_vec().unwrap())?;
+                        if let Some(conn) = self.conns.get_mut(*id) {
+                            // check can send
+                            let success = if let Some(send_fn) = &self.callback.send_fn {
+                                send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
+                            } else {
+                                true
+                            };
+
+                            if success {
+                                conn.push_data(message.to_vec().unwrap());
+                                conn.reregister(&self.poll)?;
+                            }
+                        }
                     }
 
                     return Ok(())
@@ -691,6 +711,16 @@ impl Listen {
             Listen::Tcp(tcp) => {
                 tcp.accept().and_then(|(socket, addr)| {
                     socket.set_nodelay(true)?;
+
+                    let fd = socket.as_raw_fd();
+
+                    unsafe {
+                        libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_KEEPALIVE, &KEEP_ALIVE as *const i32 as *const _, 4);
+                        libc::setsockopt(fd, libc::SOL_TCP, libc::TCP_KEEPIDLE, &KEEP_IDLE as *const i32 as *const _, 4);
+                        libc::setsockopt(fd, libc::SOL_TCP, libc::TCP_KEEPINTVL, &KEEP_INTERVAL as *const i32 as *const _, 4);
+                        libc::setsockopt(fd, libc::SOL_TCP, libc::TCP_KEEPCNT, &KEEP_COUNT as *const i32 as *const _, 4);
+                    }
+
                     Ok((Stream::Tcp(socket), Addr::Tcp(addr))) 
                 })
             }
@@ -994,6 +1024,7 @@ impl<T> Callback<T> {
             accept_fn: None,
             remove_fn: None,
             recv_fn: None,
+            send_fn: None,
             auth_fn: None,
             attach_fn: None,
             detach_fn: None,
@@ -1013,6 +1044,10 @@ impl<T> Callback<T> {
         self.recv_fn = Some(Box::new(f))
     }
 
+    pub fn send<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
+        self.send_fn = Some(Box::new(f))
+    }
+
     pub fn auth<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
         self.auth_fn = Some(Box::new(f))
     }
@@ -1027,5 +1062,11 @@ impl<T> Callback<T> {
 
     pub fn emit<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
         self.emit_fn = Some(Box::new(f))
+    }
+}
+
+impl<T> Default for Callback<T> {
+    fn default() -> Callback<T> {
+        Callback::new()
     }
 }

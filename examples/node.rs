@@ -15,6 +15,10 @@ fn main() {
         return true
     });
 
+    callback.remove(move |id, addr, _| {
+        println!("remove, id: {:?}, addr: {:?}", id, addr);
+    });
+
     callback.recv(|id, _addr, msg, _| {
         println!("recv:, id: {:?}, addr: {:?}", id, msg);
         return true;
