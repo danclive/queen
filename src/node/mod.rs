@@ -1,18 +1,11 @@
 use std::collections::{VecDeque, HashMap, HashSet};
-use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe}};
+use std::io::{self, ErrorKind::WouldBlock};
 use std::usize;
-use std::os::unix::io::{AsRawFd, RawFd};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::collections::BinaryHeap;
-use std::cmp::Ordering;
+use std::os::unix::io::AsRawFd;
+use std::time::Duration;
 use std::net::ToSocketAddrs;
 
-use libc;
-
-use queen_io::sys::timerfd::{TimerFd, TimerSpec};
-use queen_io::tcp::TcpListener;
-use queen_io::unix::UnixListener;
-use queen_io::{Poll, Events, Token, Ready, PollOpt, Event, Evented};
+use queen_io::{Poll, Events, Token, Ready, PollOpt, Event};
 
 use nson::{Message, msg};
 
@@ -21,14 +14,18 @@ use slab::Slab;
 use rand::{self, thread_rng,rngs::ThreadRng};
 use rand::seq::SliceRandom;
 
-use crate::net::{Addr, Stream};
-use crate::util::slice_msg;
+use crate::net::Addr;
 use crate::error::ErrorCode;
 
-const KEEP_ALIVE: i32 = 1; // 开启keepalive属性
-const KEEP_IDLE: i32 = 60; // 如该连接在60秒内没有任何数据往来,则进行探测 
-const KEEP_INTERVAL: i32 = 5; // 探测时发包的时间间隔为5秒
-const KEEP_COUNT: i32 = 3; // 探测尝试的次数.如果第1次探测包就收到响应了,则后2次的不再发.
+use conn::Connection;
+use net::Listen;
+pub use timer::{Timer, Task};
+pub use callback::Callback;
+
+mod conn;
+mod net;
+mod timer;
+mod callback;
 
 pub struct Node<T> {
     poll: Poll,
@@ -44,26 +41,6 @@ pub struct Node<T> {
     user_data: T,
     run: bool
 }
-
-pub struct Callback<T> {
-    pub accept_fn: Option<AcceptFn<T>>,
-    pub remove_fn: Option<RemoveFn<T>>,
-    pub recv_fn: Option<RecvFn<T>>,
-    pub send_fn: Option<SendFn<T>>,
-    pub auth_fn: Option<AuthFn<T>>,
-    pub attach_fn: Option<AttachFn<T>>,
-    pub detach_fn: Option<DetachFn<T>>,
-    pub emit_fn: Option<EmitFn<T>>
-}
-
-type AcceptFn<T> = Box<dyn Fn(usize, &Addr, &mut T) -> bool>;
-type RemoveFn<T> = Box<dyn Fn(usize, &Addr, &mut T)>;
-type RecvFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
-type SendFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
-type AuthFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
-type AttachFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
-type DetachFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T)>;
-type EmitFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
 
 #[derive(Default)]
 pub struct NodeConfig {
@@ -278,7 +255,6 @@ impl<T> Node<T> {
 
     fn handle_message_from_conn(&mut self, id: usize, addr: Addr) -> io::Result<()> {
         while let Some(mut message) = self.read_buffer.pop_front() {
-
             if !self.can_recv(id, &addr, &mut message)? {
                 return Ok(())
             }
@@ -286,8 +262,7 @@ impl<T> Node<T> {
             let chan = match message.get_str("_chan") {
                 Ok(chan) => chan,
                 Err(_) => {
-
-                    ErrorCode::CannotGetChanField.to_message(&mut message);
+                    ErrorCode::CannotGetChanField.insert_message(&mut message);
 
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
                     continue;
@@ -303,8 +278,7 @@ impl<T> Node<T> {
                     "_ping" => self.node_ping(id, message)?,
                     // "_quer" => self.node_query(id, message)?,
                     _ => {
-
-                        ErrorCode::UnsupportedChan.to_message(&mut message);
+                        ErrorCode::UnsupportedChan.insert_message(&mut message);
 
                         self.push_data_to_conn(id, message.to_vec().unwrap())?;
                     }
@@ -321,7 +295,7 @@ impl<T> Node<T> {
                 }
 
                 if !has_chan {
-                    ErrorCode::NoConsumers.to_message(&mut message);
+                    ErrorCode::NoConsumers.insert_message(&mut message);
 
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
@@ -333,7 +307,7 @@ impl<T> Node<T> {
                         "_id": message_id.clone()
                     };
 
-                    ErrorCode::OK.to_message(&mut reply_msg);
+                    ErrorCode::OK.insert_message(&mut reply_msg);
 
                     self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
                 }
@@ -400,7 +374,7 @@ impl<T> Node<T> {
         if let Some(conn) = self.conns.get_mut(id) {
             conn.auth = true;
 
-            ErrorCode::OK.to_message(&mut message);
+            ErrorCode::OK.insert_message(&mut message);
 
             conn.push_data(message.to_vec().unwrap());
 
@@ -422,15 +396,12 @@ impl<T> Node<T> {
 
             self.session_attach(id, chan)?;
 
-            ErrorCode::OK.to_message(&mut message);
-
-            self.push_data_to_conn(id, message.to_vec().unwrap())?;
-
+            ErrorCode::OK.insert_message(&mut message);
         } else {
-            ErrorCode::CannotGetValueField.to_message(&mut message);
-
-            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+            ErrorCode::CannotGetValueField.insert_message(&mut message);
         }
+
+        self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
         Ok(())
     }
@@ -447,14 +418,12 @@ impl<T> Node<T> {
 
             self.session_detach(id, chan)?;
 
-            ErrorCode::OK.to_message(&mut message);
-
-            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+            ErrorCode::OK.insert_message(&mut message);
         } else {
-            ErrorCode::CannotGetValueField.to_message(&mut message);
-
-            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+            ErrorCode::CannotGetValueField.insert_message(&mut message);
         }
+
+        self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
         Ok(())
     }
@@ -470,12 +439,12 @@ impl<T> Node<T> {
             if has {
                 self.timer.refresh()?;
 
-                ErrorCode::OK.to_message(&mut message);
+                ErrorCode::OK.insert_message(&mut message);
             } else {
-                ErrorCode::TimeidNotExist.to_message(&mut message);
+                ErrorCode::TimeidNotExist.insert_message(&mut message);
             }
         } else {
-            ErrorCode::CannotGetTimeidField.to_message(&mut message);
+            ErrorCode::CannotGetTimeidField.insert_message(&mut message);
         }
 
         self.push_data_to_conn(id, message.to_vec().unwrap())?;
@@ -484,7 +453,7 @@ impl<T> Node<T> {
     }
 
     fn node_ping(&mut self, id: usize, mut message: Message) -> io::Result<()> {
-        ErrorCode::OK.to_message(&mut message);
+        ErrorCode::OK.insert_message(&mut message);
 
         self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
@@ -523,7 +492,6 @@ impl<T> Node<T> {
         if let Ok(chan) = message.get_str("_chan") {
             if let Ok(share) = message.get_bool("_shar") {
                 if share {
-
                     let mut array: Vec<usize> = Vec::new();
 
                     if let Some(ids) = self.chans.get(chan) {
@@ -608,7 +576,7 @@ impl<T> Node<T> {
                 return Ok(true)
             }
 
-            ErrorCode::Unauthorized.to_message(message);
+            ErrorCode::Unauthorized.insert_message(message);
 
             conn.push_data(message.to_vec().unwrap());
             conn.reregister(&self.poll)?;
@@ -625,7 +593,7 @@ impl<T> Node<T> {
         };
 
         if !success {
-            ErrorCode::RefuseReceiveMessage.to_message(message);
+            ErrorCode::RefuseReceiveMessage.insert_message(message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
@@ -641,8 +609,7 @@ impl<T> Node<T> {
         };
 
         if !success {
-
-            ErrorCode::AuthenticationFailed.to_message(message);
+            ErrorCode::AuthenticationFailed.insert_message(message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
@@ -658,7 +625,7 @@ impl<T> Node<T> {
         };
 
         if !success {
-            ErrorCode::Unauthorized.to_message(message);
+            ErrorCode::Unauthorized.insert_message(message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
@@ -674,399 +641,11 @@ impl<T> Node<T> {
         };
 
         if !success {
-            ErrorCode::Unauthorized.to_message(message);
+            ErrorCode::Unauthorized.insert_message(message);
 
             self.push_data_to_conn(id, message.to_vec().unwrap())?;
         }
 
         Ok(success)
-    }
-}
-
-impl Addr {
-    fn bind(&self) -> io::Result<Listen> {
-        match self {
-            Addr::Tcp(addr) => Ok(Listen::Tcp(TcpListener::bind(addr)?)),
-            Addr::Uds(addr) => Ok(Listen::Unix(UnixListener::bind(addr)?))
-        }
-    }
-}
-
-#[derive(Debug)]
-enum Listen {
-    Tcp(TcpListener),
-    Unix(UnixListener)
-}
-
-impl Listen {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        match self {
-            Listen::Tcp(tcp) => poll.register(tcp, token, interest, opts),
-            Listen::Unix(unix) => poll.register(unix, token, interest, opts)
-        }
-    }
-
-    fn accept(&self) -> io::Result<(Stream, Addr)> {
-        match self {
-            Listen::Tcp(tcp) => {
-                tcp.accept().and_then(|(socket, addr)| {
-                    socket.set_nodelay(true)?;
-
-                    let fd = socket.as_raw_fd();
-
-                    unsafe {
-                        libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_KEEPALIVE, &KEEP_ALIVE as *const i32 as *const _, 4);
-                        libc::setsockopt(fd, libc::SOL_TCP, libc::TCP_KEEPIDLE, &KEEP_IDLE as *const i32 as *const _, 4);
-                        libc::setsockopt(fd, libc::SOL_TCP, libc::TCP_KEEPINTVL, &KEEP_INTERVAL as *const i32 as *const _, 4);
-                        libc::setsockopt(fd, libc::SOL_TCP, libc::TCP_KEEPCNT, &KEEP_COUNT as *const i32 as *const _, 4);
-                    }
-
-                    Ok((Stream::Tcp(socket), Addr::Tcp(addr))) 
-                })
-            }
-            Listen::Unix(unix) => {
-                unix.accept().and_then(|(socket, addr)| {
-                   
-                    let addr = addr.as_pathname().map(|p| p.display().to_string()).unwrap_or_else(|| "unnamed".to_string());
-
-                    Ok((Stream::Unix(socket), Addr::Uds(addr)))
-                })
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-struct Connection {
-    id: usize,
-    addr: Addr,
-    stream: Stream,
-    interest: Ready,
-    read_buffer: Vec<u8>,
-    write_buffer: VecDeque<Vec<u8>>,
-    auth: bool,
-    bridge: bool,
-    chans: HashSet<String>
-}
-
-impl Connection {
-    fn new(id: usize, addr: Addr, stream: Stream) -> Connection {
-        Connection {
-            id,
-            addr,
-            stream,
-            interest: Ready::readable() | Ready::hup(),
-            read_buffer: Vec::new(),
-            write_buffer: VecDeque::new(),
-            auth: false,
-            bridge: false,
-            chans: HashSet::new()
-        }
-    }
-
-    fn register(&self, poll: &Poll) -> io::Result<()>{
-        poll.register(
-            &self.stream,
-            Token(self.id),
-            self.interest,
-            PollOpt::edge()
-        )
-    }
-
-    fn reregister(&self, poll: &Poll) -> io::Result<()>{
-        poll.reregister(
-            &self.stream,
-            Token(self.id),
-            self.interest,
-            PollOpt::edge()
-        )
-    }
-
-    fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        poll.deregister(&self.stream)
-    }
-
-    fn read(&mut self, read_buffer: &mut VecDeque<Message>) -> io::Result<()> {
-        loop {
-            let mut buf = [0; 4 * 1024];
-
-            match self.stream.read(&mut buf) {
-                Ok(size) => {
-                    if size == 0 {
-                        return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
-                    } else {
-                        let messages = slice_msg(&mut self.read_buffer, &buf[..size])?;
-
-                        for message in messages {
-                            match Message::from_slice(&message) {
-                                Ok(message) => read_buffer.push_back(message),
-                                Err(_err) => {
-                    
-                                    let mut error = msg!{};
-
-                                    #[cfg(debug_assertions)]
-                                    error.insert("error_info", _err.to_string());
-
-                                    ErrorCode::UnsupportedFormat.to_message(&mut error);
-
-                                    let _ = error.encode(&mut self.stream);
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(err) => {
-                    if let WouldBlock = err.kind() {
-                        break;
-                    } else {
-                        return Err(err)
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn write(&mut self) -> io::Result<()> {
-        while let Some(front) = self.write_buffer.front_mut() {
-            match self.stream.write(front) {
-                Ok(size) => {
-                    if size == 0 {
-                        return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
-                    } else if size == front.len() {
-                        self.write_buffer.pop_front();
-                    } else if size < front.len() {
-                        // size < front.len()
-                        // assert!(size > front.len());
-                        *front = front[size..].to_vec();
-                    }
-                }
-                Err(err) => {
-                    if let WouldBlock = err.kind() {
-                        break;
-                    } else {
-                        return Err(err)
-                    }
-                }
-            }
-        }
-
-        if self.write_buffer.is_empty() {
-            self.interest.remove(Ready::writable());
-        } else {
-            self.interest.insert(Ready::writable());
-        }
-
-        Ok(())
-    }
-
-    fn push_data(&mut self, data: Vec<u8>) {
-        self.write_buffer.push_back(data.clone());
-        self.interest.insert(Ready::writable());
-    }
-}
-
-impl Evented for Stream {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        match self {
-            Stream::Tcp(tcp) => poll.register(tcp, token, interest, opts),
-            Stream::Unix(unix) => poll.register(unix, token, interest, opts)
-        }
-    }
-
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-        match self {
-            Stream::Tcp(tcp) => poll.reregister(tcp, token, interest, opts),
-            Stream::Unix(unix) => poll.reregister(unix, token, interest, opts)
-        }
-    }
-
-    fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        match self {
-            Stream::Tcp(tcp) => poll.deregister(tcp),
-            Stream::Unix(unix) => poll.deregister(unix)
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Task<T> {
-    pub data: T,
-    pub time: Duration,
-    pub id: Option<String>
-}
-
-impl<T> PartialOrd for Task<T> {
-    fn partial_cmp(&self, other: &Task<T>) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T> Ord for Task<T> {
-    fn cmp(&self, other: &Task<T>) -> Ordering {
-        match self.time.cmp(&other.time) {
-            Ordering::Equal => Ordering::Equal,
-            Ordering::Greater => Ordering::Less,
-            Ordering::Less => Ordering::Greater
-        }
-    }
-}
-
-impl<T> PartialEq for Task<T> {
-    fn eq(&self, other: &Task<T>) -> bool {
-        self.time == other.time
-    }
-}
-
-impl<T> Eq for Task<T> {}
-
-pub struct Timer<T> {
-    tasks: BinaryHeap<Task<T>>,
-    timerfd: TimerFd
-}
-
-impl<T: Clone> Timer<T> {
-    pub fn new() -> io::Result<Timer<T>> {
-        Ok(Timer {
-            tasks: BinaryHeap::new(),
-            timerfd: TimerFd::new()?
-        })
-    }
-
-    pub fn peek(&self) -> Option<&Task<T>> {
-        self.tasks.peek()
-    }
-
-    pub fn push(&mut self, task: Task<T>) -> io::Result<()> {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-
-        let mut task = task;
-        task.time += now;
-
-        if let Some(peek_task) = self.peek() {
-            if task > *peek_task {
-                self.settime(true, TimerSpec {
-                    interval: Duration::new(0, 0),
-                    value: task.time
-                })?;
-            }
-        } else {
-            self.settime(true, TimerSpec {
-                interval: Duration::new(0, 0),
-                value: task.time
-            })?;
-        }
-
-        self.tasks.push(task);
-
-        Ok(())
-    }
-
-    #[inline]
-    pub fn pop(&mut self) -> Option<Task<T>> {
-        self.tasks.pop()
-    }
-
-    #[inline]
-    pub fn settime(&self, abstime: bool, value: TimerSpec) -> io::Result<TimerSpec>{
-        self.timerfd.settime(abstime, value)
-    }
-
-    #[inline]
-    pub fn gettime(&self) -> io::Result<TimerSpec> {
-        self.timerfd.gettime()
-    }
-
-    #[inline]
-    pub fn done(&self) -> io::Result<u64> {
-        self.timerfd.read()
-    }
-
-    pub fn remove(&mut self, id: String) -> bool {
-        let id = Some(id);
-
-        let mut tasks_vec: Vec<Task<T>> = Vec::from(self.tasks.clone());
-
-        let mut has = false;
-
-        if let Some(pos) = tasks_vec.iter().position(|x| x.id == id) {
-            tasks_vec.remove(pos);
-            has  = true;
-        }
-
-        self.tasks = tasks_vec.into();
-
-        has
-    }
-
-    pub fn refresh(&mut self) -> io::Result<()> {
-        if let Some(task) = self.peek() {
-            self.settime(true, TimerSpec {
-                interval: Duration::new(0, 0),
-                value: task.time
-            })?;
-        }
-
-        Ok(())
-    }
-}
-
-impl<T> AsRawFd for Timer<T> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.timerfd.as_raw_fd()
-    }
-}
-
-impl<T> Callback<T> {
-    pub fn new() -> Callback<T> {
-        Callback {
-            accept_fn: None,
-            remove_fn: None,
-            recv_fn: None,
-            send_fn: None,
-            auth_fn: None,
-            attach_fn: None,
-            detach_fn: None,
-            emit_fn: None
-        }
-    }
-
-    pub fn accept<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut T) -> bool + 'static {
-        self.accept_fn = Some(Box::new(f))
-    }
-
-    pub fn remove<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut T) + 'static {
-        self.remove_fn = Some(Box::new(f))
-    }
-
-    pub fn recv<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
-        self.recv_fn = Some(Box::new(f))
-    }
-
-    pub fn send<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
-        self.send_fn = Some(Box::new(f))
-    }
-
-    pub fn auth<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
-        self.auth_fn = Some(Box::new(f))
-    }
-
-    pub fn attach<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
-        self.attach_fn = Some(Box::new(f))
-    }
-
-    pub fn detach<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) + 'static {
-        self.detach_fn = Some(Box::new(f))
-    }
-
-    pub fn emit<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
-        self.emit_fn = Some(Box::new(f))
-    }
-}
-
-impl<T> Default for Callback<T> {
-    fn default() -> Callback<T> {
-        Callback::new()
     }
 }

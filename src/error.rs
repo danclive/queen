@@ -53,7 +53,7 @@ impl ErrorCode {
         }
     }
 
-    pub fn to_message(self, msg: &mut Message) {
+    pub fn insert_message(self, msg: &mut Message) {
         let code = self.code();
         msg.insert("ok", code);
 
