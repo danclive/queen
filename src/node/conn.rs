@@ -1,14 +1,14 @@
 use std::collections::{VecDeque, HashSet};
-use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe}};
+use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
 use std::usize;
+use std::rc::Rc;
 
 use queen_io::{Poll, Token, Ready, PollOpt, Evented};
 
-use nson::{Message, msg};
+use nson::Message;
 
 use crate::net::{Addr, Stream};
-use crate::util::slice_msg;
-use crate::error::ErrorCode;
+use crate::util::{slice_msg, sign, verify};
 
 #[derive(Debug)]
 pub struct Connection {
@@ -16,14 +16,15 @@ pub struct Connection {
     pub addr: Addr,
     pub stream: Stream,
     pub interest: Ready,
-    pub read_buffer: Vec<u8>,
-    pub write_buffer: VecDeque<Vec<u8>>,
+    read_buffer: Vec<u8>,
+    write_buffer: VecDeque<Vec<u8>>,
     pub auth: bool,
-    pub chans: HashSet<String>
+    pub chans: HashSet<String>,
+    hmac_key: Rc<String>
 }
 
 impl Connection {
-    pub fn new(id: usize, addr: Addr, stream: Stream) -> Connection {
+    pub fn new(id: usize, addr: Addr, stream: Stream, hmac_key: Rc<String>) -> Connection {
         Connection {
             id,
             addr,
@@ -32,7 +33,8 @@ impl Connection {
             read_buffer: Vec::new(),
             write_buffer: VecDeque::new(),
             auth: false,
-            chans: HashSet::new()
+            chans: HashSet::new(),
+            hmac_key
         }
     }
 
@@ -70,17 +72,14 @@ impl Connection {
                         let vec = slice_msg(&mut self.read_buffer, &buf[..size])?;
 
                         for data in vec {
+                            if !verify(self.hmac_key.as_bytes(), &data) {
+                                return Err(io::Error::new(InvalidData, "InvalidData"))
+                            }
+
                             match Message::from_slice(&data) {
                                 Ok(message) => read_buffer.push_back(message),
                                 Err(_err) => {
-                                    let mut error = msg!{};
-
-                                    #[cfg(debug_assertions)]
-                                    error.insert("error_info", _err.to_string());
-
-                                    ErrorCode::UnsupportedFormat.insert_message(&mut error);
-
-                                    let _ = error.encode(&mut self.stream);
+                                    return Err(io::Error::new(InvalidData, "InvalidData"))
                                 }
                             }
                         }
@@ -132,7 +131,7 @@ impl Connection {
     }
 
     pub fn push_data(&mut self, data: Vec<u8>) {
-        self.write_buffer.push_back(data.clone());
+        self.write_buffer.push_back(sign(self.hmac_key.as_bytes(), data));
         self.interest.insert(Ready::writable());
     }
 }

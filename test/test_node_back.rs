@@ -4,7 +4,8 @@ use std::time::Duration;
 use std::io::ErrorKind::WouldBlock;
 
 use queen::{Node, node::NodeConfig};
-use queen::nson::{msg, Message, decode::DecodeError};
+use queen::nson::{msg, Message};
+use queen::util::{write_socket, read_socket};
 
 use super::get_free_addr;
 
@@ -34,9 +35,10 @@ fn back() {
         "password": "bbb"
     };
 
-    msg.encode(&mut socket).unwrap();
+     write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // attach
@@ -45,9 +47,10 @@ fn back() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+     write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // send
@@ -57,25 +60,23 @@ fn back() {
         "_id": 123
     };
 
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+     write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // try recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let recv = Message::decode(&mut socket);
+    let recv = read_socket(&mut socket, b"queen");
     match recv {
        Ok(recv) => panic!("{:?}", recv),
        Err(err) => {
-            if let DecodeError::IoError(err) = err {
-                if let WouldBlock = err.kind() {
-                    // pass
-                } else {
-                    panic!("{:?}", err);
-                }
+            if let WouldBlock = err.kind() {
+                // pass
             } else {
                 panic!("{:?}", err);
-            }
+            }        
        }
     }
 
@@ -87,13 +88,16 @@ fn back() {
         "_back": true
     };
 
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // try recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("_id").unwrap() == 123);
 }
 
@@ -123,9 +127,10 @@ fn back_time() {
         "password": "bbb"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // attach
@@ -134,9 +139,10 @@ fn back_time() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // send
@@ -147,25 +153,23 @@ fn back_time() {
         "_time": 100u32
     };
 
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // try recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let recv = Message::decode(&mut socket);
+    let recv = read_socket(&mut socket, b"queen");
     match recv {
        Ok(recv) => panic!("{:?}", recv),
        Err(err) => {
-            if let DecodeError::IoError(err) = err {
-                if let WouldBlock = err.kind() {
-                    // pass
-                } else {
-                    panic!("{:?}", err);
-                }
+            if let WouldBlock = err.kind() {
+                // pass
             } else {
                 panic!("{:?}", err);
-            }
+            }        
        }
     }
 
@@ -178,12 +182,15 @@ fn back_time() {
         "_back": true
     };
 
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // try recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("_id").unwrap() == 123);
 }

@@ -1,8 +1,8 @@
 
 pub use bridge::{Bridge, BridgeConfig};
-pub use channel::{Hub};
+// pub use channel::{Hub};
 
 mod bridge;
-mod channel;
+// mod channel;
 mod net;
 mod conn;

@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::collections::{VecDeque, HashMap, HashSet};
 use std::io::{self, ErrorKind::WouldBlock};
 use std::usize;
@@ -39,18 +40,21 @@ pub struct Node<T> {
     chans: HashMap<String, HashSet<usize>>,
     rand: ThreadRng,
     user_data: T,
+    hmac_key: Rc<String>,
     run: bool
 }
 
 #[derive(Default)]
 pub struct NodeConfig {
-    pub addrs: Vec<Addr>
+    pub addrs: Vec<Addr>,
+    pub hmac_key: String
 }
 
 impl NodeConfig {
     pub fn new() -> NodeConfig {
         NodeConfig {
-            addrs: Vec::new()
+            addrs: Vec::new(),
+            hmac_key: "queen".to_string()
         }
     }
 
@@ -94,6 +98,7 @@ impl<T> Node<T> {
             chans: HashMap::new(),
             rand: thread_rng(),
             user_data,
+            hmac_key: Rc::new(config.hmac_key),
             run: true
         };
 
@@ -168,7 +173,7 @@ impl<T> Node<T> {
                 };
 
                 if success {
-                    let conn = Connection::new(entry.key(), addr, socket);
+                    let conn = Connection::new(entry.key(), addr, socket, self.hmac_key.clone());
                     conn.register(&self.poll)?;
 
                     entry.insert(conn);

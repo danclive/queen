@@ -4,8 +4,9 @@ use std::time::Duration;
 use std::io::ErrorKind::WouldBlock;
 
 use queen::{Node, node::NodeConfig};
-use queen::nson::{msg, Message, decode::DecodeError};
+use queen::nson::{msg, Message};
 use queen::error::ErrorCode;
+use queen::util::{write_socket, read_socket};
 
 use super::get_free_addr;
 
@@ -36,9 +37,10 @@ fn timer() {
         "password": "bbb"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client 1 attach
@@ -47,9 +49,10 @@ fn timer() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // no time
@@ -62,12 +65,15 @@ fn timer() {
         "_back": true
     };
 
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client 1 recv
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("_id").unwrap() == 123);
 
     // with time
@@ -81,31 +87,30 @@ fn timer() {
         "_time": 1000 * 2u32
     };
 
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client 1 try recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let recv = Message::decode(&mut socket);
+    let recv = read_socket(&mut socket, b"queen");
     match recv {
        Ok(recv) => panic!("{:?}", recv),
        Err(err) => {
-            if let DecodeError::IoError(err) = err {
-                if let WouldBlock = err.kind() {
-                    // pass
-                } else {
-                    panic!("{:?}", err);
-                }
+            if let WouldBlock = err.kind() {
+                // pass
             } else {
                 panic!("{:?}", err);
-            }
+            }        
        }
     }
 
     // client 1 recv
     socket.set_read_timeout(None).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("_id").unwrap() == 123);
 }
 
@@ -136,9 +141,10 @@ fn del_time_id() {
         "password": "bbb"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client 1 attach
@@ -147,9 +153,10 @@ fn del_time_id() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client 1 send
@@ -162,13 +169,16 @@ fn del_time_id() {
         "_tmid": "123"
     };
 
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client 1 recv
     socket.set_read_timeout(None).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("_id").unwrap() == 123);
 
     // del time id
@@ -183,8 +193,10 @@ fn del_time_id() {
         "_tmid": "123"
     };
 
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // del time
@@ -193,8 +205,10 @@ fn del_time_id() {
         "_tmid": "1234"
     };
 
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TimeidNotExist));
 
     let msg = msg!{
@@ -202,25 +216,23 @@ fn del_time_id() {
         "_tmid": "123"
     };
 
-    msg.encode(&mut socket).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client 1 try recv
-    socket.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
-    let recv = Message::decode(&mut socket);
+    socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+    let recv = read_socket(&mut socket, b"queen");
     match recv {
        Ok(recv) => panic!("{:?}", recv),
        Err(err) => {
-            if let DecodeError::IoError(err) = err {
-                if let WouldBlock = err.kind() {
-                    // pass
-                } else {
-                    panic!("{:?}", err);
-                }
+            if let WouldBlock = err.kind() {
+                // pass
             } else {
                 panic!("{:?}", err);
-            }
+            }        
        }
     }
 }

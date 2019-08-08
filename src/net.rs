@@ -69,5 +69,3 @@ impl AsRawFd for Stream {
         }
     }
 }
-
-

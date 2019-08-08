@@ -28,6 +28,7 @@ log = "0.4"
 rand = "0.7"
 queen-log = "0.2"
 slab = "0.4"
+ring = "0.16"
 
 [[bin]]
 name = "queen"

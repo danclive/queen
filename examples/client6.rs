@@ -3,8 +3,11 @@ use std::time::Instant;
 
 use queen::nson::msg;
 use queen::nson::Message;
+use queen::util::{write_socket, read_socket};
 
 fn main() {
+    let key = "queen";
+
     let mut socket = TcpStream::connect("127.0.0.1:8888").unwrap();
 
     println!("{:?}", socket);
@@ -15,15 +18,16 @@ fn main() {
         "password": "bbb"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, key.as_ref(), msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, key.as_ref()).unwrap();
 
+    let recv = Message::from_slice(&data).unwrap();
     println!("{:?}", recv);
 
     let time1 = Instant::now();
 
-    let mut i = 100000;
+    let mut i = 1000000;
     while i > 0 {
         let msg = msg!{
             "_chan": "aaa",
@@ -33,9 +37,11 @@ fn main() {
             "_share": true
         };
 
-        msg.encode(&mut socket).unwrap();
+        write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-        let recv = Message::decode(&mut socket).unwrap();
+        let data = read_socket(&mut socket, b"queen").unwrap();
+
+        let recv = Message::from_slice(&data).unwrap();
         // println!("{:?}", recv);
 
         i -= 1;

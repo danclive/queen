@@ -1,5 +1,8 @@
 use std::mem;
-use std::io::{self, Error, ErrorKind::InvalidData};
+use std::io::{self, Read, Write, Error, ErrorKind::InvalidData};
+
+use ring::hmac;
+
 use crate::MAX_MESSAGE_LEN;
 
 #[inline]
@@ -37,7 +40,7 @@ pub fn slice_msg(buf1: &mut Vec<u8>, buf2: &[u8]) -> io::Result<Vec<Vec<u8>>>{
                 loop {
                     messages.push(buf2[start..end].to_vec());
 
-                    if buf2.len() - len < 4 {
+                    if buf2.len() - end < 4 {
                         buf1.extend_from_slice(buf2);
                         break;
                     }
@@ -85,7 +88,7 @@ pub fn slice_msg(buf1: &mut Vec<u8>, buf2: &[u8]) -> io::Result<Vec<Vec<u8>>>{
                 loop {
                     messages.push(buf1[start..end].to_vec());
 
-                    if buf1.len() - len < 4 {
+                    if buf1.len() - end < 4 {
                         *buf1 = buf1[end..].to_vec();
                         break;
                     }
@@ -114,6 +117,55 @@ pub fn slice_msg(buf1: &mut Vec<u8>, buf2: &[u8]) -> io::Result<Vec<Vec<u8>>>{
     }
 
     Ok(messages)
+}
+
+pub fn sign(key: &[u8], mut data: Vec<u8>) -> Vec<u8> {
+    let len = get_length(&data, 0) + 32;
+    let len_bytes = (len as i32).to_le_bytes();
+    data[..4].clone_from_slice(&len_bytes);
+
+    let key = hmac::Key::new(hmac::HMAC_SHA256, key);
+
+    let tag = hmac::sign(&key, &data);
+
+    data.extend_from_slice(tag.as_ref());
+
+    data
+}
+
+pub fn verify(key: &[u8], data: &[u8]) -> bool {
+    if data.len() < 37 {
+        return false
+    }
+
+    let key = hmac::Key::new(hmac::HMAC_SHA256, key);
+
+    hmac::verify(&key, &data[..data.len() - 32], &data[(data.len() - 32)..]).is_ok()
+}
+
+pub fn write_socket(writer: &mut impl Write, key: &[u8], data: Vec<u8>) -> io::Result<usize> {
+    let data = sign(key, data);
+    writer.write(&data)
+}
+
+pub fn read_socket(reader: &mut impl Read, key: &[u8]) ->io::Result<Vec<u8>> {
+    let mut len_buf = [0u8; 4];
+    reader.read_exact(&mut len_buf)?;
+    let len = get_length(&len_buf, 0);
+
+    let mut buf = vec![0u8; len - 4];
+    reader.read_exact(&mut buf)?;
+
+    let mut vec: Vec<u8> = Vec::with_capacity(128);
+
+    vec.extend_from_slice(&len_buf);
+    vec.extend_from_slice(&buf);
+
+    if !verify(key, &vec) {
+        return Err(Error::new(InvalidData, "InvalidData"))
+    }
+
+    Ok(vec)
 }
 
 #[cfg(test)]
@@ -186,5 +238,20 @@ mod test {
         let ret = slice_msg(&mut buf1, &msg_vec[40..]).unwrap();
         assert!(ret.len() == 1);
         assert!(buf1.len() == 0);
+    }
+
+    #[test]
+    fn sign() {
+        let key = "queen";
+
+        let msg = msg!{
+            "hello": "world",
+            "foo": "bar"
+        };
+
+        let data = msg.to_vec().unwrap();
+
+        let data = crate::util::sign(key.as_ref(), data);
+        assert!(crate::util::verify(key.as_ref(), &data));
     }
 }

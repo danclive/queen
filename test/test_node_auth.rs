@@ -5,6 +5,7 @@ use std::time::Duration;
 use queen::{Node, node::Callback, node::NodeConfig};
 use queen::nson::{msg, Message};
 use queen::error::ErrorCode;
+use queen::util::{write_socket, read_socket};
 
 use super::get_free_addr;
 
@@ -33,9 +34,10 @@ fn no_auth() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // detach
@@ -44,9 +46,10 @@ fn no_auth() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // deltime
@@ -55,9 +58,10 @@ fn no_auth() {
         "_timeid": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // ping
@@ -66,9 +70,10 @@ fn no_auth() {
         "_timeid": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // send
@@ -76,9 +81,10 @@ fn no_auth() {
         "_chan": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 }
 
@@ -107,9 +113,10 @@ fn do_auth() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // auth
@@ -119,9 +126,10 @@ fn do_auth() {
         "password": "bbb"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // attach
@@ -130,9 +138,10 @@ fn do_auth() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0)
 }
 
@@ -176,9 +185,10 @@ fn can_auth() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     let msg = msg!{
@@ -187,9 +197,10 @@ fn can_auth() {
         "password": "bbbccc"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::AuthenticationFailed));
 
     let msg = msg!{
@@ -198,9 +209,10 @@ fn can_auth() {
         "password": "bbb"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // attach
@@ -209,8 +221,9 @@ fn can_auth() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 }

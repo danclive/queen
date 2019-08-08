@@ -7,7 +7,8 @@ use std::fs;
 use rand::random;
 
 use queen::{Node, node::Callback, node::NodeConfig};
-use queen::nson::{msg, Message};
+use queen::nson::msg;
+use queen::util::{write_socket, read_socket};
 
 use super::get_free_addr;
 
@@ -43,7 +44,9 @@ fn tcp_accept() {
         "_tmid": "aaa"
     };
 
-    assert!(msg.encode(&mut socket).is_err() || Message::decode(&mut socket).is_err());
+    let r1 = write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).is_err();
+    let r2 = read_socket(&mut socket, b"queen").is_err();
+    assert!(r1 || r2);
 }
 
 #[test]
@@ -79,7 +82,9 @@ fn unix_accept() {
         "_tmid": "aaa"
     };
 
-    assert!(msg.encode(&mut socket).is_err() || Message::decode(&mut socket).is_err());
+    let r1 = write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).is_err();
+    let r2 = read_socket(&mut socket, b"queen").is_err();
+    assert!(r1 || r2);
 
     let _ = fs::remove_file(rand_path).unwrap();
 }

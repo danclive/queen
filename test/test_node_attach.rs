@@ -4,8 +4,9 @@ use std::time::Duration;
 use std::io::ErrorKind::WouldBlock;
 
 use queen::{Node, node::NodeConfig};
-use queen::nson::{msg, Message, decode::DecodeError};
+use queen::nson::{msg, Message};
 use queen::error::ErrorCode;
+use queen::util::{write_socket, read_socket};
 
 use super::get_free_addr;
 
@@ -39,9 +40,10 @@ fn attach() {
         "password": "bbb"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client 2 auth
@@ -51,9 +53,10 @@ fn attach() {
         "password": "bbb"
     };
 
-    msg.encode(&mut socket2).unwrap();
+    write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket2).unwrap();
+    let data = read_socket(&mut socket2, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client2 send
@@ -63,8 +66,10 @@ fn attach() {
         "_id": 123
     };
 
-    msg.encode(&mut socket2).unwrap();
-    let recv = Message::decode(&mut socket2).unwrap();
+    write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket2, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // client 1 attach
@@ -73,9 +78,10 @@ fn attach() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client2 send
@@ -85,13 +91,16 @@ fn attach() {
         "_id": 123
     };
 
-    msg.encode(&mut socket2).unwrap();
-    let recv = Message::decode(&mut socket2).unwrap();
+    write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket2, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client1 recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_str("_chan").unwrap() == "aaa");
 
     // client1 detach
@@ -100,9 +109,10 @@ fn attach() {
         "_valu": "aaa"
     };
 
-    msg.encode(&mut socket).unwrap();
+    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let recv = Message::decode(&mut socket).unwrap();
+    let data = read_socket(&mut socket, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client2 send
@@ -112,25 +122,23 @@ fn attach() {
         "_id": 123
     };
 
-    msg.encode(&mut socket2).unwrap();
-    let recv = Message::decode(&mut socket2).unwrap();
+    write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
+
+    let data = read_socket(&mut socket2, b"queen").unwrap();
+    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // client1 recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let recv = Message::decode(&mut socket);
+    let recv = read_socket(&mut socket, b"queen");
     match recv {
        Ok(recv) => panic!("{:?}", recv),
        Err(err) => {
-            if let DecodeError::IoError(err) = err {
-                if let WouldBlock = err.kind() {
-                    // pass
-                } else {
-                    panic!("{:?}", err);
-                }
+            if let WouldBlock = err.kind() {
+                // pass
             } else {
                 panic!("{:?}", err);
-            }
+            }        
        }
     }
 }
