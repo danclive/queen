@@ -19,7 +19,6 @@ pub struct Connection {
     pub read_buffer: Vec<u8>,
     pub write_buffer: VecDeque<Vec<u8>>,
     pub auth: bool,
-    pub bridge: bool,
     pub chans: HashSet<String>
 }
 
@@ -33,7 +32,6 @@ impl Connection {
             read_buffer: Vec::new(),
             write_buffer: VecDeque::new(),
             auth: false,
-            bridge: false,
             chans: HashSet::new()
         }
     }

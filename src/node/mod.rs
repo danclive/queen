@@ -69,7 +69,6 @@ impl<T> Node<T> {
     const TIMER: Token = Token(usize::MAX);
 
     pub fn bind(config: NodeConfig, user_data: T) -> io::Result<Node<T>> {
-
         if config.addrs.is_empty() {
             panic!("{:?}", "config.addrs must >= 1");
         }
@@ -496,7 +495,6 @@ impl<T> Node<T> {
 
                     if let Some(ids) = self.chans.get(chan) {
                         for id in ids {
-
                             if let Some(self_id) = self_id {
                                 if self_id == *id {
                                     continue;

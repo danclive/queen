@@ -1,17 +1,14 @@
 use std::collections::{VecDeque, HashSet};
-use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
-use std::os::unix::io::AsRawFd;
+use std::io;
 use std::time::Duration;
 use std::thread::sleep;
-
-use queen_io::tcp::TcpStream;
-use queen_io::unix::UnixStream;
 
 use nson::{Message, msg};
 
 use crate::poll::{poll, Ready, Events};
-use crate::net::{Addr, Stream};
-use crate::util::slice_msg;
+use crate::net::Addr;
+
+use super::conn::Connection;
 
 pub struct Bridge {
     session_a: Session,
@@ -19,32 +16,6 @@ pub struct Bridge {
     read_buffer: VecDeque<Message>,
     white_list: HashSet<String>,
     run: bool,
-}
-
-struct Session {
-    conn: Option<(i32, Connection)>,
-    state: SessionState,
-    addr: Addr,
-    auth_msg: Message
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum SessionState {
-    UnAuth,
-    Authing,
-    Authed
-}
-
-#[derive(Clone)]
-pub struct LinkConfig {
-    pub addr: Addr,
-    pub auth_msg: Message
-}
-
-#[derive(Clone)]
-pub enum ConfigAddr {
-    Tcp(String),
-    Uds(String)
 }
 
 pub struct BridgeConfig {
@@ -55,18 +26,32 @@ pub struct BridgeConfig {
     pub white_list: HashSet<String>
 }
 
+struct Session {
+    conn: Option<(i32, Connection)>,
+    state: State,
+    addr: Addr,
+    auth_msg: Message
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum State {
+    UnAuth,
+    Authing,
+    Authed
+}
+
 impl Bridge {
-    pub fn link(config: BridgeConfig) -> Bridge {
+    pub fn connect(config: BridgeConfig) -> Bridge {
         Bridge {
             session_a: Session {
                 conn: None,
-                state: SessionState::UnAuth,
+                state: State::UnAuth,
                 addr: config.addr1,
                 auth_msg: config.auth_msg1
             },
             session_b: Session {
                 conn: None,
-                state: SessionState::UnAuth,
+                state: State::UnAuth,
                 addr: config.addr2,
                 auth_msg: config.auth_msg2
             },
@@ -114,10 +99,9 @@ impl Bridge {
         {
             macro_rules! auth {
                 ($session:ident) => {
-                    if self.$session.state == SessionState::UnAuth {
+                    if self.$session.state == State::UnAuth {
                         let mut msg = msg!{
-                            "_chan": "_auth",
-                            "_brge": true
+                            "_chan": "_auth"
                         };
 
                         msg.extend(self.$session.auth_msg.clone());
@@ -126,7 +110,7 @@ impl Bridge {
                             .as_mut().unwrap()
                             .1.write_buffer.push_back(msg.to_vec().unwrap());
 
-                        self.$session.state = SessionState::Authing;
+                        self.$session.state = State::Authing;
                     }
                 };
             }
@@ -145,7 +129,7 @@ impl Bridge {
                     let mut interest = Ready::readable() | Ready::hup();
 
                     if !conn.write_buffer.is_empty() {
-                        interest = interest | Ready::writable();
+                        interest.insert(Ready::writable());
                     }
 
                     events.put(*fd, interest);
@@ -155,7 +139,7 @@ impl Bridge {
             event_put!(session_b);
         }
 
-        if poll(&mut events, Some(<Duration>::from_secs(1)))? > 0 {
+        if poll(&mut events, Some(Duration::from_secs(1)))? > 0 {
             for event in &events {
                 macro_rules! event {
                     ($session:ident) => {
@@ -164,7 +148,7 @@ impl Bridge {
 
                             if readiness.is_hup() || readiness.is_error() {
                                 self.$session.conn = None;
-                                self.$session.state = SessionState::UnAuth;
+                                self.$session.state = State::UnAuth;
 
                                 continue;
                             }
@@ -173,7 +157,7 @@ impl Bridge {
                                 if let Some((_, conn)) = &mut self.$session.conn {
                                     if conn.read(&mut self.read_buffer).is_err() {
                                         self.$session.conn = None;
-                                        self.$session.state = SessionState::UnAuth;
+                                        self.$session.state = State::UnAuth;
                                     }
 
                                     if !self.read_buffer.is_empty() {
@@ -186,7 +170,7 @@ impl Bridge {
                                 if let Some((_, conn)) = &mut self.$session.conn {
                                     if conn.write().is_err() {
                                         self.$session.conn = None;
-                                        self.$session.state = SessionState::UnAuth;
+                                        self.$session.state = State::UnAuth;
                                     }
                                 }
                             }
@@ -213,7 +197,7 @@ impl Bridge {
                                     if let Ok(ok) = message.get_i32("ok") {
                                         if ok == 0 {
 
-                                            self.$session_a.state = SessionState::Authed;
+                                            self.$session_a.state = State::Authed;
 
                                             for chan in &self.white_list {
                                                 let msg = msg!{
@@ -230,7 +214,7 @@ impl Bridge {
                                         }
                                     }
 
-                                    self.$session_a.state = SessionState::UnAuth;
+                                    self.$session_a.state = State::UnAuth;
                                 }
                                 "_atta" => {
                                     println!("_atta: {:?}", message);
@@ -238,7 +222,7 @@ impl Bridge {
                                 _ => ()
                             }
                         } else {
-                            if self.$session_a.state != SessionState::Authed || self.$session_b.state != SessionState::Authed {
+                            if self.$session_a.state != State::Authed || self.$session_b.state != State::Authed {
                                 continue;
                             }
 
@@ -256,103 +240,6 @@ impl Bridge {
             handle_message!(session_a, session_b);
         } else if s == "session_b" {
             handle_message!(session_b, session_a);
-        }
-
-        Ok(())
-    }
-}
-
-impl Addr {
-    fn connect(&self) -> io::Result<Connection> {
-        match self {
-            Addr::Tcp(addr) => {
-                let socket = TcpStream::connect(addr)?;
-                socket.set_nodelay(true)?;
-                Ok(Connection::new(Stream::Tcp(socket)))
-            }
-            Addr::Uds(path) => {
-                let socket = UnixStream::connect(path)?;
-                Ok(Connection::new(Stream::Unix(socket)))
-            }
-        }
-    }
-}
-
-struct Connection {
-    stream: Stream,
-    read_buffer: Vec<u8>,
-    write_buffer: VecDeque<Vec<u8>>,
-}
-
-impl Connection {
-    fn new(stream: Stream) -> Connection {
-        Connection {
-            stream,
-            read_buffer: Vec::new(),
-            write_buffer: VecDeque::new(),
-        }
-    }
-
-    fn fd(&self) -> i32 {
-        self.stream.as_raw_fd()
-    }
-
-    fn read(&mut self, read_buffer: &mut VecDeque<Message>) -> io::Result<()> {
-        loop {
-            let mut buf = [0; 4 * 1024];
-
-            match self.stream.read(&mut buf) {
-                Ok(size) => {
-                    if size == 0 {
-                        return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
-                    } else {
-                        let messages = slice_msg(&mut self.read_buffer, &buf[..size])?;
-
-                        for message in messages {
-                            match Message::from_slice(&message) {
-                                Ok(message) => read_buffer.push_back(message),
-                                Err(_err) => {
-                                    return Err(io::Error::new(InvalidData, "InvalidData"))
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(err) => {
-                    if let WouldBlock = err.kind() {
-                        break;
-                    } else {
-                        return Err(err)
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn write(&mut self) -> io::Result<()> {
-        while let Some(front) = self.write_buffer.front_mut() {
-            match self.stream.write(front) {
-                Ok(size) => {
-                    if size == 0 {
-                        return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
-                    } else if size == front.len() {
-                        self.write_buffer.pop_front();
-                    } else if size < front.len() {
-                        // size < front.len()
-                        // assert!(size > front.len());
-                        *front = front[size..].to_vec();
-                    }
-                }
-                Err(err) => {
-                    if let WouldBlock = err.kind() {
-                        break;
-                    } else {
-                        return Err(err)
-                    }
-                }
-            }
         }
 
         Ok(())

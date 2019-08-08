@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use queen::bridge::*;
+use queen::port::*;
 use nson::msg;
 
 fn main() {
@@ -16,7 +16,7 @@ fn main() {
         white_list: chans
     };
 
-    let mut bridge = Bridge::link(config);
+    let mut bridge = Bridge::connect(config);
 
     bridge.run().unwrap();
 }
