@@ -20,11 +20,11 @@ pub struct Connection {
     write_buffer: VecDeque<Vec<u8>>,
     pub auth: bool,
     pub chans: HashSet<String>,
-    hmac_key: Rc<String>
+    hmac_key: Option<Rc<String>>
 }
 
 impl Connection {
-    pub fn new(id: usize, addr: Addr, stream: Stream, hmac_key: Rc<String>) -> Connection {
+    pub fn new(id: usize, addr: Addr, stream: Stream, hmac_key: Option<Rc<String>>) -> Connection {
         Connection {
             id,
             addr,
@@ -72,8 +72,10 @@ impl Connection {
                         let vec = slice_msg(&mut self.read_buffer, &buf[..size])?;
 
                         for data in vec {
-                            if !verify(self.hmac_key.as_bytes(), &data) {
-                                return Err(io::Error::new(InvalidData, "InvalidData"))
+                            if let Some(key) = &self.hmac_key {
+                                if !verify(key.as_bytes(), &data) {
+                                    return Err(io::Error::new(InvalidData, "InvalidData"))
+                                }
                             }
 
                             match Message::from_slice(&data) {
@@ -130,8 +132,12 @@ impl Connection {
         Ok(())
     }
 
-    pub fn push_data(&mut self, data: Vec<u8>) {
-        self.write_buffer.push_back(sign(self.hmac_key.as_bytes(), data));
+    pub fn push_data(&mut self, mut data: Vec<u8>) {
+        if let Some(key) = &self.hmac_key {
+            data = sign(key.as_bytes(), data);
+        }
+
+        self.write_buffer.push_back(data);
         self.interest.insert(Ready::writable());
     }
 }

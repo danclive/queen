@@ -18,7 +18,8 @@ fn timer() {
     thread::spawn(move || {
         let mut config = NodeConfig::new();
 
-        config.tcp(addr2).unwrap();
+        config.add_tcp(addr2).unwrap();
+        config.set_hmac_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -122,7 +123,8 @@ fn del_time_id() {
     thread::spawn(move || {
         let mut config = NodeConfig::new();
 
-        config.tcp(addr2).unwrap();
+        config.add_tcp(addr2).unwrap();
+        config.set_hmac_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 

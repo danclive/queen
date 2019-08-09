@@ -6,6 +6,7 @@ mod test_node_auth;
 mod test_node_attach;
 mod test_node_back;
 mod test_node_timer;
+mod test_node_hmac;
 
 pub fn get_free_addr() -> String {
     let socket = TcpListener::bind("127.0.0.1:0").unwrap();

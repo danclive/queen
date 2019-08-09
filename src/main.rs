@@ -4,7 +4,8 @@ fn main() {
 
     let mut config = NodeConfig::new();
 
-    config.tcp("0.0.0.0:8888").unwrap();
+    config.add_tcp("0.0.0.0:8888").unwrap();
+    config.set_hmac_key("queen");
 
     let mut node = Node::bind(config, ()).unwrap();
 

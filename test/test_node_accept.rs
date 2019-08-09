@@ -20,7 +20,8 @@ fn tcp_accept() {
     thread::spawn(move || {
         let mut config = NodeConfig::new();
 
-        config.tcp(addr2).unwrap();
+        config.add_tcp(addr2).unwrap();
+        config.set_hmac_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -40,8 +41,7 @@ fn tcp_accept() {
     let mut socket = TcpStream::connect(addr).unwrap();
 
     let msg = msg!{
-        "_chan": "_ping",
-        "_tmid": "aaa"
+        "_chan": "_ping"
     };
 
     let r1 = write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).is_err();
@@ -58,7 +58,8 @@ fn unix_accept() {
     thread::spawn(move || {
         let mut config = NodeConfig::new();
 
-        config.uds(rand_path2);
+        config.add_uds(rand_path2);
+        config.set_hmac_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -78,8 +79,7 @@ fn unix_accept() {
     let mut socket = UnixStream::connect(&rand_path).unwrap();
 
     let msg = msg!{
-        "_chan": "_ping",
-        "_tmid": "aaa"
+        "_chan": "_ping"
     };
 
     let r1 = write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).is_err();

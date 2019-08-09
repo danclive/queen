@@ -40,32 +40,36 @@ pub struct Node<T> {
     chans: HashMap<String, HashSet<usize>>,
     rand: ThreadRng,
     user_data: T,
-    hmac_key: Rc<String>,
+    hmac_key: Option<Rc<String>>,
     run: bool
 }
 
 #[derive(Default)]
 pub struct NodeConfig {
     pub addrs: Vec<Addr>,
-    pub hmac_key: String
+    pub hmac_key: Option<String>
 }
 
 impl NodeConfig {
     pub fn new() -> NodeConfig {
         NodeConfig {
             addrs: Vec::new(),
-            hmac_key: "queen".to_string()
+            hmac_key: None
         }
     }
 
-    pub fn tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<()> {
+    pub fn add_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<()> {
         let addr = Addr::tcp(addr)?;
         self.addrs.push(addr);
         Ok(())
     }
 
-    pub fn uds(&mut self, path: String) {
+    pub fn add_uds(&mut self, path: String) {
         self.addrs.push(Addr::Uds(path))
+    }
+
+    pub fn set_hmac_key(&mut self, key: &str) {
+        self.hmac_key = Some(key.to_string())
     }
 }
 
@@ -98,7 +102,7 @@ impl<T> Node<T> {
             chans: HashMap::new(),
             rand: thread_rng(),
             user_data,
-            hmac_key: Rc::new(config.hmac_key),
+            hmac_key: config.hmac_key.map(|key| Rc::new(key)),
             run: true
         };
 
