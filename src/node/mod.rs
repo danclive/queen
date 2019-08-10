@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::collections::{VecDeque, HashMap, HashSet};
 use std::io::{self, ErrorKind::WouldBlock};
 use std::usize;
@@ -40,7 +39,7 @@ pub struct Node<T> {
     chans: HashMap<String, HashSet<usize>>,
     rand: ThreadRng,
     user_data: T,
-    hmac_key: Option<Rc<String>>,
+    hmac_key: Option<String>,
     run: bool
 }
 
@@ -102,7 +101,7 @@ impl<T> Node<T> {
             chans: HashMap::new(),
             rand: thread_rng(),
             user_data,
-            hmac_key: config.hmac_key.map(|key| Rc::new(key)),
+            hmac_key: config.hmac_key,
             run: true
         };
 
@@ -177,7 +176,7 @@ impl<T> Node<T> {
                 };
 
                 if success {
-                    let conn = Connection::new(entry.key(), addr, socket, self.hmac_key.clone());
+                    let conn = Connection::new(entry.key(), addr, socket);
                     conn.register(&self.poll)?;
 
                     entry.insert(conn);
@@ -207,7 +206,7 @@ impl<T> Node<T> {
 
         if readiness.is_readable() {
             if let Some(conn) = self.conns.get_mut(token.0) {
-                if conn.read(&mut self.read_buffer).is_err() {
+                if conn.read(&mut self.read_buffer, &self.hmac_key).is_err() {
                     remove = true;
                 } else {
                     conn.reregister(&self.poll)?;
@@ -367,7 +366,7 @@ impl<T> Node<T> {
 
     fn push_data_to_conn(&mut self, id: usize, data: Vec<u8>) -> io::Result<()> {
         if let Some(conn) = self.conns.get_mut(id) {
-            conn.push_data(data);
+            conn.push_data(data, &self.hmac_key);
             conn.reregister(&self.poll)?;
         }
 
@@ -384,7 +383,7 @@ impl<T> Node<T> {
 
             ErrorCode::OK.insert_message(&mut message);
 
-            conn.push_data(message.to_vec().unwrap());
+            conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
 
             conn.reregister(&self.poll)?;
         }
@@ -532,7 +531,7 @@ impl<T> Node<T> {
                             };
 
                             if success {
-                                conn.push_data(message.to_vec().unwrap());
+                                conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
                                 conn.reregister(&self.poll)?;
                             }
                         }
@@ -546,7 +545,7 @@ impl<T> Node<T> {
                             };
 
                             if success {
-                                conn.push_data(message.to_vec().unwrap());
+                                conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
                                 conn.reregister(&self.poll)?;
                             }
                         }
@@ -566,7 +565,7 @@ impl<T> Node<T> {
 
                     if let Some(conn) = self.conns.get_mut(*id) {
                         if conn.auth {
-                            conn.push_data(message.to_vec().unwrap());
+                            conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
                             conn.reregister(&self.poll)?;
                         }
                     }
@@ -585,7 +584,7 @@ impl<T> Node<T> {
 
             ErrorCode::Unauthorized.insert_message(message);
 
-            conn.push_data(message.to_vec().unwrap());
+            conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
             conn.reregister(&self.poll)?;
         }
 

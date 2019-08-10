@@ -1,5 +1,5 @@
 use std::collections::{VecDeque, HashSet};
-use std::io;
+use std::io::{self, ErrorKind::PermissionDenied};
 use std::time::Duration;
 use std::thread::sleep;
 
@@ -21,8 +21,10 @@ pub struct Bridge {
 pub struct BridgeConfig {
     pub addr1: Addr,
     pub auth_msg1: Message,
+    pub hmac_key1: Option<String>,
     pub addr2: Addr,
     pub auth_msg2: Message,
+    pub hmac_key2: Option<String>,
     pub white_list: HashSet<String>
 }
 
@@ -30,7 +32,8 @@ struct Session {
     conn: Option<(i32, Connection)>,
     state: State,
     addr: Addr,
-    auth_msg: Message
+    auth_msg: Message,
+    hmac_key: Option<String>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -47,13 +50,15 @@ impl Bridge {
                 conn: None,
                 state: State::UnAuth,
                 addr: config.addr1,
-                auth_msg: config.auth_msg1
+                auth_msg: config.auth_msg1,
+                hmac_key: config.hmac_key1
             },
             session_b: Session {
                 conn: None,
                 state: State::UnAuth,
                 addr: config.addr2,
-                auth_msg: config.auth_msg2
+                auth_msg: config.auth_msg2,
+                hmac_key: config.hmac_key2
             },
             read_buffer: VecDeque::new(),
             white_list: config.white_list,
@@ -108,7 +113,7 @@ impl Bridge {
 
                         self.$session.conn
                             .as_mut().unwrap()
-                            .1.write_buffer.push_back(msg.to_vec().unwrap());
+                            .1.push_data(msg.to_vec().unwrap(), &self.$session.hmac_key);
 
                         self.$session.state = State::Authing;
                     }
@@ -128,7 +133,7 @@ impl Bridge {
 
                     let mut interest = Ready::readable() | Ready::hup();
 
-                    if !conn.write_buffer.is_empty() {
+                    if conn.want_write() {
                         interest.insert(Ready::writable());
                     }
 
@@ -155,7 +160,7 @@ impl Bridge {
 
                             if readiness.is_readable() {
                                 if let Some((_, conn)) = &mut self.$session.conn {
-                                    if conn.read(&mut self.read_buffer).is_err() {
+                                    if conn.read(&mut self.read_buffer, &self.$session.hmac_key).is_err() {
                                         self.$session.conn = None;
                                         self.$session.state = State::UnAuth;
                                     }
@@ -196,7 +201,6 @@ impl Bridge {
                                 "_auth" => {
                                     if let Ok(ok) = message.get_i32("ok") {
                                         if ok == 0 {
-
                                             self.$session_a.state = State::Authed;
 
                                             for chan in &self.white_list {
@@ -207,17 +211,23 @@ impl Bridge {
 
                                                 self.$session_a.conn
                                                     .as_mut().unwrap()
-                                                    .1.write_buffer
-                                                    .push_back(msg.to_vec().unwrap());
+                                                    .1.push_data(msg.to_vec().unwrap(), &self.$session_a.hmac_key);
                                             }
+
                                             continue;
+                                        } else {
+                                            return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
                                         }
                                     }
 
                                     self.$session_a.state = State::UnAuth;
                                 }
                                 "_atta" => {
-                                    println!("_atta: {:?}", message);
+                                    if let Ok(ok) = message.get_i32("ok") {
+                                        if ok != 0 {
+                                            println!("_atta: {:?}", message);
+                                        }
+                                    }
                                 }
                                 _ => ()
                             }
@@ -227,7 +237,7 @@ impl Bridge {
                             }
 
                             if let Some((_, conn)) = &mut self.$session_b.conn {            
-                                conn.write_buffer.push_back(message.to_vec().unwrap());
+                                conn.push_data(message.to_vec().unwrap(), &self.$session_b.hmac_key)
                             }
                         }
                     }

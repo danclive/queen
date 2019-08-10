@@ -42,7 +42,7 @@ fn main() {
         let data = read_socket(&mut socket, b"queen").unwrap();
 
         let recv = Message::from_slice(&data).unwrap();
-        // println!("{:?}", recv);
+        println!("{:?}", recv);
 
         i -= 1;
     }

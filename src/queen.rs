@@ -19,6 +19,7 @@ pub struct Queen {
 struct QueenInner {
     queue: BlockQueue<(String, Message)>,
     handles: Handles,
+    // index
     next_id: AtomicIsize,
     timer: Timer
 }

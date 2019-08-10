@@ -1,16 +1,16 @@
-use std::collections::{VecDeque};
+use std::collections::VecDeque;
 use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
 use std::os::unix::io::AsRawFd;
 
 use nson::Message;
 
 use crate::net::Stream;
-use crate::util::slice_msg;
+use crate::util::{slice_msg, sign, verify};
 
 pub struct Connection {
-    pub stream: Stream,
-    pub read_buffer: Vec<u8>,
-    pub write_buffer: VecDeque<Vec<u8>>,
+    stream: Stream,
+    read_buffer: Vec<u8>,
+    write_buffer: VecDeque<Vec<u8>>
 }
 
 impl Connection {
@@ -18,7 +18,7 @@ impl Connection {
         Connection {
             stream,
             read_buffer: Vec::new(),
-            write_buffer: VecDeque::new(),
+            write_buffer: VecDeque::new()
         }
     }
 
@@ -26,7 +26,7 @@ impl Connection {
         self.stream.as_raw_fd()
     }
 
-    pub fn read(&mut self, read_buffer: &mut VecDeque<Message>) -> io::Result<()> {
+    pub fn read(&mut self, read_buffer: &mut VecDeque<Message>, hmac_key: &Option<String>) -> io::Result<()> {
         loop {
             let mut buf = [0; 4 * 1024];
 
@@ -35,10 +35,16 @@ impl Connection {
                     if size == 0 {
                         return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
                     } else {
-                        let messages = slice_msg(&mut self.read_buffer, &buf[..size])?;
+                        let vec = slice_msg(&mut self.read_buffer, &buf[..size])?;
 
-                        for message in messages {
-                            match Message::from_slice(&message) {
+                        for data in vec {
+                            if let Some(key) = hmac_key {
+                                if !verify(key.as_bytes(), &data) {
+                                    return Err(io::Error::new(InvalidData, "InvalidData"))
+                                }
+                            }
+
+                            match Message::from_slice(&data) {
                                 Ok(message) => read_buffer.push_back(message),
                                 Err(_err) => {
                                     return Err(io::Error::new(InvalidData, "InvalidData"))
@@ -85,5 +91,18 @@ impl Connection {
         }
 
         Ok(())
+    }
+
+    pub fn push_data(&mut self, mut data: Vec<u8>, hmac_key: &Option<String>) {
+
+        if let Some(key) = hmac_key {
+            data = sign(key.as_bytes(), data);
+        }
+
+        self.write_buffer.push_back(data);
+    }
+
+    pub fn want_write(&self) -> bool {
+        !self.write_buffer.is_empty()
     }
 }

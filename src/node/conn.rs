@@ -1,7 +1,6 @@
 use std::collections::{VecDeque, HashSet};
 use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
 use std::usize;
-use std::rc::Rc;
 
 use queen_io::{Poll, Token, Ready, PollOpt, Evented};
 
@@ -14,17 +13,16 @@ use crate::util::{slice_msg, sign, verify};
 pub struct Connection {
     pub id: usize,
     pub addr: Addr,
-    pub stream: Stream,
+    stream: Stream,
     pub interest: Ready,
     read_buffer: Vec<u8>,
     write_buffer: VecDeque<Vec<u8>>,
     pub auth: bool,
-    pub chans: HashSet<String>,
-    hmac_key: Option<Rc<String>>
+    pub chans: HashSet<String>
 }
 
 impl Connection {
-    pub fn new(id: usize, addr: Addr, stream: Stream, hmac_key: Option<Rc<String>>) -> Connection {
+    pub fn new(id: usize, addr: Addr, stream: Stream) -> Connection {
         Connection {
             id,
             addr,
@@ -33,8 +31,7 @@ impl Connection {
             read_buffer: Vec::new(),
             write_buffer: VecDeque::new(),
             auth: false,
-            chans: HashSet::new(),
-            hmac_key
+            chans: HashSet::new()
         }
     }
 
@@ -60,7 +57,7 @@ impl Connection {
         poll.deregister(&self.stream)
     }
 
-    pub fn read(&mut self, read_buffer: &mut VecDeque<Message>) -> io::Result<()> {
+    pub fn read(&mut self, read_buffer: &mut VecDeque<Message>, hmac_key: &Option<String>) -> io::Result<()> {
         loop {
             let mut buf = [0; 4 * 1024];
 
@@ -72,7 +69,7 @@ impl Connection {
                         let vec = slice_msg(&mut self.read_buffer, &buf[..size])?;
 
                         for data in vec {
-                            if let Some(key) = &self.hmac_key {
+                            if let Some(key) = hmac_key {
                                 if !verify(key.as_bytes(), &data) {
                                     return Err(io::Error::new(InvalidData, "InvalidData"))
                                 }
@@ -132,8 +129,8 @@ impl Connection {
         Ok(())
     }
 
-    pub fn push_data(&mut self, mut data: Vec<u8>) {
-        if let Some(key) = &self.hmac_key {
+    pub fn push_data(&mut self, mut data: Vec<u8>, hmac_key: &Option<String>) {
+        if let Some(key) = hmac_key {
             data = sign(key.as_bytes(), data);
         }
 
