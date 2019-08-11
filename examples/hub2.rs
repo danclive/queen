@@ -16,10 +16,11 @@ fn main() {
 
     let mut i = 0;
 
-    loop {
-        hub.send("aaa", msg!{"a": 123, "i": i});
-        i += 1;
-    }
+    // loop {
+        // hub.send("switch.esp8266.control", msg!{"s2": false});
+        hub.send("aaa", msg!{"s2": false});
+        //i += 1;
+    // }
 
     thread::sleep(Duration::from_millis(1000));
 }

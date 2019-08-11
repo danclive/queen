@@ -5,7 +5,7 @@ use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 use std::net::ToSocketAddrs;
 
-use queen_io::{Poll, Events, Token, Ready, PollOpt, Event};
+use queen_io::{Epoll, Events, Token, Ready, EpollOpt, Event};
 
 use nson::{Message, msg};
 
@@ -28,7 +28,7 @@ mod timer;
 mod callback;
 
 pub struct Node<T> {
-    poll: Poll,
+    epoll: Epoll,
     events: Events,
     listens: HashMap<usize, Listen>,
     token: usize,
@@ -90,7 +90,7 @@ impl<T> Node<T> {
         }
 
         let node = Node {
-            poll: Poll::new()?,
+            epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
             listens,
             token,
@@ -114,14 +114,14 @@ impl<T> Node<T> {
 
     pub fn run(&mut self) -> io::Result<()> {
         for (id, listen) in &self.listens {
-            listen.register(&self.poll, Token(*id), Ready::readable(), PollOpt::edge())?;
+            listen.add(&self.epoll, Token(*id), Ready::readable(), EpollOpt::edge())?;
         }
 
-        self.poll.register(
+        self.epoll.add(
             &self.timer.as_raw_fd(),
             Self::TIMER,
             Ready::readable(),
-            PollOpt::edge()
+            EpollOpt::edge()
         )?;
 
         while self.run {
@@ -133,7 +133,7 @@ impl<T> Node<T> {
 
     #[inline]
     fn run_once(&mut self) -> io::Result<()> {
-        let size = self.poll.wait(&mut self.events, None)?;
+        let size = self.epoll.wait(&mut self.events, None)?;
 
         for i in 0..size {
             let event = self.events.get(i).unwrap();
@@ -177,7 +177,7 @@ impl<T> Node<T> {
 
                 if success {
                     let conn = Connection::new(entry.key(), addr, socket);
-                    conn.register(&self.poll)?;
+                    conn.add(&self.epoll)?;
 
                     entry.insert(conn);
                 }
@@ -209,7 +209,7 @@ impl<T> Node<T> {
                 if conn.read(&mut self.read_buffer, &self.hmac_key).is_err() {
                     remove = true;
                 } else {
-                    conn.reregister(&self.poll)?;
+                    conn.modify(&self.epoll)?;
                 }
 
                 let addr = conn.addr.clone();
@@ -225,7 +225,7 @@ impl<T> Node<T> {
                 if conn.write().is_err() {
                     remove = true;
                 } else {
-                    conn.reregister(&self.poll)?;
+                    conn.modify(&self.epoll)?;
                 }
             }
         }
@@ -240,7 +240,7 @@ impl<T> Node<T> {
     fn remove_conn(&mut self, id: usize) -> io::Result<()> {
         if self.conns.contains(id) {
             let conn = self.conns.remove(id);
-            conn.deregister(&self.poll)?;
+            conn.delete(&self.epoll)?;
 
             for chan in conn.chans {
                 if let Some(ids) = self.chans.get_mut(&chan) {
@@ -367,7 +367,7 @@ impl<T> Node<T> {
     fn push_data_to_conn(&mut self, id: usize, data: Vec<u8>) -> io::Result<()> {
         if let Some(conn) = self.conns.get_mut(id) {
             conn.push_data(data, &self.hmac_key);
-            conn.reregister(&self.poll)?;
+            conn.modify(&self.epoll)?;
         }
 
         Ok(())
@@ -385,7 +385,7 @@ impl<T> Node<T> {
 
             conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
 
-            conn.reregister(&self.poll)?;
+            conn.modify(&self.epoll)?;
         }
 
         Ok(())
@@ -532,7 +532,7 @@ impl<T> Node<T> {
 
                             if success {
                                 conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
-                                conn.reregister(&self.poll)?;
+                                conn.modify(&self.epoll)?;
                             }
                         }
                     } else if let Some(id) = array.choose(&mut self.rand) {
@@ -546,7 +546,7 @@ impl<T> Node<T> {
 
                             if success {
                                 conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
-                                conn.reregister(&self.poll)?;
+                                conn.modify(&self.epoll)?;
                             }
                         }
                     }
@@ -565,8 +565,17 @@ impl<T> Node<T> {
 
                     if let Some(conn) = self.conns.get_mut(*id) {
                         if conn.auth {
-                            conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
-                            conn.reregister(&self.poll)?;
+                            // check can send
+                            let success = if let Some(send_fn) = &self.callback.send_fn {
+                                send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
+                            } else {
+                                true
+                            };
+
+                            if success {
+                                conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                                conn.modify(&self.epoll)?;
+                            }
                         }
                     }
                 }
@@ -585,7 +594,7 @@ impl<T> Node<T> {
             ErrorCode::Unauthorized.insert_message(message);
 
             conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
-            conn.reregister(&self.poll)?;
+            conn.modify(&self.epoll)?;
         }
 
         Ok(false)

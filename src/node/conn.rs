@@ -2,7 +2,7 @@ use std::collections::{VecDeque, HashSet};
 use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
 use std::usize;
 
-use queen_io::{Poll, Token, Ready, PollOpt, Evented};
+use queen_io::{Epoll, Token, Ready, EpollOpt, Evented};
 
 use nson::Message;
 
@@ -35,26 +35,26 @@ impl Connection {
         }
     }
 
-    pub fn register(&self, poll: &Poll) -> io::Result<()>{
-        poll.register(
+    pub fn add(&self, epoll: &Epoll) -> io::Result<()>{
+        epoll.add(
             &self.stream,
             Token(self.id),
             self.interest,
-            PollOpt::edge()
+            EpollOpt::edge()
         )
     }
 
-    pub fn reregister(&self, poll: &Poll) -> io::Result<()>{
-        poll.reregister(
+    pub fn modify(&self, epoll: &Epoll) -> io::Result<()>{
+        epoll.modify(
             &self.stream,
             Token(self.id),
             self.interest,
-            PollOpt::edge()
+            EpollOpt::edge()
         )
     }
 
-    pub fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        poll.deregister(&self.stream)
+    pub fn delete(&self, epoll: &Epoll) -> io::Result<()> {
+        epoll.delete(&self.stream)
     }
 
     pub fn read(&mut self, read_buffer: &mut VecDeque<Message>, hmac_key: &Option<String>) -> io::Result<()> {
@@ -140,24 +140,24 @@ impl Connection {
 }
 
 impl Evented for Stream {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn add(&self, epoll: &Epoll, token: Token, interest: Ready, opts: EpollOpt) -> io::Result<()> {
         match self {
-            Stream::Tcp(tcp) => poll.register(tcp, token, interest, opts),
-            Stream::Unix(unix) => poll.register(unix, token, interest, opts)
+            Stream::Tcp(tcp) => epoll.add(tcp, token, interest, opts),
+            Stream::Unix(unix) => epoll.add(unix, token, interest, opts)
         }
     }
 
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn modify(&self, epoll: &Epoll, token: Token, interest: Ready, opts: EpollOpt) -> io::Result<()> {
         match self {
-            Stream::Tcp(tcp) => poll.reregister(tcp, token, interest, opts),
-            Stream::Unix(unix) => poll.reregister(unix, token, interest, opts)
+            Stream::Tcp(tcp) => epoll.modify(tcp, token, interest, opts),
+            Stream::Unix(unix) => epoll.modify(unix, token, interest, opts)
         }
     }
 
-    fn deregister(&self, poll: &Poll) -> io::Result<()> {
+    fn delete(&self, epoll: &Epoll) -> io::Result<()> {
         match self {
-            Stream::Tcp(tcp) => poll.deregister(tcp),
-            Stream::Unix(unix) => poll.deregister(unix)
+            Stream::Tcp(tcp) => epoll.delete(tcp),
+            Stream::Unix(unix) => epoll.delete(unix)
         }
     }
 }

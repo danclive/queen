@@ -25,6 +25,11 @@ fn main() {
         return true;
     });
 
+    callback.send(|id, _addr, msg, _| {
+        println!("send:, id: {:?}, addr: {:?}", id, msg);
+        return true;
+    });
+
     callback.auth(|id, _addr, msg, _| {
         println!("auth, id: {:?}, addr: {:?}", id, msg);
         return true;

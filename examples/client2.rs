@@ -9,7 +9,7 @@ fn main() {
     println!("{:?}", socket);
 
     let msg = msg!{
-        "_chan": "node::auth",
+        "_chan": "_auth",
         "username": "aaa",
         "password": "bbb"
     };

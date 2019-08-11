@@ -5,7 +5,7 @@ use libc;
 
 use queen_io::tcp::TcpListener;
 use queen_io::unix::UnixListener;
-use queen_io::{Poll, Token, Ready, PollOpt};
+use queen_io::{Epoll, Token, Ready, EpollOpt};
 
 use crate::net::{Addr, Stream};
 
@@ -30,10 +30,10 @@ pub enum Listen {
 }
 
 impl Listen {
-    pub fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    pub fn add(&self, epoll: &Epoll, token: Token, interest: Ready, opts: EpollOpt) -> io::Result<()> {
         match self {
-            Listen::Tcp(tcp) => poll.register(tcp, token, interest, opts),
-            Listen::Unix(unix) => poll.register(unix, token, interest, opts)
+            Listen::Tcp(tcp) => epoll.add(tcp, token, interest, opts),
+            Listen::Unix(unix) => epoll.add(unix, token, interest, opts)
         }
     }
 
