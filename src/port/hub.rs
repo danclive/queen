@@ -8,10 +8,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use queen_io::queue::mpsc::Queue;
+use queen_io::poll::{poll, Ready, Events};
 
 use nson::{Message, msg};
 
-use crate::poll::{poll, Ready, Events};
 use crate::net::Addr;
 
 use super::conn::Connection;

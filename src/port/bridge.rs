@@ -5,7 +5,8 @@ use std::thread::sleep;
 
 use nson::{Message, msg};
 
-use crate::poll::{poll, Ready, Events};
+use queen_io::poll::{poll, Ready, Events};
+
 use crate::net::Addr;
 
 use super::conn::Connection;

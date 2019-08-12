@@ -5,7 +5,7 @@ use libc;
 
 use queen_io::tcp::TcpListener;
 use queen_io::unix::UnixListener;
-use queen_io::{Epoll, Token, Ready, EpollOpt};
+use queen_io::epoll::{Epoll, Token, Ready, EpollOpt};
 
 use crate::net::{Addr, Stream};
 

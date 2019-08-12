@@ -5,7 +5,7 @@ use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 use std::net::ToSocketAddrs;
 
-use queen_io::{Epoll, Events, Token, Ready, EpollOpt, Event};
+use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt, Event};
 
 use nson::{Message, msg};
 

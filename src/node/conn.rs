@@ -2,7 +2,7 @@ use std::collections::{VecDeque, HashSet};
 use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
 use std::usize;
 
-use queen_io::{Epoll, Token, Ready, EpollOpt, Evented};
+use queen_io::epoll::{Epoll, Token, Ready, EpollOpt, Evented};
 
 use nson::Message;
 
