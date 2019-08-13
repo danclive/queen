@@ -69,10 +69,6 @@ impl Hub {
         })
     }
 
-    pub fn channel(_chan: &str) -> Channel {
-        unimplemented!()
-    }
-
     pub fn recv(&self, chan: &str) -> Recv { // iter
         let (tx, rx) = channel();
 
@@ -338,19 +334,5 @@ impl Iterator for Recv {
 impl Drop for Recv {
     fn drop(&mut self) {
         self.hub.queen.push(Packet::Detatch(self.id));
-    }
-}
-
-pub struct Channel {
-
-}
-
-impl Channel {
-    pub fn tx() {
-
-    }
-
-    pub fn rx() {
-
     }
 }

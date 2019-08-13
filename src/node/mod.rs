@@ -8,6 +8,7 @@ use std::net::ToSocketAddrs;
 use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt, Event};
 
 use nson::{Message, msg};
+use nson::message_id::MessageId;
 
 use slab::Slab;
 
@@ -28,6 +29,8 @@ mod timer;
 mod callback;
 
 pub struct Node<T> {
+    #[allow(dead_code)]
+    node_id: String,
     epoll: Epoll,
     events: Events,
     listens: HashMap<usize, Listen>,
@@ -37,6 +40,7 @@ pub struct Node<T> {
     read_buffer: VecDeque<Message>,
     callback: Callback<T>,
     chans: HashMap<String, HashSet<usize>>,
+    ports: HashMap<String, usize>,
     rand: ThreadRng,
     user_data: T,
     hmac_key: Option<String>,
@@ -45,6 +49,7 @@ pub struct Node<T> {
 
 #[derive(Default)]
 pub struct NodeConfig {
+    pub node_id: String,
     pub addrs: Vec<Addr>,
     pub hmac_key: Option<String>
 }
@@ -53,7 +58,8 @@ impl NodeConfig {
     pub fn new() -> NodeConfig {
         NodeConfig {
             addrs: Vec::new(),
-            hmac_key: None
+            hmac_key: None,
+            node_id: MessageId::new().to_string()
         }
     }
 
@@ -90,6 +96,7 @@ impl<T> Node<T> {
         }
 
         let node = Node {
+            node_id: config.node_id,
             epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
             listens,
@@ -99,6 +106,7 @@ impl<T> Node<T> {
             read_buffer: VecDeque::new(),
             callback: Callback::new(),
             chans: HashMap::new(),
+            ports: HashMap::new(),
             rand: thread_rng(),
             user_data,
             hmac_key: config.hmac_key,
@@ -379,12 +387,27 @@ impl<T> Node<T> {
         }
 
         if let Some(conn) = self.conns.get_mut(id) {
+            if let Ok(port_id) = message.get_str("_ptid") {
+                if self.ports.contains_key(port_id) {
+
+                    ErrorCode::DuplicatePortId.insert_message(&mut message);
+
+                    conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                    conn.modify(&self.epoll)?;
+
+                    return Ok(())
+                }
+
+                self.ports.insert(port_id.to_string(), id);
+
+                conn.port_id = Some(port_id.to_string());
+            }
+
             conn.auth = true;
 
             ErrorCode::OK.insert_message(&mut message);
 
             conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
-
             conn.modify(&self.epoll)?;
         }
 
