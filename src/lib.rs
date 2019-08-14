@@ -6,6 +6,8 @@ pub mod net;
 pub mod util;
 pub mod error;
 pub mod point;
+pub mod oneshot;
+pub mod lock;
 
 pub use nson;
 pub use node::Node;

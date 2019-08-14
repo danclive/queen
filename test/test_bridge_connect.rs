@@ -66,7 +66,7 @@ fn connect() {
         bridge.run().unwrap();
     });
 
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_secs(2));
 
     // client b
     let mut socket_b = TcpStream::connect(addr_b).unwrap();
