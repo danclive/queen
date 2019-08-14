@@ -58,7 +58,7 @@ fn back() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123
+        "_ack": 123
     };
 
      write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
@@ -85,8 +85,9 @@ fn back() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123,
-        "_back": true
+        "_ack": 123,
+        "_back": true,
+        "id": 456
     };
 
     write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
@@ -99,7 +100,7 @@ fn back() {
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
     let data = read_socket(&mut socket, b"queen").unwrap();
     let recv = Message::from_slice(&data).unwrap();
-    assert!(recv.get_i32("_id").unwrap() == 123);
+    assert!(recv.get_i32("id").unwrap() == 456);
 }
 
 #[test]
@@ -151,7 +152,7 @@ fn back_time() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123,
+        "_ack": 123,
         "_time": 100u32
     };
 
@@ -179,9 +180,10 @@ fn back_time() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123,
+        "_ack": 123,
         "_time": 100u32,
-        "_back": true
+        "_back": true,
+        "id": 456
     };
 
     write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
@@ -194,5 +196,5 @@ fn back_time() {
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
     let data = read_socket(&mut socket, b"queen").unwrap();
     let recv = Message::from_slice(&data).unwrap();
-    assert!(recv.get_i32("_id").unwrap() == 123);
+    assert!(recv.get_i32("id").unwrap() == 456);
 }

@@ -62,8 +62,9 @@ fn timer() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123,
-        "_back": true
+        "_ack": 123,
+        "_back": true,
+        "id": 456
     };
 
     write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
@@ -75,7 +76,7 @@ fn timer() {
     // client 1 recv
     let data = read_socket(&mut socket, b"queen").unwrap();
     let recv = Message::from_slice(&data).unwrap();
-    assert!(recv.get_i32("_id").unwrap() == 123);
+    assert!(recv.get_i32("id").unwrap() == 456);
 
     // with time
 
@@ -83,9 +84,10 @@ fn timer() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123,
+        "_ack": 123,
         "_back": true,
-        "_time": 1000 * 2u32
+        "_time": 1000 * 2u32,
+        "id": 456
     };
 
     write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
@@ -112,11 +114,11 @@ fn timer() {
     socket.set_read_timeout(None).unwrap();
     let data = read_socket(&mut socket, b"queen").unwrap();
     let recv = Message::from_slice(&data).unwrap();
-    assert!(recv.get_i32("_id").unwrap() == 123);
+    assert!(recv.get_i32("id").unwrap() == 456);
 }
 
 #[test]
-fn del_time_id() {
+fn del_time_ack() {
     let addr = get_free_addr();
 
     let addr2 = addr.clone();
@@ -165,10 +167,11 @@ fn del_time_id() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123,
+        "_ack": 123,
         "_back": true,
         "_time": 1000u32,
-        "_tmid": "123"
+        "_tmid": "123",
+        "id": 456
     };
 
     write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
@@ -181,7 +184,7 @@ fn del_time_id() {
     socket.set_read_timeout(None).unwrap();
     let data = read_socket(&mut socket, b"queen").unwrap();
     let recv = Message::from_slice(&data).unwrap();
-    assert!(recv.get_i32("_id").unwrap() == 123);
+    assert!(recv.get_i32("id").unwrap() == 456);
 
     // del time id
 
@@ -189,7 +192,7 @@ fn del_time_id() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123,
+        "_ack": 123,
         "_back": true,
         "_time": 1000 * 2u32,
         "_tmid": "123"

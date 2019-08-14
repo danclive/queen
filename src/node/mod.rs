@@ -29,7 +29,6 @@ mod timer;
 mod callback;
 
 pub struct Node<T> {
-    #[allow(dead_code)]
     node_id: String,
     epoll: Epoll,
     events: Events,
@@ -260,6 +259,10 @@ impl<T> Node<T> {
                 }
             }
 
+            if let Some(port_id) = conn.port_id {
+                self.ports.remove(&port_id);
+            }
+
             if let Some(remove_fn) = &self.callback.remove_fn {
                 remove_fn(id, &conn.addr, &mut self.user_data);
             }
@@ -317,14 +320,35 @@ impl<T> Node<T> {
                     return Ok(())
                 }
 
-                if let Some(message_id) = message.get("_id") {
+                if let Ok(to) = message.get_str("_to") {
+                    if !self.ports.contains_key(to) {
+                        ErrorCode::TargetPortIdNotExist.insert_message(&mut message);
+
+                        self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                        return Ok(())
+                    } else {
+                        message.remove("_back");
+                    }
+                }
+
+                if let Some(ack) = message.get("_ack") {
+
                     let mut reply_msg = msg!{
-                        "_id": message_id.clone()
+                        "_ack": ack.clone()
                     };
 
                     ErrorCode::OK.insert_message(&mut reply_msg);
 
                     self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
+
+                    message.remove("_ack");
+                }
+
+                if let Some(conn) = self.conns.get(id) {
+                    if let Some(port_id) = &conn.port_id {
+                        message.insert("_from", port_id);
+                    }
                 }
 
                 let back = match message.get_bool("_back") {
@@ -404,6 +428,8 @@ impl<T> Node<T> {
             }
 
             conn.auth = true;
+
+            message.insert("_noid", &self.node_id);
 
             ErrorCode::OK.insert_message(&mut message);
 
@@ -520,6 +546,28 @@ impl<T> Node<T> {
 
     fn relay_message(&mut self, self_id: Option<usize>, mut message: Message) -> io::Result<()> {
         if let Ok(chan) = message.get_str("_chan") {
+            if let Ok(to) = message.get_str("_to") {
+                if let Some(id) = self.ports.get(to) {
+                    if let Some(conn) = self.conns.get_mut(*id) {
+                        if conn.auth {
+                            // check can send
+                            let success = if let Some(send_fn) = &self.callback.send_fn {
+                                send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
+                            } else {
+                                true
+                            };
+
+                            if success {
+                                conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                                conn.modify(&self.epoll)?;
+                            }
+                        }
+
+                        return Ok(())
+                    }
+                }
+            }
+
             if let Ok(share) = message.get_bool("_shar") {
                 if share {
                     let mut array: Vec<usize> = Vec::new();

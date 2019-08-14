@@ -64,7 +64,7 @@ fn attach() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123
+        "_ack": 123
     };
 
     write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
@@ -89,7 +89,7 @@ fn attach() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123
+        "_ack": 123
     };
 
     write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
@@ -120,7 +120,7 @@ fn attach() {
     let msg = msg!{
         "_chan": "aaa",
         "hello": "world",
-        "_id": 123
+        "_ack": 123
     };
 
     write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();

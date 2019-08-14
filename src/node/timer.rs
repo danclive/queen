@@ -53,10 +53,9 @@ impl<T: Clone> Timer<T> {
         self.tasks.peek()
     }
 
-    pub fn push(&mut self, task: Task<T>) -> io::Result<()> {
+    pub fn push(&mut self, mut task: Task<T>) -> io::Result<()> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
 
-        let mut task = task;
         task.time += now;
 
         if let Some(peek_task) = self.peek() {
