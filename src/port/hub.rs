@@ -1,14 +1,15 @@
 use std::collections::{VecDeque, HashMap};
 use std::io::{self, ErrorKind::{PermissionDenied}};
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
 use std::thread::{self, sleep};
-use std::sync::mpsc::{self, channel, Sender, Receiver};
+use std::sync::mpsc::{channel, Sender, Receiver};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use queen_io::queue::mpsc::Queue;
 use queen_io::poll::{poll, Ready, Events};
+use queen_io::queue::mpsc::Queue;
+use queen_io::queue::spsc::Queue as SpscQueue;
 
 use nson::{Message, msg};
 
@@ -19,20 +20,7 @@ use super::conn::Connection;
 #[derive(Clone)]
 pub struct Hub {
     id: Arc<AtomicUsize>,
-    queen: Queue<Packet>
-}
-
-struct HubInner {
-    addr: Addr,
-    auth_msg: Message,
-    conn: Option<(i32, Connection)>,
-    state: State,
-    read_buffer: VecDeque<Message>,
-    queen: Queue<Packet>,
-    chans: HashMap<String, Vec<(usize, Sender<Message>)>>,
-    tx_index: HashMap<usize, String>,
-    hmac_key: Option<String>,
-    run: bool
+    queue: Queue<Packet>
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -44,7 +32,7 @@ enum State {
 
 impl Hub {
     pub fn connect(addr: Addr, auth_msg: Message, hmac_key: Option<String>) -> io::Result<Hub> {
-        let queen = Queue::new()?;
+        let queue = Queue::new()?;
 
         let mut inner = HubInner {
             addr,
@@ -52,7 +40,7 @@ impl Hub {
             conn: None,
             state: State::UnAuth,
             read_buffer: VecDeque::new(),
-            queen: queen.clone(),
+            queue: queue.clone(),
             chans: HashMap::new(),
             tx_index: HashMap::new(),
             hmac_key,
@@ -65,7 +53,7 @@ impl Hub {
 
         Ok(Hub {
             id: Arc::new(AtomicUsize::new(0)),
-            queen
+            queue
         })
     }
 
@@ -74,7 +62,7 @@ impl Hub {
 
         let id = self.id.fetch_add(1, Ordering::SeqCst);
 
-        self.queen.push(Packet::Attatch(id, chan.to_string(), tx));
+        self.queue.push(Packet::AttatchBlock(id, chan.to_string(), tx));
 
         Recv {
             hub: self.clone(),
@@ -83,18 +71,101 @@ impl Hub {
         }
     }
 
+    pub fn async_recv(&self, chan: &str) -> io::Result<AsyncRecv> {
+        let spsc_queue = SpscQueue::with_cache(128)?;
+
+        let id = self.id.fetch_add(1, Ordering::SeqCst);
+
+        self.queue.push(Packet::AttatchAsync(id, chan.to_string(), spsc_queue.clone()));
+
+        Ok(AsyncRecv {
+            hub: self.clone(),
+            id,
+            recv: spsc_queue
+        })
+    }
+
     pub fn send(&self, chan: &str, mut msg: Message) {
         msg.insert("_chan", chan);
 
         loop {
-            if self.queen.pending() < 64 {
-                self.queen.push(Packet::Send(msg));
+            if self.queue.pending() < 1024 {
+                self.queue.push(Packet::Send(msg));
                 return
             }
 
             thread::sleep(Duration::from_millis(10));
         }
     }
+}
+
+enum Packet {
+    Send(Message),
+    AttatchBlock(usize, String, Sender<Message>), // id, chan, sender
+    AttatchAsync(usize, String, SpscQueue<Message>),
+    Detatch(usize)
+}
+
+pub struct Recv {
+    hub: Hub,
+    id: usize,
+    recv: Receiver<Message>
+}
+
+impl Iterator for Recv {
+    type Item = Message;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.recv.recv().ok()
+    }
+}
+
+impl Drop for Recv {
+    fn drop(&mut self) {
+        self.hub.queue.push(Packet::Detatch(self.id));
+    }
+}
+
+pub struct AsyncRecv {
+    hub: Hub,
+    id: usize,
+    recv: SpscQueue<Message>
+}
+
+impl AsyncRecv {
+    pub fn recv(&self) -> Option<Message> {
+        self.recv.pop()
+    }
+}
+
+impl AsRawFd for AsyncRecv {
+    fn as_raw_fd(&self) -> RawFd {
+        self.recv.as_raw_fd()
+    }
+}
+
+impl Drop for AsyncRecv {
+    fn drop(&mut self) {
+        self.hub.queue.push(Packet::Detatch(self.id));
+    }
+}
+
+struct HubInner {
+    addr: Addr,
+    auth_msg: Message,
+    conn: Option<(i32, Connection)>,
+    state: State,
+    read_buffer: VecDeque<Message>,
+    queue: Queue<Packet>,
+    chans: HashMap<String, Vec<(usize, SenderType)>>,
+    tx_index: HashMap<usize, String>,
+    hmac_key: Option<String>,
+    run: bool
+}
+
+enum SenderType {
+    Block(Sender<Message>),
+    Async(SpscQueue<Message>)
 }
 
 impl HubInner {
@@ -150,8 +221,8 @@ impl HubInner {
 
         events.put(*fd, interest);
 
-        // queen
-        events.put(self.queen.as_raw_fd(), Ready::readable());
+        // queue
+        events.put(self.queue.as_raw_fd(), Ready::readable());
 
         if poll(&mut events, Some(Duration::from_secs(1)))? > 0 {
             for event in &events {
@@ -186,7 +257,7 @@ impl HubInner {
                             }
                         }
                     }
-                } else if event.fd() == self.queen.as_raw_fd() {
+                } else if event.fd() == self.queue.as_raw_fd() {
                     self.handle_message_from_queue()?;
                 }
             }
@@ -238,7 +309,7 @@ impl HubInner {
     }
 
     fn handle_message_from_queue(&mut self) -> io::Result<()> {
-        if let Some(packet) = self.queen.pop() {
+        if let Some(packet) = self.queue.pop() {
             match packet {
                 Packet::Send(msg) => {
                     if self.state == State::Authed {
@@ -247,8 +318,8 @@ impl HubInner {
                     }
 
                     self.relay_message(msg)?;
-                },
-                Packet::Attatch(id, chan, tx) => {
+                }
+                Packet::AttatchBlock(id, chan, tx) => {
                     let ids = self.chans.entry(chan.clone()).or_insert_with(|| vec![]);
 
                     if ids.is_empty() {
@@ -261,8 +332,23 @@ impl HubInner {
                             .1.push_data(msg.to_vec().unwrap(), &self.hmac_key);
                     }
 
-                    ids.push((id, tx));
-                },
+                    ids.push((id, SenderType::Block(tx)));
+                }
+                Packet::AttatchAsync(id, chan, queue) => {
+                    let ids = self.chans.entry(chan.clone()).or_insert_with(|| vec![]);
+
+                    if ids.is_empty() {
+                        let msg = msg!{
+                            "_chan": "_atta",
+                            "_valu": chan
+                        };
+
+                        self.conn.as_mut().unwrap()
+                            .1.push_data(msg.to_vec().unwrap(), &self.hmac_key);
+                    }
+
+                    ids.push((id, SenderType::Async(queue)));
+                }
                 Packet::Detatch(id) => {
                     if let Some(chan) = self.tx_index.remove(&id) {
                         if let Some(ids) = self.chans.get_mut(&chan) {
@@ -292,47 +378,18 @@ impl HubInner {
         if let Ok(chan) = message.get_str("_chan") {
             if let Some(ids) = self.chans.get(chan) {
                 for (_, tx) in ids {
-                    let _ = tx.send(message.clone());
+                    match tx {
+                        SenderType::Block(tx) => {
+                            let _ = tx.send(message.clone());
+                        }
+                        SenderType::Async(queue) => {
+                            queue.push(message.clone());
+                        }
+                    }
                 }
             }
         }
 
         Ok(())
-    }
-}
-
-enum Packet {
-    Send(Message),
-    Attatch(usize, String, Sender<Message>), // id, chan, sender
-    Detatch(usize)
-}
-
-pub struct Recv {
-    hub: Hub,
-    id: usize,
-    recv: Receiver<Message>
-}
-
-impl Iterator for Recv {
-    type Item = Result<Message, mpsc::RecvError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // Some(self.recv.recv())
-        loop {
-            let ret = self.recv.recv();
-
-            if ret.is_err() {
-                thread::yield_now();
-                continue;
-            }
-
-            return Some(ret)
-        }
-    }
-}
-
-impl Drop for Recv {
-    fn drop(&mut self) {
-        self.hub.queen.push(Packet::Detatch(self.id));
     }
 }

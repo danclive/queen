@@ -10,6 +10,6 @@ fn main() {
     let hub = Hub::connect(addr, msg!{}, None).unwrap();
 
     for msg in hub.recv("aaa") {
-        println!("{:?}", msg.unwrap());
+        println!("{:?}", msg);
     } 
 }

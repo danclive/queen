@@ -42,13 +42,13 @@ fn main() {
 
         msg.encode(&mut socket).unwrap();
 
-        let mut len_buf = [0u8; 4];
-        socket.peek(&mut len_buf).unwrap();
-        let len = get_length(&len_buf, 0);
-        let mut data = vec![0u8; len];
-        socket.read(&mut data).unwrap();
+        // let mut len_buf = [0u8; 4];
+        // socket.peek(&mut len_buf).unwrap();
+        // let len = get_length(&len_buf, 0);
+        // let mut data = vec![0u8; len];
+        // socket.read(&mut data).unwrap();
 
-        let recv = Message::from_slice(&data).unwrap();
+        // let recv = Message::from_slice(&data).unwrap();
         // println!("{:?}", recv);
 
         i -= 1;
