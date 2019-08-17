@@ -181,9 +181,9 @@ fn port_to_port() {
         "_to": "aaa"
     };
 
-    write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
+    write_socket(&mut socket3, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let data = read_socket(&mut socket2, b"queen").unwrap();
+    let data = read_socket(&mut socket3, b"queen").unwrap();
     let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetPortIdNotExist));
 
@@ -195,13 +195,14 @@ fn port_to_port() {
         "_to": "id123"
     };
 
-    write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
+    write_socket(&mut socket3, b"queen", msg.to_vec().unwrap()).unwrap();
 
-    let data = read_socket(&mut socket2, b"queen").unwrap();
+    let data = read_socket(&mut socket3, b"queen").unwrap();
     let recv = Message::from_slice(&data).unwrap();
+    println!("{:?}", recv);
     assert!(recv.get_i32("ok").unwrap() == 0);
 
-    // client 1 tyy recv
+    // client 1 try recv
     let data = read_socket(&mut socket, b"queen").unwrap();
     let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_str("hello").unwrap() == "world");

@@ -1,4 +1,4 @@
-use std::collections::{VecDeque, HashSet};
+use std::collections::{VecDeque, HashSet, HashMap};
 use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
 use std::usize;
 
@@ -18,7 +18,7 @@ pub struct Connection {
     read_buffer: Vec<u8>,
     write_buffer: VecDeque<Vec<u8>>,
     pub auth: bool,
-    pub chans: HashSet<String>,
+    pub chans: HashMap<String, Vec<String>>, // HashMap<Chan, Vec<Label>>
     pub port_id: Option<String>
 }
 
@@ -32,7 +32,7 @@ impl Connection {
             read_buffer: Vec::new(),
             write_buffer: VecDeque::new(),
             auth: false,
-            chans: HashSet::new(),
+            chans: HashMap::new(),
             port_id: None
         }
     }

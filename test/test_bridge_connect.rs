@@ -43,6 +43,8 @@ fn connect() {
         node.run().unwrap();
     });
 
+    thread::sleep(Duration::from_secs(1));
+
     // bridge
     let addr_a2 = addr_a.clone();
     let addr_b2 = addr_b.clone();
@@ -66,7 +68,7 @@ fn connect() {
         bridge.run().unwrap();
     });
 
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(Duration::from_secs(1));
 
     // client b
     let mut socket_b = TcpStream::connect(addr_b).unwrap();

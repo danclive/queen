@@ -1,8 +1,6 @@
 use std::collections::{VecDeque, HashMap, HashSet};
 use std::io::{self, ErrorKind::WouldBlock};
 use std::usize;
-use std::os::unix::io::AsRawFd;
-use std::time::Duration;
 use std::net::ToSocketAddrs;
 
 use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt, Event};
@@ -20,12 +18,10 @@ use crate::error::ErrorCode;
 
 use conn::Connection;
 use net::Listen;
-pub use timer::{Timer, Task};
 pub use callback::Callback;
 
 mod conn;
 mod net;
-mod timer;
 mod callback;
 
 pub struct Node<T> {
@@ -34,7 +30,6 @@ pub struct Node<T> {
     events: Events,
     listens: HashMap<usize, Listen>,
     token: usize,
-    timer: Timer<(Option<usize>, Message)>,
     conns: Slab<Connection>,
     read_buffer: VecDeque<Message>,
     callback: Callback<T>,
@@ -42,7 +37,7 @@ pub struct Node<T> {
     ports: HashMap<String, usize>,
     rand: ThreadRng,
     user_data: T,
-    hmac_key: Option<String>,
+    hmac_key: Option<String>, 
     run: bool
 }
 
@@ -78,8 +73,6 @@ impl NodeConfig {
 }
 
 impl<T> Node<T> {
-    const TIMER: Token = Token(usize::MAX);
-
     pub fn bind(config: NodeConfig, user_data: T) -> io::Result<Node<T>> {
         if config.addrs.is_empty() {
             panic!("{:?}", "config.addrs must >= 1");
@@ -100,7 +93,7 @@ impl<T> Node<T> {
             events: Events::with_capacity(1024),
             listens,
             token,
-            timer: Timer::new()?,
+            // timer: Timer::new()?,
             conns: Slab::new(),
             read_buffer: VecDeque::new(),
             callback: Callback::new(),
@@ -124,13 +117,6 @@ impl<T> Node<T> {
             listen.add(&self.epoll, Token(*id), Ready::readable(), EpollOpt::edge())?;
         }
 
-        self.epoll.add(
-            &self.timer.as_raw_fd(),
-            Self::TIMER,
-            Ready::readable(),
-            EpollOpt::edge()
-        )?;
-
         while self.run {
             self.run_once()?;
         }
@@ -152,7 +138,7 @@ impl<T> Node<T> {
 
     fn dispatch(&mut self, event: Event) -> io::Result<()> {
         match event.token() {
-            Self::TIMER => self.dispatch_timer()?,
+            // Self::TIMER => self.dispatch_timer()?,
             token if token.0 >= self.token => self.dispatch_listen(token.0)?,
             token => self.dispatch_conn(token, event)?
         }
@@ -194,18 +180,6 @@ impl<T> Node<T> {
         Ok(())
     }
 
-    fn dispatch_timer(&mut self) -> io::Result<()> {
-        self.timer.done()?;
-
-        if let Some(task) = self.timer.pop() {
-            self.relay_message(task.data.0, task.data.1)?;
-        }
-
-        self.timer.refresh()?;
-
-        Ok(())
-    }
-
     fn dispatch_conn(&mut self, token: Token, event: Event) -> io::Result<()> {
         let readiness = event.readiness();
         
@@ -215,8 +189,6 @@ impl<T> Node<T> {
             if let Some(conn) = self.conns.get_mut(token.0) {
                 if conn.read(&mut self.read_buffer, &self.hmac_key).is_err() {
                     remove = true;
-                } else {
-                    conn.modify(&self.epoll)?;
                 }
 
                 let addr = conn.addr.clone();
@@ -249,7 +221,7 @@ impl<T> Node<T> {
             let conn = self.conns.remove(id);
             conn.delete(&self.epoll)?;
 
-            for chan in conn.chans {
+            for (chan, _) in conn.chans {
                 if let Some(ids) = self.chans.get_mut(&chan) {
                     ids.remove(&id);
 
@@ -292,7 +264,6 @@ impl<T> Node<T> {
                     "_auth" => self.node_auth(id, &addr, message)?,
                     "_atta" => self.node_attach(id, &addr, message)?,
                     "_deta" => self.node_detach(id, &addr, message)?,
-                    "_delt" => self.node_deltime(id, message)?,
                     "_ping" => self.node_ping(id, message)?,
                     // "_quer" => self.node_query(id, message)?,
                     _ => {
@@ -302,94 +273,7 @@ impl<T> Node<T> {
                     }
                 }
             } else {
-                let has_chan = self.chans.contains_key(chan);
-
-                if !self.check_auth(id, &mut message)? {
-                    return Ok(())
-                }
-
-                if !self.can_emit(id, &addr, &mut message)? {
-                    return Ok(())
-                }
-
-                if !has_chan {
-                    ErrorCode::NoConsumers.insert_message(&mut message);
-
-                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
-
-                    return Ok(())
-                }
-
-                if let Ok(to) = message.get_str("_to") {
-                    if !self.ports.contains_key(to) {
-                        ErrorCode::TargetPortIdNotExist.insert_message(&mut message);
-
-                        self.push_data_to_conn(id, message.to_vec().unwrap())?;
-
-                        return Ok(())
-                    } else {
-                        message.remove("_back");
-                    }
-                }
-
-                if let Some(ack) = message.get("_ack") {
-
-                    let mut reply_msg = msg!{
-                        "_ack": ack.clone()
-                    };
-
-                    ErrorCode::OK.insert_message(&mut reply_msg);
-
-                    self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
-
-                    message.remove("_ack");
-                }
-
-                if let Some(conn) = self.conns.get(id) {
-                    if let Some(port_id) = &conn.port_id {
-                        message.insert("_from", port_id);
-                    }
-                }
-
-                let back = match message.get_bool("_back") {
-                    Ok(back) => {
-                        message.remove("_back");
-                        back
-                    }
-                    Err(_) => false
-                };
-
-                if let Ok(time) = message.get_u32("_time") {
-                    if time > 0 {
-                        let mut timeid = None;
-
-                        if let Ok(tid) = message.get_str("_tmid") {
-                            timeid = Some(tid.to_owned());
-                        }
-
-                        let data = if back {
-                            (None, message)
-                        } else {
-                            (Some(id), message)
-                        };
-
-                        let task = Task {
-                            data,
-                            time: Duration::from_millis(u64::from(time)),
-                            id: timeid
-                        };
-
-                        self.timer.push(task)?;
-
-                        continue;
-                    }
-                }
-
-                if back {
-                    self.relay_message(None, message)?;
-                } else {
-                    self.relay_message(Some(id), message)?;
-                }
+                self.relay_message(id, &addr, chan.to_string().to_string(), message)?;
             }
         }
 
@@ -450,7 +334,23 @@ impl<T> Node<T> {
                 return Ok(())
             }
 
-            self.session_attach(id, chan)?;
+            let labels = if let Ok(label) = message.get_str("_labe") {
+                vec![label.to_string()]
+            } else if let Ok(labels) = message.get_array("_labe") {
+                let mut vec = vec![];
+
+                labels.iter().for_each(|v| {
+                    if let Some(label) = v.as_str() {
+                        vec.push(label.to_string());
+                    }
+                });
+
+                vec
+            } else {
+                vec![]
+            };
+
+            self.session_attach(id, chan, labels)?;
 
             ErrorCode::OK.insert_message(&mut message);
         } else {
@@ -484,30 +384,6 @@ impl<T> Node<T> {
         Ok(())
     }
 
-    fn node_deltime(&mut self, id: usize, mut message: Message) -> io::Result<()> {
-        if !self.check_auth(id, &mut message)? {
-            return Ok(())
-        }
-
-        if let Ok(timeid) = message.get_str("_tmid") {
-            let has = self.timer.remove(timeid.to_owned());
-
-            if has {
-                self.timer.refresh()?;
-
-                ErrorCode::OK.insert_message(&mut message);
-            } else {
-                ErrorCode::TimeidNotExist.insert_message(&mut message);
-            }
-        } else {
-            ErrorCode::CannotGetTimeidField.insert_message(&mut message);
-        }
-
-        self.push_data_to_conn(id, message.to_vec().unwrap())?;
-
-        Ok(())
-    }
-
     fn node_ping(&mut self, id: usize, mut message: Message) -> io::Result<()> {
         ErrorCode::OK.insert_message(&mut message);
 
@@ -516,13 +392,13 @@ impl<T> Node<T> {
         Ok(())
     }
 
-    fn session_attach(&mut self, id: usize, chan: String) -> io::Result<()> {
+    fn session_attach(&mut self, id: usize, chan: String, labels: Vec<String>) -> io::Result<()> {
         let ids = self.chans.entry(chan.to_owned()).or_insert_with(HashSet::new);
 
         ids.insert(id);
 
         if let Some(conn) = self.conns.get_mut(id) {
-            conn.chans.insert(chan);
+            conn.chans.insert(chan, labels);
         }
 
         Ok(())
@@ -544,113 +420,164 @@ impl<T> Node<T> {
         Ok(())
     }
 
-    fn relay_message(&mut self, self_id: Option<usize>, mut message: Message) -> io::Result<()> {
-        if let Ok(chan) = message.get_str("_chan") {
-            if let Ok(to) = message.get_str("_to") {
-                if let Some(id) = self.ports.get(to) {
-                    if let Some(conn) = self.conns.get_mut(*id) {
-                        if conn.auth {
-                            // check can send
-                            let success = if let Some(send_fn) = &self.callback.send_fn {
-                                send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
-                            } else {
-                                true
-                            };
+    pub fn relay_message(&mut self, id: usize, addr: &Addr, chan: String, mut message: Message) -> io::Result<()> {
+        if !self.check_auth(id, &mut message)? {
+            return Ok(())
+        }
 
-                            if success {
-                                conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
-                                conn.modify(&self.epoll)?;
-                            }
-                        }
+        if !self.can_emit(id, &addr, &mut message)? {
+            return Ok(())
+        }
 
-                        return Ok(())
+        if let Ok(to) = message.get_str("_to") {
+            if !self.ports.contains_key(to) {
+                ErrorCode::TargetPortIdNotExist.insert_message(&mut message);
+
+                self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                return Ok(())
+            }
+        }
+
+        if let Some(conn) = self.conns.get(id) {
+            if let Some(port_id) = &conn.port_id {
+                message.insert("_from", port_id);
+            }
+        }
+
+        let label = message.get_str("_labe").map(|s| s.to_string()).ok();
+
+        let mut no_consumers = true;
+
+        if let Ok(to) = message.get_str("_to") {
+            no_consumers = false;
+
+            if let Some(conn_id) = self.ports.get(to) {
+                if let Some(conn) = self.conns.get_mut(*conn_id) {
+                    // check can send
+                    let success = if let Some(send_fn) = &self.callback.send_fn {
+                        send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
+                    } else {
+                        true
+                    };
+
+                    if success {
+                        conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                        conn.modify(&self.epoll)?;
                     }
                 }
             }
+        } else if message.get_bool("_shar").ok().unwrap_or(false) {
+            let mut array: Vec<usize> = Vec::new();
 
-            if let Ok(share) = message.get_bool("_shar") {
-                if share {
-                    let mut array: Vec<usize> = Vec::new();
+            if let Some(ids) = self.chans.get(&chan) {
+                for conn_id in ids {
+                    if *conn_id == id {
+                        continue;
+                    }
 
-                    if let Some(ids) = self.chans.get(chan) {
-                        for id in ids {
-                            if let Some(self_id) = self_id {
-                                if self_id == *id {
+                    if let Some(conn) = self.conns.get_mut(*conn_id) {
+                        if let Some(label) = &label {
+                            if let Some(labels) = conn.chans.get(&chan) {
+                                if !labels.contains(label) {
                                     continue;
                                 }
-                            } 
-
-                            if let Some(conn) = self.conns.get_mut(*id) {
-                                if conn.auth {
-                                    array.push(*id);
-                                }
-                            }
-                        }
-                    }
-
-                    if array.is_empty() {
-                        return Ok(())
-                    }
-
-                    if array.len() == 1 {
-                        if let Some(conn) = self.conns.get_mut(array[0]) {
-                            // check can send
-                            let success = if let Some(send_fn) = &self.callback.send_fn {
-                                send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
                             } else {
-                                true
-                            };
-
-                            if success {
-                                conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
-                                conn.modify(&self.epoll)?;
+                                    panic!("{:?}", "It's not going to go here!");
                             }
                         }
-                    } else if let Some(id) = array.choose(&mut self.rand) {
-                        if let Some(conn) = self.conns.get_mut(*id) {
-                            // check can send
-                            let success = if let Some(send_fn) = &self.callback.send_fn {
-                                send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
-                            } else {
-                                true
-                            };
 
-                            if success {
-                                conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
-                                conn.modify(&self.epoll)?;
-                            }
-                        }
+                        array.push(*conn_id);
                     }
-
-                    return Ok(())
                 }
             }
 
-            if let Some(ids) = self.chans.get(chan) {
-                for id in ids {
-                    if let Some(self_id) = self_id {
-                        if self_id == *id {
-                            continue;
+            if !array.is_empty() {
+                no_consumers = false;
+
+                if array.len() == 1 {
+                    if let Some(conn) = self.conns.get_mut(array[0]) {
+                            // check can send
+                        let success = if let Some(send_fn) = &self.callback.send_fn {
+                            send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
+                        } else {
+                            true
+                        };
+
+                        if success {
+                            conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                            conn.modify(&self.epoll)?;
                         }
                     }
-
+                } else if let Some(id) = array.choose(&mut self.rand) {
                     if let Some(conn) = self.conns.get_mut(*id) {
-                        if conn.auth {
-                            // check can send
-                            let success = if let Some(send_fn) = &self.callback.send_fn {
-                                send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
-                            } else {
-                                true
-                            };
+                        // check can send
+                        let success = if let Some(send_fn) = &self.callback.send_fn {
+                            send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
+                        } else {
+                            true
+                        };
 
-                            if success {
-                                conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
-                                conn.modify(&self.epoll)?;
-                            }
+                        if success {
+                            conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                            conn.modify(&self.epoll)?;
                         }
                     }
                 }
             }
+
+        } else if let Some(ids) = self.chans.get(&chan) {
+            for conn_id in ids {
+                if *conn_id == id {
+                    continue;
+                }
+
+                if let Some(conn) = self.conns.get_mut(*conn_id) {
+                    if let Some(label) = &label {
+                        if let Some(labels) = conn.chans.get(&chan) {
+                            if !labels.contains(label) {
+                                continue;
+                            }
+                        } else {
+                            panic!("{:?}", "It's not going to go here!");
+                        }
+                    }
+
+                    no_consumers = false;
+
+                    // check can send
+                    let success = if let Some(send_fn) = &self.callback.send_fn {
+                        send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
+                    } else {
+                        true
+                    };
+
+                    if success {
+                        conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                        conn.modify(&self.epoll)?;
+                    }
+                }
+            }
+        }
+
+        if no_consumers {
+            ErrorCode::NoConsumers.insert_message(&mut message);
+
+            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+            return Ok(())
+        }
+
+        if let Some(ack) = message.get("_ack") {
+            let mut reply_msg = msg!{
+                "_ack": ack.clone()
+            };
+
+            ErrorCode::OK.insert_message(&mut reply_msg);
+
+            self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
+
+            message.remove("_ack");
         }
 
         Ok(())

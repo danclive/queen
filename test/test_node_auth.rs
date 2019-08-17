@@ -53,18 +53,6 @@ fn no_auth() {
     let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
-    // deltime
-    let msg = msg!{
-        "_chan": "_delt",
-        "_timeid": "aaa"
-    };
-
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
-
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
-
     // ping
     let msg = msg!{
         "_chan": "_ping",
