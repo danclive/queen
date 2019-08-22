@@ -1,4 +1,4 @@
-use std::collections::{VecDeque, HashSet};
+use std::collections::VecDeque;
 use std::io::{self, ErrorKind::PermissionDenied};
 use std::time::Duration;
 use std::thread::sleep;
@@ -16,7 +16,7 @@ pub struct Bridge {
     session_a: Session,
     session_b: Session,
     read_buffer: VecDeque<Message>,
-    white_list: HashSet<String>,
+    white_list: Vec<(String, Vec<String>)>,
     run: bool,
 }
 
@@ -29,7 +29,7 @@ pub struct BridgeConfig {
     pub auth_msg2: Message,
     pub aead_key2: Option<String>,
     pub aead_method2: Method,
-    pub white_list: HashSet<String>
+    pub white_list: Vec<(String, Vec<String>)>
 }
 
 struct Session {
@@ -214,10 +214,11 @@ impl Bridge {
                                         if ok == 0 {
                                             self.$session_a.state = State::Authed;
 
-                                            for chan in &self.white_list {
+                                            for white in &self.white_list {
                                                 let msg = msg!{
                                                     "_chan": "_atta",
-                                                    "_valu": chan
+                                                    "_valu": white.0.clone(),
+                                                    "_labe": white.1.clone()
                                                 };
 
                                                 self.$session_a.conn

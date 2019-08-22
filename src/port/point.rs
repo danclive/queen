@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 use std::thread;
@@ -11,7 +13,9 @@ use queen_io::queue::mpsc::Queue;
 
 use crate::net::Addr;
 use crate::oneshot::{oneshot, Sender};
-use crate::port::Hub;
+
+use super::{Hub, HubConfig};
+use super::conn::Connection;
 
 pub struct Point {
     pub hub: Hub,
@@ -34,6 +38,7 @@ impl Point {
             config,
             queue: queue.clone(),
             handles: HashMap::new(),
+            conns: HashMap::new(),
             services: HashMap::new(),
             un_call: VecDeque::new(),
             run: true
@@ -102,9 +107,10 @@ struct InnerPoint {
     config: PointConfig,
     queue: Queue<Packet>,
     handles: HashMap<String, HandleBox>,
-    // conns: HashMap<i32, Conn>,
+    conns: HashMap<i32, Connection>,
     services: HashMap<String, Vec<Service>>,
     un_call: VecDeque<(String, Message, Sender<Message>)>,
+    // calling: LruCache<MessageId, Sender<Message>>
     run: bool,
 }
 
@@ -159,11 +165,13 @@ impl InnerPoint {
                     let key = format!("{}.{}", module, method);
 
                     if let Some(_conn_id) = self.services.get_mut(&key) {
-
+                        // call service
                     } else {
                         self.un_call.push_back((key, message, tx));
 
                         // todo
+
+                        // query service
                     }
                 }
                 Packet::Add(module, method, handle) => {

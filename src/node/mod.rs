@@ -26,7 +26,7 @@ mod net;
 mod callback;
 
 pub struct Node<T> {
-    node_id: String,
+    node_id: MessageId,
     epoll: Epoll,
     events: Events,
     listens: HashMap<usize, Listen>,
@@ -35,7 +35,7 @@ pub struct Node<T> {
     read_buffer: VecDeque<Message>,
     callback: Callback<T>,
     chans: HashMap<String, HashSet<usize>>,
-    ports: HashMap<String, usize>,
+    ports: HashMap<MessageId, usize>,
     rand: ThreadRng,
     user_data: T,
     aead_key: Option<String>,
@@ -45,7 +45,7 @@ pub struct Node<T> {
 
 #[derive(Default)]
 pub struct NodeConfig {
-    pub node_id: String,
+    pub node_id: MessageId,
     pub addrs: Vec<Addr>,
     pub aead_key: Option<String>,
     pub aead_method: Method
@@ -57,7 +57,7 @@ impl NodeConfig {
             addrs: Vec::new(),
             aead_key: None,
             aead_method: Method::default(),
-            node_id: MessageId::new().to_string()
+            node_id: MessageId::new()
         }
     }
 
@@ -307,7 +307,7 @@ impl<T> Node<T> {
         }
 
         if let Some(conn) = self.conns.get_mut(id) {
-            if let Ok(port_id) = message.get_str("_ptid") {
+            if let Ok(port_id) = message.get_message_id("_ptid") {
                 if self.ports.contains_key(port_id) {
 
                     ErrorCode::DuplicatePortId.insert_message(&mut message);
@@ -318,14 +318,21 @@ impl<T> Node<T> {
                     return Ok(())
                 }
 
-                self.ports.insert(port_id.to_string(), id);
+                self.ports.insert(port_id.clone(), id);
 
-                conn.port_id = Some(port_id.to_string());
+                conn.port_id = Some(port_id.clone());
+            } else {
+                ErrorCode::InvalidFieldType.insert_message(&mut message);
+
+                conn.push_data(message.to_vec().unwrap());
+                conn.modify(&self.epoll)?;
+
+                return Ok(())
             }
 
             conn.auth = true;
 
-            message.insert("_noid", &self.node_id);
+            message.insert("_noid", self.node_id.clone());
 
             ErrorCode::OK.insert_message(&mut message);
 
@@ -359,7 +366,11 @@ impl<T> Node<T> {
 
                 vec
             } else {
-                vec![]
+                ErrorCode::InvalidFieldType.insert_message(&mut message);
+
+                self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                return Ok(())
             };
 
             self.session_attach(id, chan, labels)?;
@@ -441,7 +452,7 @@ impl<T> Node<T> {
             return Ok(())
         }
 
-        if let Ok(to) = message.get_str("_to") {
+        if let Ok(to) = message.get_message_id("_to") {
             if !self.ports.contains_key(to) {
                 ErrorCode::TargetPortIdNotExist.insert_message(&mut message);
 
@@ -449,11 +460,17 @@ impl<T> Node<T> {
 
                 return Ok(())
             }
+        } else {
+            ErrorCode::InvalidFieldType.insert_message(&mut message);
+
+            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+            return Ok(())
         }
 
         if let Some(conn) = self.conns.get(id) {
             if let Some(port_id) = &conn.port_id {
-                message.insert("_from", port_id);
+                message.insert("_from", port_id.clone());
             }
         }
 
@@ -461,7 +478,7 @@ impl<T> Node<T> {
 
         let mut no_consumers = true;
 
-        if let Ok(to) = message.get_str("_to") {
+        if let Ok(to) = message.get_message_id("_to") {
             no_consumers = false;
 
             if let Some(conn_id) = self.ports.get(to) {

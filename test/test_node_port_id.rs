@@ -4,7 +4,7 @@ use std::time::Duration;
 use std::io::ErrorKind::WouldBlock;
 
 use queen::{Node, node::NodeConfig};
-use queen::nson::{msg, Message};
+use queen::nson::{msg, Message, message_id::MessageId};
 use queen::error::ErrorCode;
 use queen::util::{write_socket, read_socket};
 use queen::crypto::{Method, Aead};
@@ -46,7 +46,7 @@ fn duplicate() {
         "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_ptid": "id123"
+        "_ptid": MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
     };
 
     let data = msg.to_vec().unwrap();
@@ -62,7 +62,7 @@ fn duplicate() {
         "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_ptid": "id456"
+        "_ptid": MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
     };
 
     let data = msg.to_vec().unwrap();
@@ -77,7 +77,7 @@ fn duplicate() {
         "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_ptid": "id456"
+        "_ptid": MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
     };
 
     let data = msg.to_vec().unwrap();
@@ -123,7 +123,7 @@ fn port_to_port() {
         "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_ptid": "id123"
+        "_ptid": MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
     };
 
     let data = msg.to_vec().unwrap();
@@ -138,7 +138,7 @@ fn port_to_port() {
         "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_ptid": "id456"
+        "_ptid": MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
     };
 
     let data = msg.to_vec().unwrap();
@@ -153,7 +153,7 @@ fn port_to_port() {
         "_chan": "_auth",
         "username": "aaa",
         "password": "bbb",
-        "_ptid": "id789"
+        "_ptid": MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap()
     };
 
     let data = msg.to_vec().unwrap();
@@ -194,7 +194,7 @@ fn port_to_port() {
         "_chan": "aaa",
         "hello": "world",
         "_ack": 123,
-        "_to": "aaa"
+        "_to": MessageId::with_string("5932a005b4b4b4ac168cd9e7").unwrap()
     };
 
     let data = msg.to_vec().unwrap();
@@ -209,7 +209,7 @@ fn port_to_port() {
         "_chan": "aaa",
         "hello": "world",
         "_ack": 123,
-        "_to": "id123"
+        "_to": MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
     };
 
     let data = msg.to_vec().unwrap();

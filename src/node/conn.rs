@@ -5,6 +5,7 @@ use std::usize;
 use queen_io::epoll::{Epoll, Token, Ready, EpollOpt, Evented};
 
 use nson::Message;
+use nson::message_id::MessageId;
 
 use crate::crypto::Aead;
 use crate::net::{Addr, Stream};
@@ -20,7 +21,7 @@ pub struct Connection {
     write_buffer: VecDeque<Vec<u8>>,
     pub auth: bool,
     pub chans: HashMap<String, Vec<String>>, // HashMap<Chan, Vec<Label>>
-    pub port_id: Option<String>,
+    pub port_id: Option<MessageId>,
     aead: Option<Aead>
 }
 
