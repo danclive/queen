@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.4.1"
+version       = "0.4.2"
 license       = "MIT"
 authors       = ["danclive <dangcheng@hotmail.com>"]
 description   = "server"
@@ -20,7 +20,7 @@ autobins      = false
 
 [dependencies]
 nson = "0.3"
-queen-io = "0.4.1"
+queen-io = "0.4.2"
 serde = "1.0"
 serde_derive = "1.0"
 libc = "0.2"

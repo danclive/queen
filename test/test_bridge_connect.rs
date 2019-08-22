@@ -9,6 +9,7 @@ use queen::port::{Bridge, BridgeConfig};
 use queen::nson::msg;
 use queen::nson::Message;
 use queen::util::{write_socket, read_socket, get_length};
+use queen::crypto::{Method, Aead};
 
 use super::get_free_addr;
 
@@ -23,7 +24,7 @@ fn connect() {
         let mut config = NodeConfig::new();
 
         config.add_tcp(addr_a2).unwrap();
-        config.set_hmac_key("queen");
+        config.set_aead_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -56,11 +57,13 @@ fn connect() {
         let config = BridgeConfig {
             addr1: queen::net::Addr::tcp(addr_a2).unwrap(),
             auth_msg1: msg!{},
-            hmac_key1: Some("queen".to_string()),
+            aead_key1: Some("queen".to_string()),
+            aead_method1: Method::default(),
             addr2: queen::net::Addr::tcp(addr_b2).unwrap(),
             auth_msg2: msg!{},
             white_list: chans,
-            hmac_key2: None
+            aead_key2: None,
+            aead_method2: Method::default()
         };
 
         let mut bridge = Bridge::connect(config);
@@ -109,6 +112,7 @@ fn connect() {
 
     // client a
     let mut socket_a = TcpStream::connect(addr_a).unwrap();
+    let mut aead_a = Aead::new(&Method::default(), b"queen");
 
     let msg = msg!{
         "_chan": "_auth",
@@ -116,10 +120,11 @@ fn connect() {
         "password": "bbb"
     };
 
-    write_socket(&mut socket_a, b"queen", msg.to_vec().unwrap()).unwrap();
-   
-    let data = read_socket(&mut socket_a, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket_a, &mut aead_a, data).unwrap();
+    let read_data = read_socket(&mut socket_a, &mut aead_a).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
+
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client a send
@@ -129,10 +134,11 @@ fn connect() {
         "_ack": 123
     };
 
-    write_socket(&mut socket_a, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket_a, &mut aead_a, data).unwrap();
+    let read_data = read_socket(&mut socket_a, &mut aead_a).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket_a, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client b try recv

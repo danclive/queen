@@ -5,11 +5,12 @@ use std::time::Duration;
 use queen::{Node, node::NodeConfig};
 use queen::nson::{msg, Message};
 use queen::util::{write_socket, read_socket};
+use queen::crypto::{Method, Aead};
 
 use super::get_free_addr;
 
 #[test]
-fn no_hmac() {
+fn no_aead() {
     let addr = get_free_addr();
 
     let addr2 = addr.clone();
@@ -38,7 +39,7 @@ fn no_hmac() {
 }
 
 #[test]
-fn hmac() {
+fn aead() {
     let addr = get_free_addr();
 
     let addr2 = addr.clone();
@@ -46,7 +47,7 @@ fn hmac() {
         let mut config = NodeConfig::new();
 
         config.add_tcp(addr2).unwrap();
-        config.set_hmac_key("queen");
+        config.set_aead_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -66,9 +67,12 @@ fn hmac() {
 
     // hmac
     let mut socket = TcpStream::connect(addr).unwrap();
+    let mut aead = Aead::new(&Method::default(), b"queen");
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
+
     assert!(recv.get_i32("ok").unwrap() == 0);
 }

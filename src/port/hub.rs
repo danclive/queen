@@ -14,6 +14,7 @@ use queen_io::queue::spsc::Queue as SpscQueue;
 use nson::{Message, msg};
 
 use crate::net::Addr;
+use crate::crypto::{Method, Aead};
 
 use super::conn::Connection;
 
@@ -21,6 +22,33 @@ use super::conn::Connection;
 pub struct Hub {
     id: Arc<AtomicUsize>,
     queue: Queue<Packet>
+}
+
+#[derive(Debug, Clone)]
+pub struct HubConfig {
+    pub addr: Addr,
+    pub auth_msg: Message,
+    pub aead_key: Option<String>,
+    pub aead_method: Method
+}
+
+impl HubConfig {
+    pub fn new(addr: Addr, auth_msg: Message, aead_key: Option<String>) -> HubConfig {
+        HubConfig {
+            addr,
+            auth_msg,
+            aead_key,
+            aead_method: Method::default()
+        }
+    }
+
+    pub fn set_aead_key(&mut self, key: &str) {
+        self.aead_key = Some(key.to_string())
+    }
+
+    pub fn set_aead_method(&mut self, method: Method) {
+        self.aead_method = method;
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -31,19 +59,20 @@ enum State {
 }
 
 impl Hub {
-    pub fn connect(addr: Addr, auth_msg: Message, hmac_key: Option<String>) -> io::Result<Hub> {
+    pub fn connect(config: HubConfig) -> io::Result<Hub> {
         let queue = Queue::new()?;
 
         let mut inner = HubInner {
-            addr,
-            auth_msg,
+            addr: config.addr,
+            auth_msg: config.auth_msg,
             conn: None,
             state: State::UnAuth,
             read_buffer: VecDeque::new(),
             queue: queue.clone(),
             chans: HashMap::new(),
             tx_index: HashMap::new(),
-            hmac_key,
+            aead_key: config.aead_key,
+            aead_method: config.aead_method,
             run: true
         };
 
@@ -159,7 +188,8 @@ struct HubInner {
     queue: Queue<Packet>,
     chans: HashMap<String, Vec<(usize, SenderType)>>,
     tx_index: HashMap<usize, String>,
-    hmac_key: Option<String>,
+    aead_key: Option<String>,
+    aead_method: Method,
     run: bool
 }
 
@@ -177,9 +207,9 @@ impl HubInner {
         Ok(())
     }
 
-    pub fn run_once(&mut self) -> io::Result<()> {
+    fn run_once(&mut self) -> io::Result<()> {
         if self.conn.is_none() {
-            let conn = match self.addr.connect() {
+            let stream = match self.addr.connect() {
                 Ok(conn) => conn,
                 Err(err) => {
                     println!("link: {:?} err: {}", self.addr, err);
@@ -189,6 +219,10 @@ impl HubInner {
                     return Ok(())
                 }
             };
+
+            let aead = self.aead_key.as_ref().map(|key| Aead::new(&self.aead_method, key.as_bytes()));
+
+            let conn = Connection::new(stream, aead);
 
             let fd = conn.fd();
 
@@ -203,7 +237,7 @@ impl HubInner {
             msg.extend(self.auth_msg.clone());
 
             self.conn.as_mut().unwrap()
-                .1.push_data(msg.to_vec().unwrap(), &self.hmac_key);
+                .1.push_data(msg.to_vec().unwrap());
 
             self.state = State::Authing;
         }
@@ -238,7 +272,7 @@ impl HubInner {
 
                     if readiness.is_readable() {
                         if let Some((_, conn)) = &mut self.conn {
-                            if conn.read(&mut self.read_buffer, &self.hmac_key).is_err() {
+                            if conn.read(&mut self.read_buffer).is_err() {
                                 self.conn = None;
                                 self.state = State::UnAuth;
                             }
@@ -283,7 +317,7 @@ impl HubInner {
                                         };
 
                                         self.conn.as_mut().unwrap()
-                                            .1.push_data(msg.to_vec().unwrap(), &self.hmac_key);
+                                            .1.push_data(msg.to_vec().unwrap());
                                     }
                                 } else {
                                     return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
@@ -314,7 +348,7 @@ impl HubInner {
                 Packet::Send(msg) => {
                     if self.state == State::Authed {
                         self.conn.as_mut().unwrap()
-                            .1.push_data(msg.to_vec().unwrap(), &self.hmac_key);
+                            .1.push_data(msg.to_vec().unwrap());
                     }
 
                     self.relay_message(msg)?;
@@ -329,7 +363,7 @@ impl HubInner {
                         };
 
                         self.conn.as_mut().unwrap()
-                            .1.push_data(msg.to_vec().unwrap(), &self.hmac_key);
+                            .1.push_data(msg.to_vec().unwrap());
                     }
 
                     ids.push((id, SenderType::Block(tx)));
@@ -344,7 +378,7 @@ impl HubInner {
                         };
 
                         self.conn.as_mut().unwrap()
-                            .1.push_data(msg.to_vec().unwrap(), &self.hmac_key);
+                            .1.push_data(msg.to_vec().unwrap());
                     }
 
                     ids.push((id, SenderType::Async(queue)));
@@ -363,7 +397,7 @@ impl HubInner {
                                 };
 
                                 self.conn.as_mut().unwrap()
-                                    .1.push_data(msg.to_vec().unwrap(), &self.hmac_key);
+                                    .1.push_data(msg.to_vec().unwrap());
                             }
                         }
                     }

@@ -9,6 +9,7 @@ use rand::random;
 use queen::{Node, node::Callback, node::NodeConfig};
 use queen::nson::msg;
 use queen::util::{write_socket, read_socket};
+use queen::crypto::{Method, Aead};
 
 use super::get_free_addr;
 
@@ -21,7 +22,7 @@ fn tcp_accept() {
         let mut config = NodeConfig::new();
 
         config.add_tcp(addr2).unwrap();
-        config.set_hmac_key("queen");
+        config.set_aead_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -39,13 +40,15 @@ fn tcp_accept() {
     thread::sleep(Duration::from_secs(1));
 
     let mut socket = TcpStream::connect(addr).unwrap();
+    let mut aead = Aead::new(&Method::default(), b"queen");
 
     let msg = msg!{
         "_chan": "_ping"
     };
 
-    let r1 = write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).is_err();
-    let r2 = read_socket(&mut socket, b"queen").is_err();
+    let data = msg.to_vec().unwrap();
+    let r1 = write_socket(&mut socket, &mut aead, data).is_err();
+    let r2 = read_socket(&mut socket, &mut aead).is_err();
     assert!(r1 || r2);
 }
 
@@ -59,7 +62,7 @@ fn unix_accept() {
         let mut config = NodeConfig::new();
 
         config.add_uds(rand_path2);
-        config.set_hmac_key("queen");
+        config.set_aead_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -77,13 +80,15 @@ fn unix_accept() {
     thread::sleep(Duration::from_secs(1));
 
     let mut socket = UnixStream::connect(&rand_path).unwrap();
+    let mut aead = Aead::new(&Method::default(), b"queen");
 
     let msg = msg!{
         "_chan": "_ping"
     };
 
-    let r1 = write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).is_err();
-    let r2 = read_socket(&mut socket, b"queen").is_err();
+    let data = msg.to_vec().unwrap();
+    let r1 = write_socket(&mut socket, &mut aead, data).is_err();
+    let r2 = read_socket(&mut socket, &mut aead).is_err();
     assert!(r1 || r2);
 
     let _ = fs::remove_file(rand_path).unwrap();

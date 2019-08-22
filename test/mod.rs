@@ -4,7 +4,7 @@ mod test_event_emit;
 mod test_node_accept;
 mod test_node_auth;
 mod test_node_attach;
-mod test_node_hmac;
+mod test_node_aead;
 mod test_node_port_id;
 mod test_node_label;
 mod test_bridge_connect;

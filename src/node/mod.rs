@@ -15,6 +15,7 @@ use rand::seq::SliceRandom;
 
 use crate::net::Addr;
 use crate::error::ErrorCode;
+use crate::crypto::{Method, Aead};
 
 use conn::Connection;
 use net::Listen;
@@ -37,7 +38,8 @@ pub struct Node<T> {
     ports: HashMap<String, usize>,
     rand: ThreadRng,
     user_data: T,
-    hmac_key: Option<String>, 
+    aead_key: Option<String>,
+    aead_method: Method,
     run: bool
 }
 
@@ -45,14 +47,16 @@ pub struct Node<T> {
 pub struct NodeConfig {
     pub node_id: String,
     pub addrs: Vec<Addr>,
-    pub hmac_key: Option<String>
+    pub aead_key: Option<String>,
+    pub aead_method: Method
 }
 
 impl NodeConfig {
     pub fn new() -> NodeConfig {
         NodeConfig {
             addrs: Vec::new(),
-            hmac_key: None,
+            aead_key: None,
+            aead_method: Method::default(),
             node_id: MessageId::new().to_string()
         }
     }
@@ -67,8 +71,12 @@ impl NodeConfig {
         self.addrs.push(Addr::Uds(path))
     }
 
-    pub fn set_hmac_key(&mut self, key: &str) {
-        self.hmac_key = Some(key.to_string())
+    pub fn set_aead_key(&mut self, key: &str) {
+        self.aead_key = Some(key.to_string())
+    }
+
+    pub fn set_aead_method(&mut self, method: Method) {
+        self.aead_method = method;
     }
 }
 
@@ -101,7 +109,8 @@ impl<T> Node<T> {
             ports: HashMap::new(),
             rand: thread_rng(),
             user_data,
-            hmac_key: config.hmac_key,
+            aead_key: config.aead_key,
+            aead_method: config.aead_method,
             run: true
         };
 
@@ -160,6 +169,8 @@ impl<T> Node<T> {
                     }
                 };
 
+                let aead = self.aead_key.as_ref().map(|key| Aead::new(&self.aead_method, key.as_bytes()));
+
                 let entry = self.conns.vacant_entry();
 
                 let success = if let Some(accept_fn) = &self.callback.accept_fn {
@@ -169,7 +180,8 @@ impl<T> Node<T> {
                 };
 
                 if success {
-                    let conn = Connection::new(entry.key(), addr, socket);
+
+                    let conn = Connection::new(entry.key(), addr, socket, aead);
                     conn.add(&self.epoll)?;
 
                     entry.insert(conn);
@@ -187,7 +199,7 @@ impl<T> Node<T> {
 
         if readiness.is_readable() {
             if let Some(conn) = self.conns.get_mut(token.0) {
-                if conn.read(&mut self.read_buffer, &self.hmac_key).is_err() {
+                if conn.read(&mut self.read_buffer).is_err() {
                     remove = true;
                 }
 
@@ -282,7 +294,7 @@ impl<T> Node<T> {
 
     fn push_data_to_conn(&mut self, id: usize, data: Vec<u8>) -> io::Result<()> {
         if let Some(conn) = self.conns.get_mut(id) {
-            conn.push_data(data, &self.hmac_key);
+            conn.push_data(data);
             conn.modify(&self.epoll)?;
         }
 
@@ -300,7 +312,7 @@ impl<T> Node<T> {
 
                     ErrorCode::DuplicatePortId.insert_message(&mut message);
 
-                    conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                    conn.push_data(message.to_vec().unwrap());
                     conn.modify(&self.epoll)?;
 
                     return Ok(())
@@ -317,7 +329,7 @@ impl<T> Node<T> {
 
             ErrorCode::OK.insert_message(&mut message);
 
-            conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+            conn.push_data(message.to_vec().unwrap());
             conn.modify(&self.epoll)?;
         }
 
@@ -462,7 +474,7 @@ impl<T> Node<T> {
                     };
 
                     if success {
-                        conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                        conn.push_data(message.to_vec().unwrap());
                         conn.modify(&self.epoll)?;
                     }
                 }
@@ -505,7 +517,7 @@ impl<T> Node<T> {
                         };
 
                         if success {
-                            conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                            conn.push_data(message.to_vec().unwrap());
                             conn.modify(&self.epoll)?;
                         }
                     }
@@ -519,7 +531,7 @@ impl<T> Node<T> {
                         };
 
                         if success {
-                            conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                            conn.push_data(message.to_vec().unwrap());
                             conn.modify(&self.epoll)?;
                         }
                     }
@@ -553,7 +565,7 @@ impl<T> Node<T> {
                     };
 
                     if success {
-                        conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+                        conn.push_data(message.to_vec().unwrap());
                         conn.modify(&self.epoll)?;
                     }
                 }
@@ -591,7 +603,7 @@ impl<T> Node<T> {
 
             ErrorCode::Unauthorized.insert_message(message);
 
-            conn.push_data(message.to_vec().unwrap(), &self.hmac_key);
+            conn.push_data(message.to_vec().unwrap());
             conn.modify(&self.epoll)?;
         }
 

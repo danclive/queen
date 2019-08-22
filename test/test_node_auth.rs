@@ -6,6 +6,7 @@ use queen::{Node, node::Callback, node::NodeConfig};
 use queen::nson::{msg, Message};
 use queen::error::ErrorCode;
 use queen::util::{write_socket, read_socket};
+use queen::crypto::{Method, Aead};
 
 use super::get_free_addr;
 
@@ -18,7 +19,7 @@ fn no_auth() {
         let mut config = NodeConfig::new();
 
         config.add_tcp(addr2).unwrap();
-        config.set_hmac_key("queen");
+        config.set_aead_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -28,6 +29,7 @@ fn no_auth() {
     thread::sleep(Duration::from_secs(1));
 
     let mut socket = TcpStream::connect(addr).unwrap();
+    let mut aead = Aead::new(&Method::default(), b"queen");
 
     // attach
     let msg = msg!{
@@ -35,10 +37,11 @@ fn no_auth() {
         "_valu": "aaa"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // detach
@@ -47,10 +50,11 @@ fn no_auth() {
         "_valu": "aaa"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // ping
@@ -59,10 +63,11 @@ fn no_auth() {
         "_timeid": "aaa"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // send
@@ -70,10 +75,13 @@ fn no_auth() {
         "_chan": "aaa"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+
+    let recv = Message::from_slice(&read_data).unwrap();
+
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 }
 
@@ -86,7 +94,7 @@ fn do_auth() {
         let mut config = NodeConfig::new();
 
         config.add_tcp(addr2).unwrap();
-        config.set_hmac_key("queen");
+        config.set_aead_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -96,6 +104,7 @@ fn do_auth() {
     thread::sleep(Duration::from_secs(1));
 
     let mut socket = TcpStream::connect(addr).unwrap();
+    let mut aead = Aead::new(&Method::default(), b"queen");
 
     // attach
     let msg = msg!{
@@ -103,10 +112,11 @@ fn do_auth() {
         "_valu": "aaa"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // auth
@@ -116,10 +126,11 @@ fn do_auth() {
         "password": "bbb"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // attach
@@ -128,10 +139,11 @@ fn do_auth() {
         "_valu": "aaa"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0)
 }
 
@@ -144,7 +156,7 @@ fn can_auth() {
         let mut config = NodeConfig::new();
 
         config.add_tcp(addr2).unwrap();
-        config.set_hmac_key("queen");
+        config.set_aead_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -169,6 +181,7 @@ fn can_auth() {
     thread::sleep(Duration::from_secs(1));
 
     let mut socket = TcpStream::connect(addr).unwrap();
+    let mut aead = Aead::new(&Method::default(), b"queen");
 
     // attach
     let msg = msg!{
@@ -176,10 +189,11 @@ fn can_auth() {
         "_valu": "aaa"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     let msg = msg!{
@@ -188,10 +202,11 @@ fn can_auth() {
         "password": "bbbccc"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::AuthenticationFailed));
 
     let msg = msg!{
@@ -200,10 +215,11 @@ fn can_auth() {
         "password": "bbb"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // attach
@@ -212,9 +228,10 @@ fn can_auth() {
         "_valu": "aaa"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 }

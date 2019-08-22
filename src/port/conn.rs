@@ -4,21 +4,24 @@ use std::os::unix::io::AsRawFd;
 
 use nson::Message;
 
+use crate::crypto::Aead;
 use crate::net::Stream;
-use crate::util::{slice_msg, sign, verify};
+use crate::util::slice_msg;
 
 pub struct Connection {
     stream: Stream,
     read_buffer: Vec<u8>,
-    write_buffer: VecDeque<Vec<u8>>
+    write_buffer: VecDeque<Vec<u8>>,
+    aead: Option<Aead>
 }
 
 impl Connection {
-    pub fn new(stream: Stream) -> Connection {
+    pub fn new(stream: Stream, aead: Option<Aead>) -> Connection {
         Connection {
             stream,
             read_buffer: Vec::new(),
-            write_buffer: VecDeque::new()
+            write_buffer: VecDeque::new(),
+            aead
         }
     }
 
@@ -26,7 +29,7 @@ impl Connection {
         self.stream.as_raw_fd()
     }
 
-    pub fn read(&mut self, read_buffer: &mut VecDeque<Message>, hmac_key: &Option<String>) -> io::Result<()> {
+    pub fn read(&mut self, read_buffer: &mut VecDeque<Message>) -> io::Result<()> {
         loop {
             let mut buf = [0; 4 * 1024];
 
@@ -37,9 +40,9 @@ impl Connection {
                     } else {
                         let vec = slice_msg(&mut self.read_buffer, &buf[..size])?;
 
-                        for data in vec {
-                            if let Some(key) = hmac_key {
-                                if !verify(key.as_bytes(), &data) {
+                        for mut data in vec {
+                            if let Some(aead) = &mut self.aead {
+                                if aead.decrypt(&mut data).is_err() {
                                     return Err(io::Error::new(InvalidData, "InvalidData"))
                                 }
                             }
@@ -93,10 +96,9 @@ impl Connection {
         Ok(())
     }
 
-    pub fn push_data(&mut self, mut data: Vec<u8>, hmac_key: &Option<String>) {
-
-        if let Some(key) = hmac_key {
-            data = sign(key.as_bytes(), data);
+    pub fn push_data(&mut self, mut data: Vec<u8>) {
+        if let Some(aead) = &mut self.aead {
+            aead.encrypt(&mut data).expect("encrypt error");
         }
 
         self.write_buffer.push_back(data);

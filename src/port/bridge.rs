@@ -8,6 +8,7 @@ use nson::{Message, msg};
 use queen_io::poll::{poll, Ready, Events};
 
 use crate::net::Addr;
+use crate::crypto::{Method, Aead};
 
 use super::conn::Connection;
 
@@ -22,10 +23,12 @@ pub struct Bridge {
 pub struct BridgeConfig {
     pub addr1: Addr,
     pub auth_msg1: Message,
-    pub hmac_key1: Option<String>,
+    pub aead_key1: Option<String>,
+    pub aead_method1: Method,
     pub addr2: Addr,
     pub auth_msg2: Message,
-    pub hmac_key2: Option<String>,
+    pub aead_key2: Option<String>,
+    pub aead_method2: Method,
     pub white_list: HashSet<String>
 }
 
@@ -34,7 +37,8 @@ struct Session {
     state: State,
     addr: Addr,
     auth_msg: Message,
-    hmac_key: Option<String>,
+    aead_key: Option<String>,
+    aead_method: Method,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -52,14 +56,16 @@ impl Bridge {
                 state: State::UnAuth,
                 addr: config.addr1,
                 auth_msg: config.auth_msg1,
-                hmac_key: config.hmac_key1
+                aead_key: config.aead_key1,
+                aead_method: config.aead_method1
             },
             session_b: Session {
                 conn: None,
                 state: State::UnAuth,
                 addr: config.addr2,
                 auth_msg: config.auth_msg2,
-                hmac_key: config.hmac_key2
+                aead_key: config.aead_key2,
+                aead_method: config.aead_method2
             },
             read_buffer: VecDeque::new(),
             white_list: config.white_list,
@@ -80,7 +86,7 @@ impl Bridge {
             macro_rules! link {
                 ($session:ident) => {
                     if self.$session.conn.is_none() {
-                        let conn = match self.$session.addr.connect() {
+                        let stream = match self.$session.addr.connect() {
                             Ok(conn) => conn,
                             Err(err) => {
                                 println!("link: {:?} err: {}", self.$session.addr, err);
@@ -90,6 +96,10 @@ impl Bridge {
                                 return Ok(())
                             }
                         };
+
+                        let aead = self.$session.aead_key.as_ref().map(|key| Aead::new(&self.$session.aead_method, key.as_bytes()));
+                
+                        let conn = Connection::new(stream, aead);
 
                         let fd = conn.fd();
 
@@ -114,7 +124,7 @@ impl Bridge {
 
                         self.$session.conn
                             .as_mut().unwrap()
-                            .1.push_data(msg.to_vec().unwrap(), &self.$session.hmac_key);
+                            .1.push_data(msg.to_vec().unwrap());
 
                         self.$session.state = State::Authing;
                     }
@@ -161,7 +171,7 @@ impl Bridge {
 
                             if readiness.is_readable() {
                                 if let Some((_, conn)) = &mut self.$session.conn {
-                                    if conn.read(&mut self.read_buffer, &self.$session.hmac_key).is_err() {
+                                    if conn.read(&mut self.read_buffer).is_err() {
                                         self.$session.conn = None;
                                         self.$session.state = State::UnAuth;
                                     }
@@ -212,7 +222,7 @@ impl Bridge {
 
                                                 self.$session_a.conn
                                                     .as_mut().unwrap()
-                                                    .1.push_data(msg.to_vec().unwrap(), &self.$session_a.hmac_key);
+                                                    .1.push_data(msg.to_vec().unwrap());
                                             }
 
                                             continue;
@@ -238,7 +248,7 @@ impl Bridge {
                             }
 
                             if let Some((_, conn)) = &mut self.$session_b.conn {            
-                                conn.push_data(message.to_vec().unwrap(), &self.$session_b.hmac_key)
+                                conn.push_data(message.to_vec().unwrap())
                             }
                         }
                     }

@@ -203,4 +203,15 @@ mod tests {
 
         h.join().unwrap();
     }
+
+    #[test]
+    fn is_needed() {
+        let (tx, rx) = oneshot::<i32>();
+
+        assert_eq!(tx.is_needed(), true);
+
+        drop(rx);
+
+        assert_eq!(tx.is_needed(), false);
+    }
 }

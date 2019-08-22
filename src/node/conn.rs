@@ -1,4 +1,4 @@
-use std::collections::{VecDeque, HashSet, HashMap};
+use std::collections::{VecDeque, HashMap};
 use std::io::{self, Read, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
 use std::usize;
 
@@ -6,8 +6,9 @@ use queen_io::epoll::{Epoll, Token, Ready, EpollOpt, Evented};
 
 use nson::Message;
 
+use crate::crypto::Aead;
 use crate::net::{Addr, Stream};
-use crate::util::{slice_msg, sign, verify};
+use crate::util::slice_msg;
 
 #[derive(Debug)]
 pub struct Connection {
@@ -19,11 +20,12 @@ pub struct Connection {
     write_buffer: VecDeque<Vec<u8>>,
     pub auth: bool,
     pub chans: HashMap<String, Vec<String>>, // HashMap<Chan, Vec<Label>>
-    pub port_id: Option<String>
+    pub port_id: Option<String>,
+    aead: Option<Aead>
 }
 
 impl Connection {
-    pub fn new(id: usize, addr: Addr, stream: Stream) -> Connection {
+    pub fn new(id: usize, addr: Addr, stream: Stream, aead: Option<Aead>) -> Connection {
         Connection {
             id,
             addr,
@@ -33,7 +35,8 @@ impl Connection {
             write_buffer: VecDeque::new(),
             auth: false,
             chans: HashMap::new(),
-            port_id: None
+            port_id: None,
+            aead
         }
     }
 
@@ -59,7 +62,7 @@ impl Connection {
         epoll.delete(&self.stream)
     }
 
-    pub fn read(&mut self, read_buffer: &mut VecDeque<Message>, hmac_key: &Option<String>) -> io::Result<()> {
+    pub fn read(&mut self, read_buffer: &mut VecDeque<Message>) -> io::Result<()> {
         loop {
             let mut buf = [0; 4 * 1024];
 
@@ -70,9 +73,9 @@ impl Connection {
                     } else {
                         let vec = slice_msg(&mut self.read_buffer, &buf[..size])?;
 
-                        for data in vec {
-                            if let Some(key) = hmac_key {
-                                if !verify(key.as_bytes(), &data) {
+                        for mut data in vec {
+                            if let Some(aead) = &mut self.aead {
+                                if aead.decrypt(&mut data).is_err() {
                                     return Err(io::Error::new(InvalidData, "InvalidData"))
                                 }
                             }
@@ -131,9 +134,9 @@ impl Connection {
         Ok(())
     }
 
-    pub fn push_data(&mut self, mut data: Vec<u8>, hmac_key: &Option<String>) {
-        if let Some(key) = hmac_key {
-            data = sign(key.as_bytes(), data);
+    pub fn push_data(&mut self, mut data: Vec<u8>) {
+        if let Some(aead) = &mut self.aead {
+            aead.encrypt(&mut data).expect("encrypt error");
         }
 
         self.write_buffer.push_back(data);

@@ -7,6 +7,7 @@ use queen::{Node, node::NodeConfig};
 use queen::nson::{msg, Message};
 use queen::error::ErrorCode;
 use queen::util::{write_socket, read_socket};
+use queen::crypto::{Method, Aead};
 
 use super::get_free_addr;
 
@@ -19,7 +20,7 @@ fn attach() {
         let mut config = NodeConfig::new();
 
         config.add_tcp(addr2).unwrap();
-        config.set_hmac_key("queen");
+        config.set_aead_key("queen");
 
         let mut node = Node::bind(config, ()).unwrap();
 
@@ -30,9 +31,11 @@ fn attach() {
 
     // client 1
     let mut socket = TcpStream::connect(&addr).unwrap();
+    let mut aead = Aead::new(&Method::default(), b"queen");
 
     // client2
     let mut socket2 = TcpStream::connect(addr).unwrap();
+    let mut aead2 = Aead::new(&Method::default(), b"queen");
 
     // client 1 auth
     let msg = msg!{
@@ -41,10 +44,11 @@ fn attach() {
         "password": "bbb"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client 2 auth
@@ -54,10 +58,11 @@ fn attach() {
         "password": "bbb"
     };
 
-    write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket2, &mut aead2, data).unwrap();
+    let read_data = read_socket(&mut socket2, &mut aead2).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket2, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client2 send
@@ -67,10 +72,11 @@ fn attach() {
         "_ack": 123
     };
 
-    write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket2, &mut aead2, data).unwrap();
+    let read_data = read_socket(&mut socket2, &mut aead2).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket2, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // client 1 attach
@@ -79,10 +85,11 @@ fn attach() {
         "_valu": "aaa"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client2 send
@@ -92,15 +99,16 @@ fn attach() {
         "_ack": 123
     };
 
-    write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket2, &mut aead2, data).unwrap();
+    let read_data = read_socket(&mut socket2, &mut aead2).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket2, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client1 recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let data = read_socket(&mut socket, b"queen").unwrap();
+    let data = read_socket(&mut socket, &mut aead).unwrap();
     let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_str("_chan").unwrap() == "aaa");
 
@@ -110,10 +118,11 @@ fn attach() {
         "_valu": "aaa"
     };
 
-    write_socket(&mut socket, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket, &mut aead, data).unwrap();
+    let read_data = read_socket(&mut socket, &mut aead).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client2 send
@@ -123,15 +132,16 @@ fn attach() {
         "_ack": 123
     };
 
-    write_socket(&mut socket2, b"queen", msg.to_vec().unwrap()).unwrap();
+    let data = msg.to_vec().unwrap();
+    write_socket(&mut socket2, &mut aead2, data).unwrap();
+    let read_data = read_socket(&mut socket2, &mut aead2).unwrap();
+    let recv = Message::from_slice(&read_data).unwrap();
 
-    let data = read_socket(&mut socket2, b"queen").unwrap();
-    let recv = Message::from_slice(&data).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // client1 recv
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-    let recv = read_socket(&mut socket, b"queen");
+    let recv = read_socket(&mut socket, &mut aead);
     match recv {
        Ok(recv) => panic!("{:?}", recv),
        Err(err) => {
