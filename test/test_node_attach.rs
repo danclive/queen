@@ -48,7 +48,7 @@ fn attach() {
     write_socket(&mut socket, &mut aead, data).unwrap();
     let read_data = read_socket(&mut socket, &mut aead).unwrap();
     let recv = Message::from_slice(&read_data).unwrap();
-
+    println!("{:?}", recv);
     assert!(recv.get_i32("ok").unwrap() == 0);
 
     // client 2 auth

@@ -11,10 +11,11 @@ use queen_io::poll::{poll, Ready, Events};
 use queen_io::queue::mpsc::Queue;
 use queen_io::queue::spsc::Queue as SpscQueue;
 
-use nson::{Message, msg};
+use nson::{Message, msg, message_id::MessageId};
 
 use crate::net::Addr;
 use crate::crypto::{Method, Aead};
+use crate::dict::*;
 
 use super::conn::Connection;
 
@@ -29,7 +30,8 @@ pub struct HubConfig {
     pub addr: Addr,
     pub auth_msg: Message,
     pub aead_key: Option<String>,
-    pub aead_method: Method
+    pub aead_method: Method,
+    pub port_id: MessageId
 }
 
 impl HubConfig {
@@ -38,7 +40,8 @@ impl HubConfig {
             addr,
             auth_msg,
             aead_key,
-            aead_method: Method::default()
+            aead_method: Method::default(),
+            port_id: MessageId::new()
         }
     }
 
@@ -49,13 +52,6 @@ impl HubConfig {
     pub fn set_aead_method(&mut self, method: Method) {
         self.aead_method = method;
     }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum State {
-    UnAuth,
-    Authing,
-    Authed
 }
 
 impl Hub {
@@ -71,8 +67,10 @@ impl Hub {
             queue: queue.clone(),
             chans: HashMap::new(),
             tx_index: HashMap::new(),
+            un_send: VecDeque::new(),
             aead_key: config.aead_key,
             aead_method: config.aead_method,
+            port_id: config.port_id,
             run: true
         };
 
@@ -115,7 +113,11 @@ impl Hub {
     }
 
     pub fn send(&self, chan: &str, mut msg: Message) {
-        msg.insert("_chan", chan);
+        msg.insert(CHAN, chan);
+
+        if msg.get_message_id(ID).is_err() {
+            msg.insert(ID, MessageId::new());
+        }
 
         loop {
             if self.queue.pending() < 1024 {
@@ -188,9 +190,18 @@ struct HubInner {
     queue: Queue<Packet>,
     chans: HashMap<String, Vec<(usize, SenderType)>>,
     tx_index: HashMap<usize, String>,
+    un_send: VecDeque<Message>,
     aead_key: Option<String>,
     aead_method: Method,
+    port_id: MessageId,
     run: bool
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum State {
+    UnAuth,
+    Authing,
+    Authed
 }
 
 enum SenderType {
@@ -231,7 +242,8 @@ impl HubInner {
 
         if self.state == State::UnAuth {
             let mut msg = msg!{
-                "_chan": "_auth",
+                CHAN: AUTH,
+                PORT_ID: self.port_id.clone()
             };
 
             msg.extend(self.auth_msg.clone());
@@ -240,6 +252,13 @@ impl HubInner {
                 .1.push_data(msg.to_vec().unwrap());
 
             self.state = State::Authing;
+        }
+
+        if !self.un_send.is_empty() && self.state == State::Authed {
+            while let Some(msg) = self.un_send.pop_front() {
+                self.conn.as_mut().unwrap()
+                    .1.push_data(msg.to_vec().unwrap());
+            }
         }
 
         let mut events = Events::new();
@@ -260,7 +279,9 @@ impl HubInner {
 
         if poll(&mut events, Some(Duration::from_secs(1)))? > 0 {
             for event in &events {
-                if self.conn.as_ref().map(|(id, _)| { *id == event.fd() }).unwrap_or(false) {
+                if event.fd() == self.queue.as_raw_fd() {
+                    self.handle_message_from_queue()?;
+                } else if self.conn.as_ref().map(|(id, _)| { *id == event.fd() }).unwrap_or(false) {
                     let readiness = event.readiness();
 
                     if readiness.is_hup() || readiness.is_error() {
@@ -291,8 +312,74 @@ impl HubInner {
                             }
                         }
                     }
-                } else if event.fd() == self.queue.as_raw_fd() {
-                    self.handle_message_from_queue()?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_message_from_queue(&mut self) -> io::Result<()> {
+        if let Some(packet) = self.queue.pop() {
+            match packet {
+                Packet::Send(msg) => {
+                    if self.state == State::Authed {
+                        self.conn.as_mut().unwrap()
+                            .1.push_data(msg.to_vec().unwrap());
+                    } else {
+                        self.un_send.push_back(msg.clone());
+                    }
+
+                    self.relay_message(msg)?;
+                }
+                Packet::AttatchBlock(id, chan, tx) => {
+                    let ids = self.chans.entry(chan.clone()).or_insert_with(|| vec![]);
+
+                    if ids.is_empty() && self.state == State::Authed {
+                        let msg = msg!{
+                            CHAN: ATTACH,
+                            VALUE: chan
+                        };
+
+                        self.conn.as_mut().unwrap()
+                            .1.push_data(msg.to_vec().unwrap());
+                    }
+
+                    ids.push((id, SenderType::Block(tx)));
+                }
+                Packet::AttatchAsync(id, chan, queue) => {
+                    let ids = self.chans.entry(chan.clone()).or_insert_with(|| vec![]);
+
+                    if ids.is_empty() && self.state == State::Authed {
+                        let msg = msg!{
+                            CHAN: ATTACH,
+                            VALUE: chan
+                        };
+
+                        self.conn.as_mut().unwrap()
+                            .1.push_data(msg.to_vec().unwrap());
+                    }
+
+                    ids.push((id, SenderType::Async(queue)));
+                }
+                Packet::Detatch(id) => {
+                    if let Some(chan) = self.tx_index.remove(&id) {
+                        if let Some(ids) = self.chans.get_mut(&chan) {
+                            if let Some(pos) = ids.iter().position(|(x, _)| x == &id) {
+                                ids.remove(pos);
+                            }
+
+                            if ids.is_empty() && self.state == State::Authed {
+                                let msg = msg!{
+                                    CHAN: DETACH,
+                                    VALUE: chan
+                                };
+
+                                self.conn.as_mut().unwrap()
+                                    .1.push_data(msg.to_vec().unwrap());
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -302,18 +389,18 @@ impl HubInner {
 
     fn handle_message_from_conn(&mut self) -> io::Result<()> {
         while let Some(message) = self.read_buffer.pop_front() {
-            if let Ok(chan) = message.get_str("_chan") {
+            if let Ok(chan) = message.get_str(CHAN) {
                 if chan.starts_with('_') {
                     match chan {
-                        "_auth" => {
-                            if let Ok(ok) = message.get_i32("ok") {
+                        AUTH => {
+                            if let Ok(ok) = message.get_i32(OK) {
                                 if ok == 0 {
                                     self.state = State::Authed;
 
                                     for (chan, _) in &self.chans {
                                         let msg = msg!{
-                                            "_chan": "_atta",
-                                            "_valu": chan
+                                            CHAN: ATTACH,
+                                            VALUE: chan
                                         };
 
                                         self.conn.as_mut().unwrap()
@@ -324,8 +411,8 @@ impl HubInner {
                                 }
                             }
                         }
-                        "_atta" => {
-                            if let Ok(ok) = message.get_i32("ok") {
+                        ATTACH => {
+                            if let Ok(ok) = message.get_i32(OK) {
                                 if ok != 0 {
                                     println!("_atta: {:?}", message);
                                 }
@@ -342,74 +429,8 @@ impl HubInner {
         Ok(())
     }
 
-    fn handle_message_from_queue(&mut self) -> io::Result<()> {
-        if let Some(packet) = self.queue.pop() {
-            match packet {
-                Packet::Send(msg) => {
-                    if self.state == State::Authed {
-                        self.conn.as_mut().unwrap()
-                            .1.push_data(msg.to_vec().unwrap());
-                    }
-
-                    self.relay_message(msg)?;
-                }
-                Packet::AttatchBlock(id, chan, tx) => {
-                    let ids = self.chans.entry(chan.clone()).or_insert_with(|| vec![]);
-
-                    if ids.is_empty() {
-                        let msg = msg!{
-                            "_chan": "_atta",
-                            "_valu": chan
-                        };
-
-                        self.conn.as_mut().unwrap()
-                            .1.push_data(msg.to_vec().unwrap());
-                    }
-
-                    ids.push((id, SenderType::Block(tx)));
-                }
-                Packet::AttatchAsync(id, chan, queue) => {
-                    let ids = self.chans.entry(chan.clone()).or_insert_with(|| vec![]);
-
-                    if ids.is_empty() {
-                        let msg = msg!{
-                            "_chan": "_atta",
-                            "_valu": chan
-                        };
-
-                        self.conn.as_mut().unwrap()
-                            .1.push_data(msg.to_vec().unwrap());
-                    }
-
-                    ids.push((id, SenderType::Async(queue)));
-                }
-                Packet::Detatch(id) => {
-                    if let Some(chan) = self.tx_index.remove(&id) {
-                        if let Some(ids) = self.chans.get_mut(&chan) {
-                            if let Some(pos) = ids.iter().position(|(x, _)| x == &id) {
-                                ids.remove(pos);
-                            }
-
-                            if ids.is_empty() {
-                                let msg = msg!{
-                                    "_chan": "_deta",
-                                    "_valu": chan
-                                };
-
-                                self.conn.as_mut().unwrap()
-                                    .1.push_data(msg.to_vec().unwrap());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     fn relay_message(&mut self, message: Message) -> io::Result<()> {
-        if let Ok(chan) = message.get_str("_chan") {
+        if let Ok(chan) = message.get_str(CHAN) {
             if let Some(ids) = self.chans.get(chan) {
                 for (_, tx) in ids {
                     match tx {

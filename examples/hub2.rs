@@ -10,7 +10,7 @@ fn main() {
 
     let addr = Addr::tcp("127.0.0.1:8888").unwrap();
 
-    let config = HubConfig::new(addr, msg!{}, None);
+    let config = HubConfig::new(addr, msg!{}, Some("queen".to_string()));
 
     let hub = Hub::connect(config).unwrap();
 

@@ -20,15 +20,15 @@ fn main() {
         println!("remove, id: {:?}, addr: {:?}", id, addr);
     });
 
-    // callback.recv(|id, _addr, msg, _| {
-    //     println!("recv:, id: {:?}, addr: {:?}", id, msg);
-    //     return true;
-    // });
+    callback.recv(|id, _addr, msg, _| {
+        println!("recv:, id: {:?}, addr: {:?}", id, msg);
+        return true;
+    });
 
-    // callback.send(|id, _addr, msg, _| {
-    //     println!("send:, id: {:?}, addr: {:?}", id, msg);
-    //     return true;
-    // });
+    callback.send(|id, _addr, msg, _| {
+        println!("send:, id: {:?}, addr: {:?}", id, msg);
+        return true;
+    });
 
     callback.auth(|id, _addr, msg, _| {
         println!("auth, id: {:?}, addr: {:?}", id, msg);

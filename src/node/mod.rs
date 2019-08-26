@@ -10,19 +10,18 @@ use nson::message_id::MessageId;
 
 use slab::Slab;
 
-use rand::{self, thread_rng,rngs::ThreadRng};
+use rand::{self, thread_rng, rngs::ThreadRng};
 use rand::seq::SliceRandom;
 
-use crate::net::Addr;
+use crate::net::{Addr, Listen};
 use crate::error::ErrorCode;
 use crate::crypto::{Method, Aead};
+use crate::dict::*;
 
 use conn::Connection;
-use net::Listen;
 pub use callback::Callback;
 
 mod conn;
-mod net;
 mod callback;
 
 pub struct Node<T> {
@@ -101,7 +100,6 @@ impl<T> Node<T> {
             events: Events::with_capacity(1024),
             listens,
             token,
-            // timer: Timer::new()?,
             conns: Slab::new(),
             read_buffer: VecDeque::new(),
             callback: Callback::new(),
@@ -123,7 +121,7 @@ impl<T> Node<T> {
 
     pub fn run(&mut self) -> io::Result<()> {
         for (id, listen) in &self.listens {
-            listen.add(&self.epoll, Token(*id), Ready::readable(), EpollOpt::edge())?;
+            listen.epoll_add(&self.epoll, Token(*id), Ready::readable(), EpollOpt::edge())?;
         }
 
         while self.run {
@@ -147,7 +145,6 @@ impl<T> Node<T> {
 
     fn dispatch(&mut self, event: Event) -> io::Result<()> {
         match event.token() {
-            // Self::TIMER => self.dispatch_timer()?,
             token if token.0 >= self.token => self.dispatch_listen(token.0)?,
             token => self.dispatch_conn(token, event)?
         }
@@ -180,9 +177,8 @@ impl<T> Node<T> {
                 };
 
                 if success {
-
                     let conn = Connection::new(entry.key(), addr, socket, aead);
-                    conn.add(&self.epoll)?;
+                    conn.epoll_add(&self.epoll)?;
 
                     entry.insert(conn);
                 }
@@ -216,7 +212,7 @@ impl<T> Node<T> {
                 if conn.write().is_err() {
                     remove = true;
                 } else {
-                    conn.modify(&self.epoll)?;
+                    conn.epoll_modify(&self.epoll)?;
                 }
             }
         }
@@ -231,7 +227,7 @@ impl<T> Node<T> {
     fn remove_conn(&mut self, id: usize) -> io::Result<()> {
         if self.conns.contains(id) {
             let conn = self.conns.remove(id);
-            conn.delete(&self.epoll)?;
+            conn.epoll_delete(&self.epoll)?;
 
             for (chan, _) in conn.chans {
                 if let Some(ids) = self.chans.get_mut(&chan) {
@@ -261,7 +257,7 @@ impl<T> Node<T> {
                 return Ok(())
             }
 
-            let chan = match message.get_str("_chan") {
+            let chan = match message.get_str(CHAN) {
                 Ok(chan) => chan,
                 Err(_) => {
                     ErrorCode::CannotGetChanField.insert_message(&mut message);
@@ -273,11 +269,11 @@ impl<T> Node<T> {
 
             if chan.starts_with('_') {
                 match chan {
-                    "_auth" => self.node_auth(id, &addr, message)?,
-                    "_atta" => self.node_attach(id, &addr, message)?,
-                    "_deta" => self.node_detach(id, &addr, message)?,
-                    "_ping" => self.node_ping(id, message)?,
-                    // "_quer" => self.node_query(id, message)?,
+                    AUTH => self.node_auth(id, &addr, message)?,
+                    ATTACH => self.node_attach(id, &addr, message)?,
+                    DETACH => self.node_detach(id, &addr, message)?,
+                    PING => self.node_ping(id, message)?,
+                    // QUERy => self.node_query(id, message)?,
                     _ => {
                         ErrorCode::UnsupportedChan.insert_message(&mut message);
 
@@ -295,7 +291,7 @@ impl<T> Node<T> {
     fn push_data_to_conn(&mut self, id: usize, data: Vec<u8>) -> io::Result<()> {
         if let Some(conn) = self.conns.get_mut(id) {
             conn.push_data(data);
-            conn.modify(&self.epoll)?;
+            conn.epoll_modify(&self.epoll)?;
         }
 
         Ok(())
@@ -307,37 +303,39 @@ impl<T> Node<T> {
         }
 
         if let Some(conn) = self.conns.get_mut(id) {
-            if let Ok(port_id) = message.get_message_id("_ptid") {
-                if self.ports.contains_key(port_id) {
+            if let Some(port_id) = message.get(PORT_ID) {
+                if let Some(port_id) = port_id.as_message_id() {
+                    if self.ports.contains_key(port_id) {
 
-                    ErrorCode::DuplicatePortId.insert_message(&mut message);
+                        ErrorCode::DuplicatePortId.insert_message(&mut message);
+
+                        conn.push_data(message.to_vec().unwrap());
+                        conn.epoll_modify(&self.epoll)?;
+
+                        return Ok(())
+                    }
+
+                    self.ports.insert(port_id.clone(), id);
+
+                    conn.port_id = Some(port_id.clone());
+                } else {
+                    ErrorCode::InvalidFieldType.insert_message(&mut message);
 
                     conn.push_data(message.to_vec().unwrap());
-                    conn.modify(&self.epoll)?;
+                    conn.epoll_modify(&self.epoll)?;
 
                     return Ok(())
                 }
-
-                self.ports.insert(port_id.clone(), id);
-
-                conn.port_id = Some(port_id.clone());
-            } else {
-                ErrorCode::InvalidFieldType.insert_message(&mut message);
-
-                conn.push_data(message.to_vec().unwrap());
-                conn.modify(&self.epoll)?;
-
-                return Ok(())
             }
 
             conn.auth = true;
 
-            message.insert("_noid", self.node_id.clone());
+            message.insert(PORT_ID, self.node_id.clone());
 
             ErrorCode::OK.insert_message(&mut message);
 
             conn.push_data(message.to_vec().unwrap());
-            conn.modify(&self.epoll)?;
+            conn.epoll_modify(&self.epoll)?;
         }
 
         Ok(())
@@ -348,30 +346,30 @@ impl<T> Node<T> {
             return Ok(())
         }
 
-        if let Ok(chan) = message.get_str("_valu").map(ToOwned::to_owned) {
+        if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
             if !self.can_attach(id, addr, &mut message)? {
                 return Ok(())
             }
 
-            let labels = if let Ok(label) = message.get_str("_labe") {
-                vec![label.to_string()]
-            } else if let Ok(labels) = message.get_array("_labe") {
-                let mut vec = vec![];
+            let mut labels = vec![];
 
-                labels.iter().for_each(|v| {
-                    if let Some(label) = v.as_str() {
-                        vec.push(label.to_string());
-                    }
-                });
+            if let Some(label) = message.get(LABEL) {
+                if let Some(label) = label.as_str() {
+                    labels.push(label.to_string());
+                } else if let Some(label) = label.as_array() {
+                    label.iter().for_each(|v| {
+                        if let Some(v) = v.as_str() {
+                            labels.push(v.to_string());
+                        }
+                    });
+                } else {
+                    ErrorCode::InvalidFieldType.insert_message(&mut message);
 
-                vec
-            } else {
-                ErrorCode::InvalidFieldType.insert_message(&mut message);
+                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
-                self.push_data_to_conn(id, message.to_vec().unwrap())?;
-
-                return Ok(())
-            };
+                    return Ok(())
+                }
+            }
 
             self.session_attach(id, chan, labels)?;
 
@@ -390,7 +388,7 @@ impl<T> Node<T> {
             return Ok(())
         }
 
-        if let Ok(chan) = message.get_str("_valu").map(ToOwned::to_owned) {
+        if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
             if let Some(detach_fn) = &self.callback.detach_fn {
                 detach_fn(id, addr, &mut message, &mut self.user_data);
             }
@@ -452,38 +450,39 @@ impl<T> Node<T> {
             return Ok(())
         }
 
-        if let Ok(to) = message.get_message_id("_to") {
-            if !self.ports.contains_key(to) {
-                ErrorCode::TargetPortIdNotExist.insert_message(&mut message);
+        if let Some(to) = message.get(TO) {
+            if let Some(to) = to.as_message_id() {
+                if !self.ports.contains_key(to) {
+                    ErrorCode::TargetPortIdNotExist.insert_message(&mut message);
+
+                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                    return Ok(())
+                }
+            } else {
+                ErrorCode::InvalidFieldType.insert_message(&mut message);
 
                 self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
                 return Ok(())
             }
-        } else {
-            ErrorCode::InvalidFieldType.insert_message(&mut message);
-
-            self.push_data_to_conn(id, message.to_vec().unwrap())?;
-
-            return Ok(())
         }
 
         if let Some(conn) = self.conns.get(id) {
             if let Some(port_id) = &conn.port_id {
-                message.insert("_from", port_id.clone());
+                message.insert(FROM, port_id.clone());
             }
         }
 
-        let label = message.get_str("_labe").map(|s| s.to_string()).ok();
+        let label = message.get_str(LABEL).map(|s| s.to_string()).ok();
 
         let mut no_consumers = true;
 
-        if let Ok(to) = message.get_message_id("_to") {
+        if let Ok(to) = message.get_message_id(TO) {
             no_consumers = false;
 
             if let Some(conn_id) = self.ports.get(to) {
                 if let Some(conn) = self.conns.get_mut(*conn_id) {
-                    // check can send
                     let success = if let Some(send_fn) = &self.callback.send_fn {
                         send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
                     } else {
@@ -492,19 +491,15 @@ impl<T> Node<T> {
 
                     if success {
                         conn.push_data(message.to_vec().unwrap());
-                        conn.modify(&self.epoll)?;
+                        conn.epoll_modify(&self.epoll)?;
                     }
                 }
             }
-        } else if message.get_bool("_shar").ok().unwrap_or(false) {
+        } else if message.get_bool(SHARE).ok().unwrap_or(false) {
             let mut array: Vec<usize> = Vec::new();
 
             if let Some(ids) = self.chans.get(&chan) {
                 for conn_id in ids {
-                    if *conn_id == id {
-                        continue;
-                    }
-
                     if let Some(conn) = self.conns.get_mut(*conn_id) {
                         if let Some(label) = &label {
                             if let Some(labels) = conn.chans.get(&chan) {
@@ -526,7 +521,6 @@ impl<T> Node<T> {
 
                 if array.len() == 1 {
                     if let Some(conn) = self.conns.get_mut(array[0]) {
-                            // check can send
                         let success = if let Some(send_fn) = &self.callback.send_fn {
                             send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
                         } else {
@@ -535,12 +529,11 @@ impl<T> Node<T> {
 
                         if success {
                             conn.push_data(message.to_vec().unwrap());
-                            conn.modify(&self.epoll)?;
+                            conn.epoll_modify(&self.epoll)?;
                         }
                     }
                 } else if let Some(id) = array.choose(&mut self.rand) {
                     if let Some(conn) = self.conns.get_mut(*id) {
-                        // check can send
                         let success = if let Some(send_fn) = &self.callback.send_fn {
                             send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
                         } else {
@@ -549,7 +542,7 @@ impl<T> Node<T> {
 
                         if success {
                             conn.push_data(message.to_vec().unwrap());
-                            conn.modify(&self.epoll)?;
+                            conn.epoll_modify(&self.epoll)?;
                         }
                     }
                 }
@@ -557,10 +550,6 @@ impl<T> Node<T> {
 
         } else if let Some(ids) = self.chans.get(&chan) {
             for conn_id in ids {
-                if *conn_id == id {
-                    continue;
-                }
-
                 if let Some(conn) = self.conns.get_mut(*conn_id) {
                     if let Some(label) = &label {
                         if let Some(labels) = conn.chans.get(&chan) {
@@ -574,7 +563,6 @@ impl<T> Node<T> {
 
                     no_consumers = false;
 
-                    // check can send
                     let success = if let Some(send_fn) = &self.callback.send_fn {
                         send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
                     } else {
@@ -583,7 +571,7 @@ impl<T> Node<T> {
 
                     if success {
                         conn.push_data(message.to_vec().unwrap());
-                        conn.modify(&self.epoll)?;
+                        conn.epoll_modify(&self.epoll)?;
                     }
                 }
             }
@@ -597,16 +585,17 @@ impl<T> Node<T> {
             return Ok(())
         }
 
-        if let Some(ack) = message.get("_ack") {
+        if let Some(ack) = message.get(ACK) {
             let mut reply_msg = msg!{
-                "_ack": ack.clone()
+                CHAN: ACK,
+                ACK: ack.clone()
             };
 
             ErrorCode::OK.insert_message(&mut reply_msg);
 
             self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
 
-            message.remove("_ack");
+            message.remove(ACK);
         }
 
         Ok(())
@@ -621,7 +610,7 @@ impl<T> Node<T> {
             ErrorCode::Unauthorized.insert_message(message);
 
             conn.push_data(message.to_vec().unwrap());
-            conn.modify(&self.epoll)?;
+            conn.epoll_modify(&self.epoll)?;
         }
 
         Ok(false)

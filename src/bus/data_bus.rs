@@ -9,19 +9,19 @@ use nson::Value;
 use queen_io::plus::block_queue::BlockQueue;
 
 #[derive(Clone)]
-pub struct Center {
-    inner: Arc<InnerCenter>
+pub struct DataBus {
+    inner: Arc<InnerDataBus>
 }
 
 pub struct Context<'a> {
-    pub center: &'a Center,
+    pub center: &'a DataBus,
     pub id: i32,
     pub key: &'a str,
     pub old_value: Option<Value>,
     pub value: Value
 }
 
-struct InnerCenter {
+struct InnerDataBus {
     queue: BlockQueue<(String, Option<Value>, Value, bool, bool)>,
     map: Mutex<HashMap<String, Value>>,
     handles: Handles,
@@ -33,16 +33,16 @@ type Handles = RwLock<HashMap<String, Vec<(i32, Arc<HandleFn>)>>>;
 type HandleFn = dyn Fn(Context) + Send + Sync + 'static;
 type AllFn = dyn Fn(Context) + Send + Sync + 'static;
 
-impl Default for Center {
+impl Default for DataBus {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Center {
-    pub fn new() -> Center {
-        Center {
-            inner: Arc::new(InnerCenter {
+impl DataBus {
+    pub fn new() -> DataBus {
+        DataBus {
+            inner: Arc::new(InnerDataBus {
                 queue: BlockQueue::with_capacity(4 * 1000),
                 map: Mutex::new(HashMap::new()),
                 handles: RwLock::new(HashMap::new()),

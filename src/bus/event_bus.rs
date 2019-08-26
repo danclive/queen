@@ -12,11 +12,11 @@ use nson::{Value, Message};
 use queen_io::plus::block_queue::BlockQueue;
 
 #[derive(Clone)]
-pub struct Queen {
-    inner: Arc<QueenInner>
+pub struct EventBus {
+    inner: Arc<InnerEventBus>
 }
 
-struct QueenInner {
+struct InnerEventBus {
     queue: BlockQueue<(String, Message)>,
     handles: Handles,
     // index
@@ -28,16 +28,16 @@ type Handles = RwLock<HashMap<String, Vec<(i32, Arc<HandleFn>)>>>;
 type HandleFn = dyn Fn(Context) + Send + Sync + 'static;
 
 pub struct Context<'a> {
-    pub queen: &'a Queen,
+    pub queen: &'a EventBus,
     pub id: i32,
     pub event: String,
     pub message: Message
 }
 
-impl Queen {
-    pub fn new() -> io::Result<Queen> {
-        let queen = Queen {
-            inner: Arc::new(QueenInner {
+impl EventBus {
+    pub fn new() -> io::Result<EventBus> {
+        let event_bus = EventBus {
+            inner: Arc::new(InnerEventBus {
                 queue: BlockQueue::with_capacity(4 * 1000),
                 handles: RwLock::new(HashMap::new()),
                 next_id: AtomicIsize::new(0),
@@ -45,11 +45,11 @@ impl Queen {
             })
         };
 
-        let queen2 = queen.clone();
+        let event_bus2 = event_bus.clone();
 
-        queen.inner.timer.run(queen2);
+        event_bus.inner.timer.run(event_bus2);
 
-        Ok(queen)
+        Ok(event_bus)
     }
 
     pub fn on(&self, event: &str, handle: impl Fn(Context) + Send + Sync + 'static) -> i32 {
@@ -197,13 +197,13 @@ impl Timer {
         if let Some(t) = thread_handle.as_ref() { t.thread().unpark() }
     }
 
-    pub fn run(&self, queen: Queen) {
+    pub fn run(&self, event_bus: EventBus) {
 
         let tasks2 = self.tasks.clone();
 
         let thread_handle = thread::Builder::new().name("timer".to_owned()).spawn(move || {
             let tasks = tasks2;
-            let queen = queen;
+            let event_bus = event_bus;
 
             loop {
                 let mut sleep_duration = Duration::from_secs(60);
@@ -219,7 +219,7 @@ impl Timer {
                             break;
                         } else if let Some(task) = tasks.pop() {
                             let (event, message) = task.data;
-                            queen.emit(&event, message);
+                            event_bus.emit(&event, message);
                         }
                     } else {
                         break;

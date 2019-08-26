@@ -41,7 +41,7 @@ impl Connection {
         }
     }
 
-    pub fn add(&self, epoll: &Epoll) -> io::Result<()>{
+    pub fn epoll_add(&self, epoll: &Epoll) -> io::Result<()>{
         epoll.add(
             &self.stream,
             Token(self.id),
@@ -50,7 +50,7 @@ impl Connection {
         )
     }
 
-    pub fn modify(&self, epoll: &Epoll) -> io::Result<()>{
+    pub fn epoll_modify(&self, epoll: &Epoll) -> io::Result<()>{
         epoll.modify(
             &self.stream,
             Token(self.id),
@@ -59,7 +59,7 @@ impl Connection {
         )
     }
 
-    pub fn delete(&self, epoll: &Epoll) -> io::Result<()> {
+    pub fn epoll_delete(&self, epoll: &Epoll) -> io::Result<()> {
         epoll.delete(&self.stream)
     }
 
@@ -149,21 +149,21 @@ impl Evented for Stream {
     fn add(&self, epoll: &Epoll, token: Token, interest: Ready, opts: EpollOpt) -> io::Result<()> {
         match self {
             Stream::Tcp(tcp) => epoll.add(tcp, token, interest, opts),
-            Stream::Unix(unix) => epoll.add(unix, token, interest, opts)
+            Stream::Uds(unix) => epoll.add(unix, token, interest, opts)
         }
     }
 
     fn modify(&self, epoll: &Epoll, token: Token, interest: Ready, opts: EpollOpt) -> io::Result<()> {
         match self {
             Stream::Tcp(tcp) => epoll.modify(tcp, token, interest, opts),
-            Stream::Unix(unix) => epoll.modify(unix, token, interest, opts)
+            Stream::Uds(unix) => epoll.modify(unix, token, interest, opts)
         }
     }
 
     fn delete(&self, epoll: &Epoll) -> io::Result<()> {
         match self {
             Stream::Tcp(tcp) => epoll.delete(tcp),
-            Stream::Unix(unix) => epoll.delete(unix)
+            Stream::Uds(unix) => epoll.delete(unix)
         }
     }
 }

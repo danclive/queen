@@ -1,5 +1,7 @@
 use nson::Message;
 
+use crate::dict::*;
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(i32)]
 pub enum ErrorCode {
@@ -61,16 +63,16 @@ impl ErrorCode {
 
     pub fn insert_message(self, msg: &mut Message) {
         let code = self.code();
-        msg.insert("ok", code);
+        msg.insert(OK, code);
 
         #[cfg(debug_assertions)]
         {if code > 0 {
-            msg.insert("error", self.to_str());
+            msg.insert(ERROR, self.to_str());
         }}
     }
 
     pub fn has_error(msg: &Message) -> Option<ErrorCode> {
-        if let Ok(ok) = msg.get_i32("ok") {
+        if let Ok(ok) = msg.get_i32(OK) {
             if ok < 0 || ok > ErrorCode::UnknownError as i32 {
                 return Some(ErrorCode::UnknownError)
             }

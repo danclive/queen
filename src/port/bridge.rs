@@ -9,6 +9,7 @@ use queen_io::poll::{poll, Ready, Events};
 
 use crate::net::Addr;
 use crate::crypto::{Method, Aead};
+use crate::dict::*;
 
 use super::conn::Connection;
 
@@ -117,7 +118,7 @@ impl Bridge {
                 ($session:ident) => {
                     if self.$session.state == State::UnAuth {
                         let mut msg = msg!{
-                            "_chan": "_auth"
+                            CHAN: AUTH
                         };
 
                         msg.extend(self.$session.auth_msg.clone());
@@ -206,19 +207,19 @@ impl Bridge {
         macro_rules! handle_message {
             ($session_a:ident, $session_b:ident) => {
                 while let Some(message) = self.read_buffer.pop_front() {
-                    if let Ok(chan) = message.get_str("_chan") {
+                    if let Ok(chan) = message.get_str(CHAN) {
                         if chan.starts_with("_") {
                             match chan {
-                                "_auth" => {
-                                    if let Ok(ok) = message.get_i32("ok") {
+                                AUTH => {
+                                    if let Ok(ok) = message.get_i32(OK) {
                                         if ok == 0 {
                                             self.$session_a.state = State::Authed;
 
                                             for white in &self.white_list {
                                                 let msg = msg!{
-                                                    "_chan": "_atta",
-                                                    "_valu": white.0.clone(),
-                                                    "_labe": white.1.clone()
+                                                    CHAN: ATTACH,
+                                                    VALUE: white.0.clone(),
+                                                    LABEL: white.1.clone()
                                                 };
 
                                                 self.$session_a.conn
@@ -234,8 +235,8 @@ impl Bridge {
 
                                     self.$session_a.state = State::UnAuth;
                                 }
-                                "_atta" => {
-                                    if let Ok(ok) = message.get_i32("ok") {
+                                ATTACH => {
+                                    if let Ok(ok) = message.get_i32(OK) {
                                         if ok != 0 {
                                             println!("_atta: {:?}", message);
                                         }

@@ -43,7 +43,11 @@ impl Aead {
         let aead = LessSafeKey::new(key);
 
         let nonce_len = algorithm.nonce_len();
-        let nonce = vec![0u8; nonce_len];
+        let mut nonce = vec![0u8; nonce_len];
+
+        for i in 0..nonce_len {
+            nonce[i] = i as u8;
+        }
 
         Aead {
             aead,
@@ -51,19 +55,22 @@ impl Aead {
         }
     }
 
-    pub fn increase_nonce(&mut self) {
-        let mut prev: u16 = 1;
-        for i in &mut self.nonce {
-            prev += *i as u16;
-            *i = prev as u8;
-            prev >>= 8;
-        }
+    // pub fn increase_nonce(&mut self) {
+    //     let mut prev: u16 = 1;
+    //     for i in &mut self.nonce {
+    //         prev += *i as u16;
+    //         *i = prev as u8;
+    //         prev >>= 8;
+    //     }
+    // }
+
+    pub fn set_nonce(&mut self, nonce: i64) {
+        let bytes = nonce.to_le_bytes();
+        self.nonce[..8].clone_from_slice(&bytes);
     }
 
     pub fn encrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
         let nonce = Nonce::try_assume_unique_for_key(&self.nonce).unwrap();
-
-        self.increase_nonce();
 
         let tag = self.aead.seal_in_place_separate_tag(nonce, Aad::empty(), &mut in_out[4..])?;
 
@@ -77,8 +84,6 @@ impl Aead {
 
     pub fn decrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
         let nonce = Nonce::try_assume_unique_for_key(&self.nonce).unwrap();
-
-        self.increase_nonce();
 
         self.aead.open_in_place(nonce, Aad::empty(), &mut in_out[4..]).map(|_| {})?;
 

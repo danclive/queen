@@ -4,13 +4,13 @@ use std::time::Duration;
 
 use nson::msg;
 
-use queen::Queen;
+use queen::bus::event_bus::EventBus;
 
 #[test]
 fn on() {
     let hasemit: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
-    let queen = Queen::new().unwrap();
+    let queen = EventBus::new().unwrap();
     queen.run(2, false);
 
     let hasemit2 = hasemit.clone();
@@ -30,7 +30,7 @@ fn on() {
 fn off() {
     let hasemit: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
-    let queen = Queen::new().unwrap();
+    let queen = EventBus::new().unwrap();
     queen.run(2, false);
 
     let hasemit2 = hasemit.clone();
@@ -52,7 +52,7 @@ fn off() {
 fn push() {
     let hasemit: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
-    let queen = Queen::new().unwrap();
+    let queen = EventBus::new().unwrap();
     queen.run(2, false);
 
     let hasemit2 = hasemit.clone();
