@@ -1,6 +1,5 @@
 pub mod node;
 pub mod port;
-pub mod register;
 pub mod net;
 pub mod oneshot;
 pub mod lock;

@@ -22,15 +22,7 @@ fn main() {
 
     let point = Point::connect(config).unwrap();
 
-    // std::thread::sleep_ms(2000);
-
     let r = point.call("aaa", "bbb", msg!{"hello": "world"}, Some(Duration::from_secs(10)));
 
     println!("{:?}", r);
-
-    // let r = point.call("aaa", "bbb", msg!{"hello": "world"}, Some(Duration::from_secs(1)));
-
-    // println!("{:?}", r);
-
-    // std::thread::sleep_ms(100000);
 }
