@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
+use std::io::{self, ErrorKind::TimedOut};
 
 pub fn oneshot<T>() -> (Sender<T>, Receiver<T>) {
     let inner = Arc::new(Inner::new());
@@ -48,16 +49,16 @@ impl<T> Inner<T> {
         lock.take().unwrap()
     }
 
-    fn wait_timeout(&self, timeout: Duration) -> Option<T> {
+    fn wait_timeout(&self, timeout: Duration) -> io::Result<T> {
         let lock = self.payload.lock().unwrap();
 
         let (mut lock, result) = self.cond.wait_timeout(lock, timeout).unwrap();
 
         if result.timed_out() {
-            return None
+            return Err(io::Error::new(TimedOut, "TimedOut"))
         }
 
-        Some(lock.take().unwrap())
+        Ok(lock.take().unwrap())
     }
 }
 
@@ -77,8 +78,8 @@ impl<T> Receiver<T> {
 
     pub fn wait_timeout(self, timeout: Duration) -> Option<T> {
         match self.inner.wait_timeout(timeout) {
-            Some(ret) => ret,
-            None => None
+            Ok(ret) => ret,
+            Err(_) => None
         }
     }
 

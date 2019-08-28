@@ -109,8 +109,9 @@ impl Point {
         mut request: Message,
         timeout: Option<Duration>
     ) -> Result<Message, ()> {
+        let id = MessageId::new();
         if request.get_message_id(ID).is_err() {
-            request.insert(ID, MessageId::new());
+            request.insert(ID, id.clone());
         }
 
         let (tx, rx) = oneshot::<Message>();
@@ -125,7 +126,15 @@ impl Point {
         self.queue.push(packet);
 
         if let Some(timeout) = timeout {
-            rx.wait_timeout(timeout).ok_or(())
+            // rx.wait_timeout(timeout).ok_or(())
+            let ret = rx.wait_timeout(timeout);
+
+            if ret.is_none() {
+                let packet = Packet::UnCall(id);
+                self.queue.push(packet);
+            }
+
+            ret.ok_or(())
         } else {
             rx.wait().ok_or(())
         }
@@ -151,6 +160,7 @@ type Handle = dyn Fn(Message) -> Message + Sync + Send + 'static;
 
 enum Packet {
     Call(String, String, Message, Sender<Message>),
+    UnCall(MessageId),
     Add(String, String, Box<Handle>),
     Res(Message)
 }
@@ -361,6 +371,9 @@ impl InnerPoint {
                         self.chans.insert(req_key, false);
                     }
                 }
+                Packet::UnCall(id) => {
+                    self.calling.remove(&id);
+                }
                 Packet::Add(module, method, handle) => {
                     let req_key = format!("RPC/{}.{}/REQ", module, method);
                     let res_key = format!("RPC/{}.{}/RES", module, method);
@@ -457,7 +470,9 @@ impl InnerPoint {
                 if let Ok(id) = message.get_message_id(ID) {
                     if let Some((req_key, tx)) = self.calling.remove(id) {
                         if chan == req_key {
-                            tx.send(message);
+                            if tx.is_needed() {
+                                tx.send(message);
+                            }
                         }
                     }
                 }

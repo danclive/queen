@@ -24,6 +24,8 @@ fn connect() {
         node.run().unwrap();
     });
 
+    thread::sleep(Duration::from_secs(1));
+
     let addr = Addr::tcp(addr).unwrap();
 
     // hub1
