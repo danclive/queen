@@ -1,4 +1,4 @@
-use std::collections::{VecDeque, HashMap};
+use std::collections::{VecDeque, HashMap, HashSet};
 use std::io::{self, ErrorKind::{PermissionDenied}};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
@@ -66,6 +66,7 @@ impl Hub {
             read_buffer: VecDeque::new(),
             queue: queue.clone(),
             chans: HashMap::new(),
+            recvs: HashMap::new(),
             tx_index: HashMap::new(),
             un_send: VecDeque::new(),
             aead_key: config.aead_key,
@@ -84,12 +85,12 @@ impl Hub {
         })
     }
 
-    pub fn recv(&self, chan: &str) -> Recv { // iter
+    pub fn recv(&self, chan: &str, lables: Option<Vec<String>>) -> Recv { // iter
         let (tx, rx) = channel();
 
         let id = self.id.fetch_add(1, Ordering::SeqCst);
 
-        self.queue.push(Packet::AttatchBlock(id, chan.to_string(), tx));
+        self.queue.push(Packet::AttatchBlock(id, chan.to_string(), lables, tx));
 
         Recv {
             hub: self.clone(),
@@ -98,12 +99,12 @@ impl Hub {
         }
     }
 
-    pub fn async_recv(&self, chan: &str) -> io::Result<AsyncRecv> {
+    pub fn async_recv(&self, chan: &str, lables: Option<Vec<String>>) -> io::Result<AsyncRecv> {
         let spsc_queue = SpscQueue::with_cache(128)?;
 
         let id = self.id.fetch_add(1, Ordering::SeqCst);
 
-        self.queue.push(Packet::AttatchAsync(id, chan.to_string(), spsc_queue.clone()));
+        self.queue.push(Packet::AttatchAsync(id, chan.to_string(), lables, spsc_queue.clone()));
 
         Ok(AsyncRecv {
             hub: self.clone(),
@@ -112,8 +113,12 @@ impl Hub {
         })
     }
 
-    pub fn send(&self, chan: &str, mut msg: Message) {
+    pub fn send(&self, chan: &str, mut msg: Message, lable: Option<Vec<String>>) {
         msg.insert(CHAN, chan);
+
+        if let Some(lable) = lable {
+            msg.insert(LABEL, lable);
+        }
 
         if msg.get_message_id(ID).is_err() {
             msg.insert(ID, MessageId::new());
@@ -132,15 +137,15 @@ impl Hub {
 
 enum Packet {
     Send(Message),
-    AttatchBlock(usize, String, Sender<Message>), // id, chan, sender
-    AttatchAsync(usize, String, SpscQueue<Message>),
+    AttatchBlock(usize, String, Option<Vec<String>>, Sender<Message>), // id, chan, lables, sender
+    AttatchAsync(usize, String, Option<Vec<String>>, SpscQueue<Message>),
     Detatch(usize)
 }
 
 pub struct Recv {
-    hub: Hub,
-    id: usize,
-    recv: Receiver<Message>
+    pub hub: Hub,
+    pub id: usize,
+    pub recv: Receiver<Message>
 }
 
 impl Iterator for Recv {
@@ -158,9 +163,9 @@ impl Drop for Recv {
 }
 
 pub struct AsyncRecv {
-    hub: Hub,
-    id: usize,
-    recv: SpscQueue<Message>
+    pub hub: Hub,
+    pub id: usize,
+    pub recv: SpscQueue<Message>
 }
 
 impl AsyncRecv {
@@ -188,7 +193,8 @@ struct HubInner {
     state: State,
     read_buffer: VecDeque<Message>,
     queue: Queue<Packet>,
-    chans: HashMap<String, Vec<(usize, SenderType)>>,
+    chans: HashMap<String, HashSet<String>>, // HashMap<Chan, HashSet<Label>>
+    recvs: HashMap<String, Vec<(usize, SenderType, Option<Vec<String>>)>>, // HashMap<Chan, Vec<id, tx, Vec<Lable>>>
     tx_index: HashMap<usize, String>,
     un_send: VecDeque<Message>,
     aead_key: Option<String>,
@@ -330,46 +336,166 @@ impl HubInner {
                         self.un_send.push_back(msg.clone());
                     }
 
-                    self.relay_message(msg)?;
+                    // self.relay_message(msg)?;
                 }
-                Packet::AttatchBlock(id, chan, tx) => {
-                    let ids = self.chans.entry(chan.clone()).or_insert_with(|| vec![]);
+                Packet::AttatchBlock(id, chan, labels, tx) => {
+                    let ids = self.recvs.entry(chan.clone()).or_insert_with(|| vec![]);
 
-                    if ids.is_empty() && self.state == State::Authed {
-                        let msg = msg!{
-                            CHAN: ATTACH,
-                            VALUE: chan
-                        };
+                    let mut labels_set = HashSet::new();
 
-                        self.conn.as_mut().unwrap()
-                            .1.push_data(msg.to_vec().unwrap());
+                    if let Some(labels) = &labels {
+                        for label in labels {
+                            labels_set.insert(label.to_string());
+                        }
                     }
 
-                    ids.push((id, SenderType::Block(tx)));
-                }
-                Packet::AttatchAsync(id, chan, queue) => {
-                    let ids = self.chans.entry(chan.clone()).or_insert_with(|| vec![]);
+                    if ids.is_empty() {
+                        if self.state == State::Authed {
+                            let labels: Vec<String> = labels_set.iter().map(|s| s.to_string()).collect();
 
-                    if ids.is_empty() && self.state == State::Authed {
-                        let msg = msg!{
-                            CHAN: ATTACH,
-                            VALUE: chan
-                        };
+                            let msg = msg!{
+                                CHAN: ATTACH,
+                                VALUE: &chan,
+                                LABEL: labels
+                            };
 
-                        self.conn.as_mut().unwrap()
-                            .1.push_data(msg.to_vec().unwrap());
+                            self.conn.as_mut().unwrap()
+                                .1.push_data(msg.to_vec().unwrap());
+                        }
+
+                        self.chans.insert(chan.to_string(), labels_set);
+                    } else {
+                        let old_set = self.chans.get_mut(&chan).unwrap();
+
+                        let labels: Vec<String> = labels_set.iter().filter(|l| !old_set.contains(*l)).map(|s| s.to_string()).collect();
+
+                        if !labels.is_empty() {
+                            if self.state == State::Authed {
+
+                                let msg = msg!{
+                                    CHAN: ATTACH,
+                                    VALUE: &chan,
+                                    LABEL: labels
+                                };
+
+                                self.conn.as_mut().unwrap()
+                                    .1.push_data(msg.to_vec().unwrap());
+                            }
+
+                            for label in labels_set {
+                                old_set.insert(label);
+                            }
+                        }
                     }
 
-                    ids.push((id, SenderType::Async(queue)));
+                    ids.push((id, SenderType::Block(tx), labels));
+                    self.tx_index.insert(id, chan);
+                }
+                Packet::AttatchAsync(id, chan, labels, queue) => {
+                    let ids = self.recvs.entry(chan.clone()).or_insert_with(|| vec![]);
+
+                    let mut labels_set = HashSet::new();
+
+                    if let Some(labels) = &labels {
+                        for label in labels {
+                            labels_set.insert(label.to_string());
+                        }
+                    }
+
+                    if ids.is_empty() {
+                        if self.state == State::Authed {
+                            let labels: Vec<String> = labels_set.iter().map(|s| s.to_string()).collect();
+
+                            let msg = msg!{
+                                CHAN: ATTACH,
+                                VALUE: &chan,
+                                LABEL: labels
+                            };
+
+                            self.conn.as_mut().unwrap()
+                                .1.push_data(msg.to_vec().unwrap());
+                        }
+
+                        self.chans.insert(chan.to_string(), labels_set);
+                    } else {
+                        let old_set = self.chans.get_mut(&chan).unwrap();
+
+                        let labels: Vec<String> = labels_set.iter().filter(|l| !old_set.contains(*l)).map(|s| s.to_string()).collect();
+
+                        if !labels.is_empty() {
+                            if self.state == State::Authed {
+
+                                let msg = msg!{
+                                    CHAN: ATTACH,
+                                    VALUE: &chan,
+                                    LABEL: labels
+                                };
+
+                                self.conn.as_mut().unwrap()
+                                    .1.push_data(msg.to_vec().unwrap());
+                            }
+
+                            for label in labels_set {
+                                old_set.insert(label);
+                            }
+                        }
+                    }
+
+                    ids.push((id, SenderType::Async(queue), labels));
+                    self.tx_index.insert(id, chan);
                 }
                 Packet::Detatch(id) => {
                     if let Some(chan) = self.tx_index.remove(&id) {
-                        if let Some(ids) = self.chans.get_mut(&chan) {
-                            if let Some(pos) = ids.iter().position(|(x, _)| x == &id) {
+                        let mut remove_chan = false;
+
+                        if let Some(ids) = self.recvs.get_mut(&chan) {
+                            if let Some(pos) = ids.iter().position(|(x, _, _)| x == &id) {
                                 ids.remove(pos);
                             }
 
-                            if ids.is_empty() && self.state == State::Authed {
+                            if ids.is_empty() {
+                                remove_chan = true;
+                            } else {
+                                let old_set = self.chans.get_mut(&chan).unwrap();
+
+                                let new_set: HashSet<String> = old_set.iter().filter(|l| {
+                                    for (_, _, labels) in ids.iter() {
+                                        if let Some(labels) = labels {
+                                            if labels.contains(l) {
+                                                return true;
+                                            }
+                                        }
+                                    }
+
+                                    false
+                                }).map(|s| s.to_string()).collect();
+
+                                if self.state == State::Authed {
+                                    let change: Vec<String> = old_set.iter().filter(|l| {
+                                        !new_set.contains(&**l)
+                                    }).map(|s| s.to_string()).collect();
+
+                                    if !change.is_empty() {
+                                        let msg = msg!{
+                                            CHAN: DETACH,
+                                            VALUE: &chan,
+                                            LABEL: change
+                                        };
+
+                                        self.conn.as_mut().unwrap()
+                                            .1.push_data(msg.to_vec().unwrap());
+                                    }
+                                }
+
+                                *old_set = new_set;
+                            }
+                        }
+
+                        if remove_chan {
+                            self.recvs.remove(&chan);
+                            self.chans.remove(&chan);
+
+                            if self.state == State::Authed {
                                 let msg = msg!{
                                     CHAN: DETACH,
                                     VALUE: chan
@@ -397,10 +523,13 @@ impl HubInner {
                                 if ok == 0 {
                                     self.state = State::Authed;
 
-                                    for (chan, _) in &self.chans {
+                                    for (chan, set) in &self.chans {
+                                        let labels: Vec<String> = set.iter().map(|s| s.to_string()).collect();
+
                                         let msg = msg!{
                                             CHAN: ATTACH,
-                                            VALUE: chan
+                                            VALUE: chan,
+                                            LABEL: labels
                                         };
 
                                         self.conn.as_mut().unwrap()
@@ -431,14 +560,45 @@ impl HubInner {
 
     fn relay_message(&mut self, message: Message) -> io::Result<()> {
         if let Ok(chan) = message.get_str(CHAN) {
-            if let Some(ids) = self.chans.get(chan) {
-                for (_, tx) in ids {
-                    match tx {
-                        SenderType::Block(tx) => {
-                            let _ = tx.send(message.clone());
+            if let Some(ids) = self.recvs.get(chan) {
+                let mut labels = vec![];
+
+                if let Some(label) = message.get(LABEL) {
+                    if let Some(label) = label.as_str() {
+                        labels.push(label.to_string());
+                    } else if let Some(label) = label.as_array() {
+                        label.iter().for_each(|v| {
+                            if let Some(v) = v.as_str() {
+                                labels.push(v.to_string());
+                            }
+                        });
+                    }
+                }
+
+                if labels.is_empty() {
+                    for (_, tx, _) in ids {
+                        match tx {
+                            SenderType::Block(tx) => {
+                                let _ = tx.send(message.clone());
+                            }
+                            SenderType::Async(queue) => {
+                                queue.push(message.clone());
+                            }
                         }
-                        SenderType::Async(queue) => {
-                            queue.push(message.clone());
+                    }
+                } else {
+                    for (_, tx, recv_labels) in ids {
+                        if let Some(recv_labels) = recv_labels {
+                            if recv_labels.iter().any(|l| labels.contains(l)) {
+                                match tx {
+                                    SenderType::Block(tx) => {
+                                        let _ = tx.send(message.clone());
+                                    }
+                                    SenderType::Async(queue) => {
+                                        queue.push(message.clone());
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -447,4 +607,196 @@ impl HubInner {
 
         Ok(())
     }
+}
+
+#[test]
+fn attach_detach() {
+    // init
+    let mut hub_inner = HubInner {
+        addr: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
+        auth_msg: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
+        conn: None,
+        state: State::UnAuth,
+        read_buffer: VecDeque::new(),
+        queue: Queue::new().unwrap(),
+        chans: HashMap::new(),
+        recvs: HashMap::new(),
+        tx_index: HashMap::new(),
+        un_send: VecDeque::new(),
+        aead_key: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
+        aead_method: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
+        port_id: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
+        run: true
+    };
+
+    // attach 1
+    let (tx, _rx) = channel();
+    hub_inner.queue.push(Packet::AttatchBlock(1, "chan1".to_string(), None, tx));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 1);
+    assert_eq!(hub_inner.recvs.len(), 1);
+    assert_eq!(hub_inner.chans.get("chan1").unwrap().len(), 0);
+    assert_eq!(hub_inner.recvs.get("chan1").unwrap().len(), 1);
+    assert_eq!(hub_inner.tx_index.len(), 1);
+
+    // attach 2
+    let (tx, _rx) = channel();
+    hub_inner.queue.push(Packet::AttatchBlock(2, "chan1".to_string(), None, tx));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 1);
+    assert_eq!(hub_inner.recvs.len(), 1);
+    assert_eq!(hub_inner.chans.get("chan1").unwrap().len(), 0);
+    assert_eq!(hub_inner.recvs.get("chan1").unwrap().len(), 2);
+    assert_eq!(hub_inner.tx_index.len(), 2);
+
+    // attach 3
+    let (tx, _rx) = channel();
+    hub_inner.queue.push(Packet::AttatchBlock(3, "chan2".to_string(), None, tx));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 2);
+    assert_eq!(hub_inner.recvs.len(), 2);
+    assert_eq!(hub_inner.chans.get("chan2").unwrap().len(), 0);
+    assert_eq!(hub_inner.recvs.get("chan2").unwrap().len(), 1);
+    assert_eq!(hub_inner.tx_index.len(), 3);
+
+    // detach 1
+    hub_inner.queue.push(Packet::Detatch(1));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 2);
+    assert_eq!(hub_inner.recvs.len(), 2);
+    assert_eq!(hub_inner.chans.get("chan1").unwrap().len(), 0);
+    assert_eq!(hub_inner.recvs.get("chan1").unwrap().len(), 1);
+    assert_eq!(hub_inner.tx_index.len(), 2);
+
+    // detach 2
+    hub_inner.queue.push(Packet::Detatch(2));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 1);
+    assert_eq!(hub_inner.recvs.len(), 1);
+    assert_eq!(hub_inner.chans.get("chan1").is_none(), true);
+    assert_eq!(hub_inner.recvs.get("chan1").is_none(), true);
+    assert_eq!(hub_inner.tx_index.len(), 1);
+}
+
+#[test]
+fn attach_detach_with_labels() {
+    // init
+    let mut hub_inner = HubInner {
+        addr: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
+        auth_msg: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
+        conn: None,
+        state: State::UnAuth,
+        read_buffer: VecDeque::new(),
+        queue: Queue::new().unwrap(),
+        chans: HashMap::new(),
+        recvs: HashMap::new(),
+        tx_index: HashMap::new(),
+        un_send: VecDeque::new(),
+        aead_key: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
+        aead_method: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
+        port_id: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
+        run: true
+    };
+
+    // attach 1
+    let (tx, _rx) = channel();
+    hub_inner.queue.push(Packet::AttatchBlock(1, "chan1".to_string(), Some(vec!["label1".to_string()]), tx));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 1);
+    assert_eq!(hub_inner.recvs.len(), 1);
+    assert_eq!(hub_inner.chans.get("chan1").unwrap().len(), 1);
+    assert_eq!(hub_inner.recvs.get("chan1").unwrap().len(), 1);
+    assert_eq!(hub_inner.tx_index.len(), 1);
+
+    // attach 2
+    let (tx, _rx) = channel();
+    hub_inner.queue.push(Packet::AttatchBlock(2, "chan1".to_string(), Some(vec!["label2".to_string()]), tx));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 1);
+    assert_eq!(hub_inner.recvs.len(), 1);
+    assert_eq!(hub_inner.chans.get("chan1").unwrap().len(), 2);
+    assert_eq!(hub_inner.recvs.get("chan1").unwrap().len(), 2);
+    assert_eq!(hub_inner.tx_index.len(), 2);
+
+    // attach 3
+    let (tx, _rx) = channel();
+    hub_inner.queue.push(Packet::AttatchBlock(3, "chan1".to_string(), Some(vec!["label1".to_string()]), tx));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 1);
+    assert_eq!(hub_inner.recvs.len(), 1);
+    assert_eq!(hub_inner.chans.get("chan1").unwrap().len(), 2);
+    assert_eq!(hub_inner.recvs.get("chan1").unwrap().len(), 3);
+    assert_eq!(hub_inner.tx_index.len(), 3);
+
+    // attach 4
+    let (tx, _rx) = channel();
+    hub_inner.queue.push(Packet::AttatchBlock(4, "chan2".to_string(), Some(vec!["label3".to_string()]), tx));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 2);
+    assert_eq!(hub_inner.recvs.len(), 2);
+    assert_eq!(hub_inner.chans.get("chan2").unwrap().len(), 1);
+    assert_eq!(hub_inner.recvs.get("chan2").unwrap().len(), 1);
+    assert_eq!(hub_inner.tx_index.len(), 4);
+
+    // detach 1
+    hub_inner.queue.push(Packet::Detatch(2));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 2);
+    assert_eq!(hub_inner.recvs.len(), 2);
+    assert_eq!(hub_inner.chans.get("chan1").unwrap().len(), 1);
+    assert_eq!(hub_inner.recvs.get("chan1").unwrap().len(), 2);
+    assert_eq!(hub_inner.tx_index.len(), 3);
+
+    // detach 2
+    hub_inner.queue.push(Packet::Detatch(3));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 2);
+    assert_eq!(hub_inner.recvs.len(), 2);
+    assert_eq!(hub_inner.chans.get("chan1").unwrap().len(), 1);
+    assert_eq!(hub_inner.recvs.get("chan1").unwrap().len(), 1);
+    assert_eq!(hub_inner.tx_index.len(), 2);
+
+    // detach 3
+    hub_inner.queue.push(Packet::Detatch(1));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 1);
+    assert_eq!(hub_inner.recvs.len(), 1);
+    assert_eq!(hub_inner.chans.get("chan1"), None);
+    assert!(hub_inner.recvs.get("chan1").is_none());
+    assert_eq!(hub_inner.tx_index.len(), 1);
+
+    // detach 4
+    hub_inner.queue.push(Packet::Detatch(4));
+
+    hub_inner.handle_message_from_queue().unwrap();
+
+    assert_eq!(hub_inner.chans.len(), 0);
+    assert_eq!(hub_inner.recvs.len(), 0);
+    assert_eq!(hub_inner.chans.get("chan1"), None);
+    assert!(hub_inner.recvs.get("chan1").is_none());
+    assert_eq!(hub_inner.tx_index.len(), 0);
 }

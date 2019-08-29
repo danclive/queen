@@ -273,7 +273,7 @@ impl<T> Node<T> {
                     ATTACH => self.node_attach(id, &addr, message)?,
                     DETACH => self.node_detach(id, &addr, message)?,
                     PING => self.node_ping(id, message)?,
-                    // QUERy => self.node_query(id, message)?,
+                    // QUERY => self.node_query(id, message)?,
                     _ => {
                         ErrorCode::UnsupportedChan.insert_message(&mut message);
 
@@ -363,7 +363,7 @@ impl<T> Node<T> {
                         }
                     });
                 } else {
-                    ErrorCode::InvalidFieldType.insert_message(&mut message);
+                    ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
@@ -393,7 +393,27 @@ impl<T> Node<T> {
                 detach_fn(id, addr, &mut message, &mut self.user_data);
             }
 
-            self.session_detach(id, chan)?;
+            let mut labels = vec![];
+
+            if let Some(label) = message.get(LABEL) {
+                if let Some(label) = label.as_str() {
+                    labels.push(label.to_string());
+                } else if let Some(label) = label.as_array() {
+                    label.iter().for_each(|v| {
+                        if let Some(v) = v.as_str() {
+                            labels.push(v.to_string());
+                        }
+                    });
+                } else {
+                    ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+
+                    self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                    return Ok(())
+                }
+            }
+
+            self.session_detach(id, chan, labels)?;
 
             ErrorCode::OK.insert_message(&mut message);
         } else {
@@ -425,15 +445,21 @@ impl<T> Node<T> {
         Ok(())
     }
 
-    fn session_detach(&mut self, id: usize, chan: String) -> io::Result<()> {
+    fn session_detach(&mut self, id: usize, chan: String, labels: Vec<String>) -> io::Result<()> {
         if let Some(conn) = self.conns.get_mut(id) {
-            conn.chans.remove(&chan);
+            if labels.is_empty() {
+                conn.chans.remove(&chan);
 
-            if let Some(ids) = self.chans.get_mut(&chan) {
-                ids.remove(&id);
+                if let Some(ids) = self.chans.get_mut(&chan) {
+                    ids.remove(&id);
 
-                if ids.is_empty() {
-                    self.chans.remove(&chan);
+                    if ids.is_empty() {
+                        self.chans.remove(&chan);
+                    }
+                }
+            } else {
+                if let Some(vec) = conn.chans.get_mut(&chan) {
+                    *vec = vec.iter().filter(|label| !labels.contains(label)).map(|s| s.to_string()).collect();
                 }
             }
         }
@@ -474,7 +500,27 @@ impl<T> Node<T> {
             }
         }
 
-        let label = message.get_str(LABEL).map(|s| s.to_string()).ok();
+        // let label = message.get_str(LABEL).map(|s| s.to_string()).ok();
+        let mut labels = vec![];
+
+        if let Some(label) = message.get(LABEL) {
+            if let Some(label) = label.as_str() {
+                labels.push(label.to_string());
+            } else if let Some(label) = label.as_array() {
+                label.iter().for_each(|v| {
+                    if let Some(v) = v.as_str() {
+                        labels.push(v.to_string());
+                    }
+                });
+            } else {
+                ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+
+                self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                return Ok(())
+            }
+        }
+
 
         let mut no_consumers = true;
 
@@ -501,13 +547,12 @@ impl<T> Node<T> {
             if let Some(ids) = self.chans.get(&chan) {
                 for conn_id in ids {
                     if let Some(conn) = self.conns.get_mut(*conn_id) {
-                        if let Some(label) = &label {
-                            if let Some(labels) = conn.chans.get(&chan) {
-                                if !labels.contains(label) {
-                                    continue;
-                                }
-                            } else {
-                                    panic!("{:?}", "It's not going to go here!");
+                        // filter labels
+                        if !labels.is_empty() {
+                            let conn_labels = conn.chans.get(&chan).expect("It shouldn't be executed here!");
+
+                            if !conn_labels.iter().any(|l| labels.contains(l)) {
+                                continue
                             }
                         }
 
@@ -551,13 +596,12 @@ impl<T> Node<T> {
         } else if let Some(ids) = self.chans.get(&chan) {
             for conn_id in ids {
                 if let Some(conn) = self.conns.get_mut(*conn_id) {
-                    if let Some(label) = &label {
-                        if let Some(labels) = conn.chans.get(&chan) {
-                            if !labels.contains(label) {
-                                continue;
-                            }
-                        } else {
-                            panic!("{:?}", "It's not going to go here!");
+                    // filter labels
+                    if !labels.is_empty() {
+                        let conn_labels = conn.chans.get(&chan).expect("It shouldn't be executed here!");
+
+                        if !conn_labels.iter().any(|l| labels.contains(l)) {
+                            continue
                         }
                     }
 

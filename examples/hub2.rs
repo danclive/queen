@@ -22,7 +22,7 @@ fn main() {
 
     // for i in 0..100000 {
         // hub.send("switch.esp8266.control", msg!{"s2": false});
-        hub.send("aaa", msg!{"s2": false, "i": i});
+        hub.send("aaa", msg!{"s2": false, "i": i}, None);
         //i += 1;
     // }
 

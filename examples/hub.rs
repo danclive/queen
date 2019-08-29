@@ -11,7 +11,7 @@ fn main() {
 
     let hub = Hub::connect(config).unwrap();
 
-    for msg in hub.recv("aaa") {
+    for msg in hub.recv("aaa", None) {
         println!("{:?}", msg);
     } 
 }
