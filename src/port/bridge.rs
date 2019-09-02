@@ -82,7 +82,7 @@ impl Bridge {
         Ok(())
     }
 
-    pub fn run_once(&mut self) -> io::Result<()> {
+    fn run_once(&mut self) -> io::Result<()> {
         {
             macro_rules! link {
                 ($session:ident) => {

@@ -467,7 +467,7 @@ impl<T> Node<T> {
         Ok(())
     }
 
-    pub fn relay_message(&mut self, id: usize, addr: &Addr, chan: String, mut message: Message) -> io::Result<()> {
+    fn relay_message(&mut self, id: usize, addr: &Addr, chan: String, mut message: Message) -> io::Result<()> {
         if !self.check_auth(id, &mut message)? {
             return Ok(())
         }
