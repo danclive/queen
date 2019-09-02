@@ -1,3 +1,5 @@
+use std::cmp;
+
 use ring::aead::{Algorithm, LessSafeKey, Nonce, UnboundKey, Aad};
 use ring::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305};
 use ring::digest;
@@ -55,18 +57,12 @@ impl Aead {
         }
     }
 
-    // pub fn increase_nonce(&mut self) {
-    //     let mut prev: u16 = 1;
-    //     for i in &mut self.nonce {
-    //         prev += *i as u16;
-    //         *i = prev as u8;
-    //         prev >>= 8;
-    //     }
-    // }
+    pub fn set_nonce(&mut self, nonce: &[u8]) {
+        let min = cmp::min(self.nonce.len(), nonce.len());
 
-    pub fn set_nonce(&mut self, nonce: i64) {
-        let bytes = nonce.to_le_bytes();
-        self.nonce[..8].clone_from_slice(&bytes);
+        for i in 0..min {
+            self.nonce[i] = nonce[i];
+        }
     }
 
     pub fn encrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {

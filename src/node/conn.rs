@@ -22,7 +22,7 @@ pub struct Connection {
     pub auth: bool,
     pub chans: HashMap<String, Vec<String>>, // HashMap<Chan, Vec<Label>>
     pub port_id: Option<MessageId>,
-    aead: Option<Aead>
+    pub aead: Option<Aead>
 }
 
 impl Connection {

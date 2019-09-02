@@ -13,6 +13,7 @@ pub const TO: &str = "_to";
 pub const FROM: &str = "_from";
 pub const SHARE: &str = "_shar";
 pub const ACK: &str = "_ack";
+pub const NONCE: &str = "_nonc";
 
 // message
 pub const ID: &str = "_id";

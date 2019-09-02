@@ -319,7 +319,21 @@ impl<T> Node<T> {
 
                     conn.port_id = Some(port_id.clone());
                 } else {
-                    ErrorCode::InvalidFieldType.insert_message(&mut message);
+                    ErrorCode::InvalidPortIdFieldType.insert_message(&mut message);
+
+                    conn.push_data(message.to_vec().unwrap());
+                    conn.epoll_modify(&self.epoll)?;
+
+                    return Ok(())
+                }
+            }
+
+            let mut nonce = None;
+            if let Some(n) = message.get(NONCE) {
+                if let Some(n) = n.as_binary() {
+                    nonce = Some(n.to_owned());
+                } else {
+                    ErrorCode::InvalidNonceFieldType.insert_message(&mut message);
 
                     conn.push_data(message.to_vec().unwrap());
                     conn.epoll_modify(&self.epoll)?;
@@ -336,6 +350,12 @@ impl<T> Node<T> {
 
             conn.push_data(message.to_vec().unwrap());
             conn.epoll_modify(&self.epoll)?;
+
+            if let Some(nonce) = nonce {
+                if let Some(aead) = &mut conn.aead {
+                    aead.set_nonce(&nonce);
+                }
+            }
         }
 
         Ok(())
@@ -486,7 +506,7 @@ impl<T> Node<T> {
                     return Ok(())
                 }
             } else {
-                ErrorCode::InvalidFieldType.insert_message(&mut message);
+                ErrorCode::InvalidToFieldType.insert_message(&mut message);
 
                 self.push_data_to_conn(id, message.to_vec().unwrap())?;
 

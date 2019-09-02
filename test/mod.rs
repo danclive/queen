@@ -7,6 +7,7 @@ mod test_node_attach;
 mod test_node_aead;
 mod test_node_port_id;
 mod test_node_label;
+mod test_node_nonce;
 mod test_bridge_connect;
 mod test_port_hub;
 mod test_port_point;
