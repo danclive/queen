@@ -30,10 +30,6 @@ queen-log = "0.2"
 slab = "0.4"
 ring = "0.16"
 
-[[bin]]
-name = "queen"
-path = "src/main.rs"
-
 [[test]]
 name = "test"
 path = "test/mod.rs"
