@@ -8,6 +8,7 @@ use queen::nson::{msg, Message};
 use queen::error::ErrorCode;
 use queen::util::{write_socket, read_socket};
 use queen::crypto::{Method, Aead};
+use queen::dict::*;
 
 use super::get_free_addr;
 
@@ -39,7 +40,7 @@ fn attach() {
 
     // client 1 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -53,7 +54,7 @@ fn attach() {
 
     // client 2 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: "_auth",
         "username": "aaa",
         "password": "bbb"
     };
@@ -67,9 +68,9 @@ fn attach() {
 
     // client2 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_ack": 123
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();
@@ -81,8 +82,8 @@ fn attach() {
 
     // client 1 attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa"
+        CHAN: ATTACH,
+        VALUE: "aaa"
     };
 
     let data = msg.to_vec().unwrap();
@@ -94,9 +95,9 @@ fn attach() {
 
     // client2 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_ack": 123
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();
@@ -110,12 +111,12 @@ fn attach() {
     socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
     let data = read_socket(&mut socket, &mut aead).unwrap();
     let recv = Message::from_slice(&data).unwrap();
-    assert!(recv.get_str("_chan").unwrap() == "aaa");
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
 
     // client1 detach
     let msg = msg!{
-        "_chan": "_deta",
-        "_valu": "aaa"
+        CHAN: DETACH,
+        VALUE: "aaa"
     };
 
     let data = msg.to_vec().unwrap();
@@ -127,9 +128,9 @@ fn attach() {
 
     // client2 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_ack": 123
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();

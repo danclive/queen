@@ -376,12 +376,18 @@ impl<T> Node<T> {
             if let Some(label) = message.get(LABEL) {
                 if let Some(label) = label.as_str() {
                     labels.push(label.to_string());
-                } else if let Some(label) = label.as_array() {
-                    label.iter().for_each(|v| {
+                } else if let Some(label_array) = label.as_array() {
+                    for v in label_array {
                         if let Some(v) = v.as_str() {
                             labels.push(v.to_string());
+                        } else {
+                            ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+
+                            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                            return Ok(())
                         }
-                    });
+                    }
                 } else {
                     ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
@@ -418,12 +424,18 @@ impl<T> Node<T> {
             if let Some(label) = message.get(LABEL) {
                 if let Some(label) = label.as_str() {
                     labels.push(label.to_string());
-                } else if let Some(label) = label.as_array() {
-                    label.iter().for_each(|v| {
+                } else if let Some(label_array) = label.as_array() {
+                    for v in label_array {
                         if let Some(v) = v.as_str() {
                             labels.push(v.to_string());
+                        } else {
+                            ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+
+                            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                            return Ok(())
                         }
-                    });
+                    }
                 } else {
                     ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
@@ -496,14 +508,38 @@ impl<T> Node<T> {
             return Ok(())
         }
 
+        let mut to_ids = vec![];
+
         if let Some(to) = message.get(TO) {
-            if let Some(to) = to.as_message_id() {
-                if !self.ports.contains_key(to) {
+            if let Some(to_id) = to.as_message_id() {
+                if !self.ports.contains_key(to_id) {
                     ErrorCode::TargetPortIdNotExist.insert_message(&mut message);
 
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
 
                     return Ok(())
+                }
+
+                to_ids.push(to_id.clone());
+            } else if let Some(to_array) = to.as_array() {
+                for to in to_array {
+                    if let Some(to_id) = to.as_message_id() {
+                        if !self.ports.contains_key(to_id) {
+                            ErrorCode::TargetPortIdNotExist.insert_message(&mut message);
+
+                            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                            return Ok(())
+                        }
+
+                        to_ids.push(to_id.clone());
+                    } else {
+                        ErrorCode::InvalidToFieldType.insert_message(&mut message);
+
+                        self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                        return Ok(())
+                    }
                 }
             } else {
                 ErrorCode::InvalidToFieldType.insert_message(&mut message);
@@ -520,18 +556,24 @@ impl<T> Node<T> {
             }
         }
 
-        // let label = message.get_str(LABEL).map(|s| s.to_string()).ok();
+
         let mut labels = vec![];
 
         if let Some(label) = message.get(LABEL) {
             if let Some(label) = label.as_str() {
                 labels.push(label.to_string());
-            } else if let Some(label) = label.as_array() {
-                label.iter().for_each(|v| {
+            } else if let Some(label_array) = label.as_array() {
+                for v in label_array {
                     if let Some(v) = v.as_str() {
                         labels.push(v.to_string());
+                    } else {
+                        ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+
+                        self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                        return Ok(())
                     }
-                });
+                }
             } else {
                 ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
@@ -544,20 +586,22 @@ impl<T> Node<T> {
 
         let mut no_consumers = true;
 
-        if let Ok(to) = message.get_message_id(TO) {
+        if !to_ids.is_empty() {
             no_consumers = false;
 
-            if let Some(conn_id) = self.ports.get(to) {
-                if let Some(conn) = self.conns.get_mut(*conn_id) {
-                    let success = if let Some(send_fn) = &self.callback.send_fn {
-                        send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
-                    } else {
-                        true
-                    };
+            for to in &to_ids {
+                if let Some(conn_id) = self.ports.get(to) {
+                    if let Some(conn) = self.conns.get_mut(*conn_id) {
+                        let success = if let Some(send_fn) = &self.callback.send_fn {
+                            send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
+                        } else {
+                            true
+                        };
 
-                    if success {
-                        conn.push_data(message.to_vec().unwrap());
-                        conn.epoll_modify(&self.epoll)?;
+                        if success {
+                            conn.push_data(message.to_vec().unwrap());
+                            conn.epoll_modify(&self.epoll)?;
+                        }
                     }
                 }
             }

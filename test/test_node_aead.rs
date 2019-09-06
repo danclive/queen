@@ -6,6 +6,7 @@ use queen::{Node, node::NodeConfig};
 use queen::nson::{msg, Message};
 use queen::util::{write_socket, read_socket};
 use queen::crypto::{Method, Aead};
+use queen::dict::*;
 
 use super::get_free_addr;
 
@@ -29,7 +30,7 @@ fn no_aead() {
     let mut socket = TcpStream::connect(addr).unwrap();
 
     let msg = msg!{
-        "_chan": "_ping"
+        CHAN: PING
     };
 
     msg.encode(&mut socket).unwrap();
@@ -60,7 +61,7 @@ fn aead() {
     let mut socket = TcpStream::connect(&addr).unwrap();
 
     let msg = msg!{
-        "_chan": "_ping"
+        CHAN: PING
     };
 
     assert!(msg.encode(&mut socket).is_err() || Message::decode(&mut socket).is_err());

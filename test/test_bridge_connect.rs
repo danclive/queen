@@ -10,6 +10,7 @@ use queen::nson::Message;
 use queen::util::{write_socket, read_socket, get_length};
 use queen::crypto::{Method, Aead};
 use queen::error::ErrorCode;
+use queen::dict::*;
 
 use super::get_free_addr;
 
@@ -75,7 +76,7 @@ fn connect() {
     let mut socket_b = TcpStream::connect(addr_b).unwrap();
 
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -93,8 +94,8 @@ fn connect() {
 
     // client b attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa"
+        CHAN: "_atta",
+        VALUE: "aaa"
     };
 
     msg.encode(&mut socket_b).unwrap();
@@ -113,7 +114,7 @@ fn connect() {
     let mut aead_a = Aead::new(&Method::default(), b"queen");
 
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -127,9 +128,9 @@ fn connect() {
 
     // client a send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_ack": 123
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();
@@ -213,7 +214,7 @@ fn test_with_label() {
     let mut socket_b = TcpStream::connect(addr_b).unwrap();
 
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -231,9 +232,9 @@ fn test_with_label() {
 
     // client b attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa",
-        "_labe": "lable1"
+        CHAN: "_atta",
+        VALUE: "aaa",
+        LABEL: "lable1"
     };
 
     msg.encode(&mut socket_b).unwrap();
@@ -252,7 +253,7 @@ fn test_with_label() {
     let mut aead_a = Aead::new(&Method::default(), b"queen");
 
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -266,10 +267,10 @@ fn test_with_label() {
 
     // client a send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_ack": 123,
-        "_labe": "lable1"
+        ACK: 123,
+        LABEL: "lable1"
     };
 
     let data = msg.to_vec().unwrap();
@@ -292,10 +293,10 @@ fn test_with_label() {
 
     // client a send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_ack": 123,
-        "_labe": "lable2"
+        ACK: 123,
+        LABEL: "lable2"
     };
 
     let data = msg.to_vec().unwrap();

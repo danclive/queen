@@ -10,6 +10,7 @@ use queen::{Node, node::Callback, node::NodeConfig};
 use queen::nson::msg;
 use queen::util::{write_socket, read_socket};
 use queen::crypto::{Method, Aead};
+use queen::dict::*;
 
 use super::get_free_addr;
 
@@ -43,7 +44,7 @@ fn tcp_accept() {
     let mut aead = Aead::new(&Method::default(), b"queen");
 
     let msg = msg!{
-        "_chan": "_ping"
+        CHAN: PING
     };
 
     let data = msg.to_vec().unwrap();
@@ -83,7 +84,7 @@ fn unix_accept() {
     let mut aead = Aead::new(&Method::default(), b"queen");
 
     let msg = msg!{
-        "_chan": "_ping"
+        CHAN: PING
     };
 
     let data = msg.to_vec().unwrap();

@@ -72,8 +72,8 @@ fn set_nonce() {
 
     // attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa"
+        CHAN: ATTACH,
+        VALUE: "aaa"
     };
 
     let data = msg.to_vec().unwrap();

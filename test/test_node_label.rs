@@ -8,6 +8,7 @@ use queen::nson::{msg, Message};
 use queen::error::ErrorCode;
 use queen::util::{write_socket, read_socket};
 use queen::crypto::{Method, Aead};
+use queen::dict::*;
 
 use super::get_free_addr;
 
@@ -43,7 +44,7 @@ fn label() {
 
     // client 1 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -57,7 +58,7 @@ fn label() {
 
     // client 2 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -71,7 +72,7 @@ fn label() {
 
     // client 3 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -85,9 +86,9 @@ fn label() {
 
     // client 1 attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa",
-        "_labe": "label1"
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        LABEL: "label1"
     };
 
     let data = msg.to_vec().unwrap();
@@ -99,8 +100,8 @@ fn label() {
 
     // client 2 attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa"
+        CHAN: ATTACH,
+        VALUE: "aaa"
     };
 
     let data = msg.to_vec().unwrap();
@@ -113,9 +114,9 @@ fn label() {
     //// no label
     // client 3 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_ack": 123,
+        ACK: 123,
     };
 
     let data = msg.to_vec().unwrap();
@@ -138,10 +139,10 @@ fn label() {
     //// with label
     // client 3 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_labe": "label1",
-        "_ack": 123
+        LABEL: "label1",
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();
@@ -200,7 +201,7 @@ fn labels() {
 
      // client 1 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -214,7 +215,7 @@ fn labels() {
 
     // client 2 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -228,9 +229,9 @@ fn labels() {
 
     // client 1 attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa",
-        "_labe": ["label1", "label2"]
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        LABEL: ["label1", "label2"]
     };
 
     let data = msg.to_vec().unwrap();
@@ -242,10 +243,10 @@ fn labels() {
 
     // client 2 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_labe": "label1",
-        "_ack": 123
+        LABEL: "label1",
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();
@@ -262,10 +263,10 @@ fn labels() {
 
     // client 2 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_labe": "label2",
-        "_ack": 123
+        LABEL: "label2",
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();
@@ -282,10 +283,10 @@ fn labels() {
 
     // client 2 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_labe": "label3",
-        "_ack": 123
+        LABEL: "label3",
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();
@@ -338,7 +339,7 @@ fn detach() {
 
      // client 1 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -352,7 +353,7 @@ fn detach() {
 
     // client 2 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -366,9 +367,9 @@ fn detach() {
 
     // client 1 attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa",
-        "_labe": ["label1", "label2", "label3", "label4"]
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        LABEL: ["label1", "label2", "label3", "label4"]
     };
 
     let data = msg.to_vec().unwrap();
@@ -380,10 +381,10 @@ fn detach() {
 
     // client 2 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_labe": "label1",
-        "_ack": 123
+        LABEL: "label1",
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();
@@ -400,9 +401,9 @@ fn detach() {
 
     // client 1 detach
     let msg = msg!{
-        "_chan": "_deta",
-        "_valu": "aaa",
-        "_labe": ["label1", "label2"]
+        CHAN: DETACH,
+        VALUE: "aaa",
+        LABEL: ["label1", "label2"]
     };
 
     let data = msg.to_vec().unwrap();
@@ -414,10 +415,10 @@ fn detach() {
 
     // client 2 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_labe": "label1",
-        "_ack": 123
+        LABEL: "label1",
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();
@@ -443,10 +444,10 @@ fn detach() {
 
     // client 2 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_labe": "label3",
-        "_ack": 123
+        LABEL: "label3",
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();
@@ -494,7 +495,7 @@ fn multiple_labels() {
 
     // client 1 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -508,7 +509,7 @@ fn multiple_labels() {
 
     // client 2 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -522,7 +523,7 @@ fn multiple_labels() {
 
     // client 3 auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -536,9 +537,9 @@ fn multiple_labels() {
 
     // client 1 attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa",
-        "_labe": ["label1", "label2"]
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        LABEL: ["label1", "label2"]
     };
 
     let data = msg.to_vec().unwrap();
@@ -550,9 +551,9 @@ fn multiple_labels() {
 
     // client 2 attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa",
-        "_labe": ["label3", "label4"]
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        LABEL: ["label3", "label4"]
     };
 
     let data = msg.to_vec().unwrap();
@@ -564,10 +565,10 @@ fn multiple_labels() {
 
     // client 3 send
     let msg = msg!{
-        "_chan": "aaa",
+        CHAN: "aaa",
         "hello": "world",
-        "_labe": ["label2", "label3"],
-        "_ack": 123
+        LABEL: ["label2", "label3"],
+        ACK: 123
     };
 
     let data = msg.to_vec().unwrap();

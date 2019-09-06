@@ -7,6 +7,7 @@ use queen::nson::{msg, Message};
 use queen::error::ErrorCode;
 use queen::util::{write_socket, read_socket};
 use queen::crypto::{Method, Aead};
+use queen::dict::*;
 
 use super::get_free_addr;
 
@@ -33,8 +34,8 @@ fn no_auth() {
 
     // attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa"
+        CHAN: ATTACH,
+        VALUE: "aaa"
     };
 
     let data = msg.to_vec().unwrap();
@@ -46,8 +47,8 @@ fn no_auth() {
 
     // detach
     let msg = msg!{
-        "_chan": "_deta",
-        "_valu": "aaa"
+        CHAN: "_deta",
+        VALUE: "aaa"
     };
 
     let data = msg.to_vec().unwrap();
@@ -59,7 +60,7 @@ fn no_auth() {
 
     // ping
     let msg = msg!{
-        "_chan": "_ping",
+        CHAN: "_ping",
         "_timeid": "aaa"
     };
 
@@ -72,7 +73,7 @@ fn no_auth() {
 
     // send
     let msg = msg!{
-        "_chan": "aaa"
+        CHAN: "aaa"
     };
 
     let data = msg.to_vec().unwrap();
@@ -108,8 +109,8 @@ fn do_auth() {
 
     // attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa"
+        CHAN: ATTACH,
+        VALUE: "aaa"
     };
 
     let data = msg.to_vec().unwrap();
@@ -121,7 +122,7 @@ fn do_auth() {
 
     // auth
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -135,8 +136,8 @@ fn do_auth() {
 
     // attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa"
+        CHAN: ATTACH,
+        VALUE: "aaa"
     };
 
     let data = msg.to_vec().unwrap();
@@ -185,8 +186,8 @@ fn can_auth() {
 
     // attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa"
+        CHAN: ATTACH,
+        VALUE: "aaa"
     };
 
     let data = msg.to_vec().unwrap();
@@ -197,7 +198,7 @@ fn can_auth() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaabbb",
         "password": "bbbccc"
     };
@@ -210,7 +211,7 @@ fn can_auth() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::AuthenticationFailed));
 
     let msg = msg!{
-        "_chan": "_auth",
+        CHAN: AUTH,
         "username": "aaa",
         "password": "bbb"
     };
@@ -224,8 +225,8 @@ fn can_auth() {
 
     // attach
     let msg = msg!{
-        "_chan": "_atta",
-        "_valu": "aaa"
+        CHAN: ATTACH,
+        VALUE: "aaa"
     };
 
     let data = msg.to_vec().unwrap();
