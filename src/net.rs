@@ -10,6 +10,10 @@ use queen_io::epoll::{Epoll, Token, Ready, EpollOpt};
 use queen_io::tcp::TcpStream;
 use queen_io::unix::UnixStream;
 
+use nson::{Message, msg};
+
+use crate::dict::*;
+
 #[derive(Debug, Clone)]
 pub enum Addr {
     Tcp(SocketAddr),
@@ -53,6 +57,24 @@ impl Addr {
                 Ok(Stream::Uds(socket))
             }
         }
+    }
+
+    pub fn to_message(&self) -> Message {
+        match self {
+            Addr::Tcp(addr) => {
+                msg!{
+                    ADDR_TYPE: "TCP",
+                    ADDR: addr.to_string()
+                }
+            }
+            Addr::Uds(addr) => {
+                msg!{
+                    ADDR_TYPE: "UDS",
+                    ADDR: addr
+                }
+            }
+        }
+
     }
 }
 

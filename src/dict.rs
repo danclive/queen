@@ -14,10 +14,19 @@ pub const FROM: &str = "_from";
 pub const SHARE: &str = "_shar";
 pub const ACK: &str = "_ack";
 pub const NONCE: &str = "_nonc";
+pub const SUPER: &str = "_supe";
 
 // message
 pub const ID: &str = "_id";
+pub const ADDR: &str = "_addr";
+pub const ADDR_TYPE: &str = "_addr_type";
 
 // error
 pub const OK: &str = "ok";
 pub const ERROR: &str = "error";
+
+// port event
+pub const PORT_READY: &str = "_ptre";
+pub const PORT_BREAK: &str = "_ptbr";
+pub const PORT_ATTACH: &str = "_ptat";
+pub const PORT_DETACH: &str = "_ptde";

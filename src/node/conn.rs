@@ -20,6 +20,7 @@ pub struct Connection {
     read_buffer: Vec<u8>,
     write_buffer: VecDeque<Vec<u8>>,
     pub auth: bool,
+    pub supe: bool,
     pub chans: HashMap<String, Vec<String>>, // HashMap<Chan, Vec<Label>>
     pub port_id: Option<MessageId>,
     pub aead: Option<Aead>
@@ -35,6 +36,7 @@ impl Connection {
             read_buffer: Vec::new(),
             write_buffer: VecDeque::new(),
             auth: false,
+            supe: false,
             chans: HashMap::new(),
             port_id: None,
             aead

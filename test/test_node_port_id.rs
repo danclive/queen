@@ -331,11 +331,11 @@ fn port_to_ports() {
     let mut socket = TcpStream::connect(&addr).unwrap();
     let mut aead = Aead::new(&Method::default(), b"queen");
 
-    // client2
+    // client 2
     let mut socket2 = TcpStream::connect(&addr).unwrap();
     let mut aead2 = Aead::new(&Method::default(), b"queen");
 
-    // client3
+    // client 3
     let mut socket3 = TcpStream::connect(addr).unwrap();
     let mut aead3 = Aead::new(&Method::default(), b"queen");
 

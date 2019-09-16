@@ -239,13 +239,21 @@ impl<T> Node<T> {
                 }
             }
 
+            // port event
+            let mut event_msg = conn.addr.to_message();
+
             if let Some(port_id) = conn.port_id {
                 self.ports.remove(&port_id);
+                event_msg.insert(PORT_ID, port_id);
             }
 
             if let Some(remove_fn) = &self.callback.remove_fn {
                 remove_fn(id, &conn.addr, &mut self.user_data);
             }
+
+            event_msg.insert(CHAN, PORT_BREAK);
+
+            self.relay_super_message(id, PORT_BREAK, event_msg)?;
         }
 
         Ok(())
@@ -263,6 +271,7 @@ impl<T> Node<T> {
                     ErrorCode::CannotGetChanField.insert_message(&mut message);
 
                     self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
                     continue;
                 }
             };
@@ -303,16 +312,47 @@ impl<T> Node<T> {
         }
 
         if let Some(conn) = self.conns.get_mut(id) {
+
+            let mut nonce = None;
+
+            if let Some(n) = message.get(NONCE) {
+                if let Some(n) = n.as_binary() {
+                    nonce = Some(n.to_owned());
+                } else {
+                    ErrorCode::InvalidNonceFieldType.insert_message(&mut message);
+
+                    conn.push_data(message.to_vec().unwrap());
+                    conn.epoll_modify(&self.epoll)?;
+
+                    return Ok(())
+                }
+            }
+
+            if let Some(s) = message.get(SUPER) {
+                if let Some(s) = s.as_bool() {
+                    conn.supe = s;
+                } else {
+                    ErrorCode::InvalidSuperFieldType.insert_message(&mut message);
+
+                    conn.push_data(message.to_vec().unwrap());
+                    conn.epoll_modify(&self.epoll)?;
+
+                    return Ok(())
+                }
+            }
+
             if let Some(port_id) = message.get(PORT_ID) {
                 if let Some(port_id) = port_id.as_message_id() {
-                    if self.ports.contains_key(port_id) {
 
-                        ErrorCode::DuplicatePortId.insert_message(&mut message);
+                    if let Some(other_id) = self.ports.get(port_id) {
+                        if *other_id != id {
+                            ErrorCode::DuplicatePortId.insert_message(&mut message);
 
-                        conn.push_data(message.to_vec().unwrap());
-                        conn.epoll_modify(&self.epoll)?;
+                            conn.push_data(message.to_vec().unwrap());
+                            conn.epoll_modify(&self.epoll)?;
 
-                        return Ok(())
+                            return Ok(())
+                        }
                     }
 
                     self.ports.insert(port_id.clone(), id);
@@ -328,23 +368,9 @@ impl<T> Node<T> {
                 }
             }
 
-            let mut nonce = None;
-            if let Some(n) = message.get(NONCE) {
-                if let Some(n) = n.as_binary() {
-                    nonce = Some(n.to_owned());
-                } else {
-                    ErrorCode::InvalidNonceFieldType.insert_message(&mut message);
-
-                    conn.push_data(message.to_vec().unwrap());
-                    conn.epoll_modify(&self.epoll)?;
-
-                    return Ok(())
-                }
-            }
-
             conn.auth = true;
 
-            message.insert(PORT_ID, self.node_id.clone());
+            message.insert(NODE_ID, self.node_id.clone());
 
             ErrorCode::OK.insert_message(&mut message);
 
@@ -356,6 +382,17 @@ impl<T> Node<T> {
                     aead.set_nonce(&nonce);
                 }
             }
+
+            // port event
+            let mut event_msg = conn.addr.to_message();
+
+            if let Some(port_id) = &conn.port_id {
+                event_msg.insert(PORT_ID, port_id.clone());
+            }
+
+            event_msg.insert(CHAN, PORT_READY);
+
+            self.relay_super_message(id, PORT_READY, event_msg)?;
         }
 
         Ok(())
@@ -367,6 +404,24 @@ impl<T> Node<T> {
         }
 
         if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
+            // check super
+            match chan.as_str() {
+                PORT_READY | PORT_BREAK | PORT_ATTACH | PORT_DETACH => {
+                    let conn = self.conns.get_mut(id).unwrap();
+
+                    if !conn.supe {
+                        ErrorCode::Unauthorized.insert_message(&mut message);
+
+                        conn.push_data(message.to_vec().unwrap());
+                        conn.epoll_modify(&self.epoll)?;
+
+                        return Ok(())
+                    }
+
+                }
+                _ => ()
+            }
+
             if !self.can_attach(id, addr, &mut message)? {
                 return Ok(())
             }
@@ -397,7 +452,33 @@ impl<T> Node<T> {
                 }
             }
 
-            self.session_attach(id, chan, labels)?;
+            // port event
+            let mut event_msg = addr.to_message();
+
+            event_msg.insert(VALUE, &chan);
+
+            if let Some(label) = message.get(LABEL) {
+                event_msg.insert(VALUE, label.clone());
+            }
+
+            // session_attach
+            let ids = self.chans.entry(chan.to_owned()).or_insert_with(HashSet::new);
+
+            ids.insert(id);
+
+            {
+                let conn = self.conns.get_mut(id).unwrap();
+
+                conn.chans.insert(chan, labels);
+
+                if let Some(port_id) = &conn.port_id {
+                    event_msg.insert(PORT_ID, port_id.clone());
+                }
+            }
+
+            event_msg.insert(CHAN, PORT_ATTACH);
+
+            self.relay_super_message(id, PORT_ATTACH, event_msg)?;
 
             ErrorCode::OK.insert_message(&mut message);
         } else {
@@ -445,7 +526,43 @@ impl<T> Node<T> {
                 }
             }
 
-            self.session_detach(id, chan, labels)?;
+            // port event
+            let mut event_msg = addr.to_message();
+
+            event_msg.insert(VALUE, &chan);
+
+            if let Some(label) = message.get(LABEL) {
+                event_msg.insert(VALUE, label.clone());
+            }
+
+            // session_detach
+            {
+                let conn = self.conns.get_mut(id).unwrap();
+
+                if labels.is_empty() {
+                    conn.chans.remove(&chan);
+
+                    if let Some(ids) = self.chans.get_mut(&chan) {
+                        ids.remove(&id);
+
+                        if ids.is_empty() {
+                            self.chans.remove(&chan);
+                        }
+                    }
+                } else {
+                    if let Some(vec) = conn.chans.get_mut(&chan) {
+                        *vec = vec.iter().filter(|label| !labels.contains(label)).map(|s| s.to_string()).collect();
+                    }
+                }
+
+                if let Some(port_id) = &conn.port_id {
+                    event_msg.insert(PORT_ID, port_id.clone());
+                }
+            }
+
+            event_msg.insert(CHAN, PORT_DETACH);
+
+            self.relay_super_message(id, PORT_DETACH, event_msg)?;
 
             ErrorCode::OK.insert_message(&mut message);
         } else {
@@ -461,40 +578,6 @@ impl<T> Node<T> {
         ErrorCode::OK.insert_message(&mut message);
 
         self.push_data_to_conn(id, message.to_vec().unwrap())?;
-
-        Ok(())
-    }
-
-    fn session_attach(&mut self, id: usize, chan: String, labels: Vec<String>) -> io::Result<()> {
-        let ids = self.chans.entry(chan.to_owned()).or_insert_with(HashSet::new);
-
-        ids.insert(id);
-
-        if let Some(conn) = self.conns.get_mut(id) {
-            conn.chans.insert(chan, labels);
-        }
-
-        Ok(())
-    }
-
-    fn session_detach(&mut self, id: usize, chan: String, labels: Vec<String>) -> io::Result<()> {
-        if let Some(conn) = self.conns.get_mut(id) {
-            if labels.is_empty() {
-                conn.chans.remove(&chan);
-
-                if let Some(ids) = self.chans.get_mut(&chan) {
-                    ids.remove(&id);
-
-                    if ids.is_empty() {
-                        self.chans.remove(&chan);
-                    }
-                }
-            } else {
-                if let Some(vec) = conn.chans.get_mut(&chan) {
-                    *vec = vec.iter().filter(|label| !labels.contains(label)).map(|s| s.to_string()).collect();
-                }
-            }
-        }
 
         Ok(())
     }
@@ -550,12 +633,9 @@ impl<T> Node<T> {
             }
         }
 
-        if let Some(conn) = self.conns.get(id) {
-            if let Some(port_id) = &conn.port_id {
-                message.insert(FROM, port_id.clone());
-            }
+        if let Some(port_id) = &self.conns.get(id).unwrap().port_id {
+            message.insert(FROM, port_id.clone());
         }
-
 
         let mut labels = vec![];
 
@@ -704,6 +784,31 @@ impl<T> Node<T> {
             self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
 
             message.remove(ACK);
+        }
+
+        Ok(())
+    }
+
+    fn relay_super_message(&mut self, id: usize, chan: &str, mut message: Message) -> io::Result<()> {
+        if let Some(ids) = self.chans.get(chan) {
+            for conn_id in ids {
+                if id == *conn_id {
+                    continue;
+                }
+
+                if let Some(conn) = self.conns.get_mut(*conn_id) {
+                    let success = if let Some(send_fn) = &self.callback.send_fn {
+                        send_fn(conn.id, &conn.addr, &mut message, &mut self.user_data)
+                    } else {
+                        true
+                    };
+
+                    if success {
+                        conn.push_data(message.to_vec().unwrap());
+                        conn.epoll_modify(&self.epoll)?;
+                    }
+                }
+            }
         }
 
         Ok(())
