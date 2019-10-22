@@ -281,8 +281,9 @@ impl<T> Node<T> {
                     AUTH => self.node_auth(id, &addr, message)?,
                     ATTACH => self.node_attach(id, &addr, message)?,
                     DETACH => self.node_detach(id, &addr, message)?,
-                    PING => self.node_ping(id, message)?,
+                    PING => self.node_ping(id, &addr, message)?,
                     // QUERY => self.node_query(id, message)?,
+                    PORT_KILL => self.node_kill(id, &addr, message)?,
                     _ => {
                         ErrorCode::UnsupportedChan.insert_message(&mut message);
 
@@ -306,7 +307,7 @@ impl<T> Node<T> {
         Ok(())
     }
 
-    fn node_auth(&mut self, id: usize, addr: &Addr,mut message: Message) -> io::Result<()> {
+    fn node_auth(&mut self, id: usize, addr: &Addr, mut message: Message) -> io::Result<()> {
         if !self.can_auth(id, addr, &mut message)? {
             return Ok(())
         }
@@ -574,7 +575,46 @@ impl<T> Node<T> {
         Ok(())
     }
 
-    fn node_ping(&mut self, id: usize, mut message: Message) -> io::Result<()> {
+    fn node_ping(&mut self, id: usize, _addr: &Addr, mut message: Message) -> io::Result<()> {
+        ErrorCode::OK.insert_message(&mut message);
+
+        self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+        Ok(())
+    }
+
+    fn node_kill(&mut self, id: usize, addr: &Addr, mut message: Message) -> io::Result<()> {
+        {
+            let conn = self.conns.get_mut(id).unwrap();
+
+            if !conn.supe {
+                ErrorCode::Unauthorized.insert_message(&mut message);
+
+                conn.push_data(message.to_vec().unwrap());
+                conn.epoll_modify(&self.epoll)?;
+
+                return Ok(())
+            }
+        }
+
+        if !self.can_kill(id, addr, &mut message)? {
+            return Ok(())
+        }
+
+        if let Some(port_id) = message.get(PORT_ID) {
+            if let Some(port_id) = port_id.as_message_id() {
+                if let Some(other_id) = self.ports.get(port_id).cloned() {
+                    self.remove_conn(other_id)?;
+                }
+            } else {
+                ErrorCode::InvalidPortIdFieldType.insert_message(&mut message);
+
+                self.push_data_to_conn(id, message.to_vec().unwrap())?;
+
+                return Ok(())
+            }
+        }
+
         ErrorCode::OK.insert_message(&mut message);
 
         self.push_data_to_conn(id, message.to_vec().unwrap())?;
@@ -880,6 +920,22 @@ impl<T> Node<T> {
     fn can_emit(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
         let success = if let Some(emit_fn) = &self.callback.emit_fn {
             emit_fn(id, addr, message, &mut self.user_data)
+        } else {
+            true
+        };
+
+        if !success {
+            ErrorCode::Unauthorized.insert_message(message);
+
+            self.push_data_to_conn(id, message.to_vec().unwrap())?;
+        }
+
+        Ok(success)
+    }
+
+    fn can_kill(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
+         let success = if let Some(kill_fn) = &self.callback.kill_fn {
+            kill_fn(id, addr, message, &mut self.user_data)
         } else {
             true
         };

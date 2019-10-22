@@ -47,7 +47,7 @@ fn no_auth() {
 
     // detach
     let msg = msg!{
-        CHAN: "_deta",
+        CHAN: DETACH,
         VALUE: "aaa"
     };
 
@@ -60,7 +60,7 @@ fn no_auth() {
 
     // ping
     let msg = msg!{
-        CHAN: "_ping",
+        CHAN: PING,
         "_timeid": "aaa"
     };
 

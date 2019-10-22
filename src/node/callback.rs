@@ -10,7 +10,8 @@ pub struct Callback<T> {
     pub auth_fn: Option<AuthFn<T>>,
     pub attach_fn: Option<AttachFn<T>>,
     pub detach_fn: Option<DetachFn<T>>,
-    pub emit_fn: Option<EmitFn<T>>
+    pub emit_fn: Option<EmitFn<T>>,
+    pub kill_fn: Option<KillFn<T>>
 }
 
 type AcceptFn<T> = Box<dyn Fn(usize, &Addr, &mut T) -> bool>;
@@ -21,6 +22,7 @@ type AuthFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
 type AttachFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
 type DetachFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T)>;
 type EmitFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
+type KillFn<T> = Box<dyn Fn(usize, &Addr, &mut Message, &mut T) -> bool>;
 
 impl<T> Callback<T> {
     pub fn new() -> Callback<T> {
@@ -32,7 +34,8 @@ impl<T> Callback<T> {
             auth_fn: None,
             attach_fn: None,
             detach_fn: None,
-            emit_fn: None
+            emit_fn: None,
+            kill_fn: None
         }
     }
 
@@ -66,6 +69,10 @@ impl<T> Callback<T> {
 
     pub fn emit<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
         self.emit_fn = Some(Box::new(f))
+    }
+
+    pub fn kill<F>(&mut self, f: F) where F: Fn(usize, &Addr, &mut Message, &mut T) -> bool + 'static {
+        self.kill_fn = Some(Box::new(f))
     }
 }
 
