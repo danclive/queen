@@ -1,5 +1,6 @@
 use std::net::TcpListener;
 
+/*
 mod test_event_emit;
 mod test_node_accept;
 mod test_node_auth;
@@ -12,6 +13,9 @@ mod test_node_port_event;
 mod test_bridge_connect;
 mod test_port_hub;
 mod test_port_point;
+*/
+
+mod test_queen;
 
 pub fn get_free_addr() -> String {
     let socket = TcpListener::bind("127.0.0.1:0").unwrap();

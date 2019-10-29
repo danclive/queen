@@ -15,6 +15,7 @@ pub const SHARE:   &str = "_shar";
 pub const ACK:     &str = "_ack";
 pub const NONCE:   &str = "_nonc";
 pub const SUPER:   &str = "_supe";
+// pub const TOKEN:   &str = "_toke";
 
 // message
 pub const ID:        &str = "_id";

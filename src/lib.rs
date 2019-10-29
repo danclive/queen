@@ -8,6 +8,7 @@ pub mod bus;
 pub mod dict;
 pub mod util;
 pub mod error;
+pub mod queen;
 
 pub use nson;
 pub use node::Node;

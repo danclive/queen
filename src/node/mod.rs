@@ -291,7 +291,7 @@ impl<T> Node<T> {
                     }
                 }
             } else {
-                self.relay_message(id, &addr, chan.to_string().to_string(), message)?;
+                self.relay_message(id, &addr, chan.to_string(), message)?;
             }
         }
 
@@ -823,7 +823,7 @@ impl<T> Node<T> {
 
             self.push_data_to_conn(id, reply_msg.to_vec().unwrap())?;
 
-            message.remove(ACK);
+            // message.remove(ACK);
         }
 
         Ok(())
@@ -902,7 +902,7 @@ impl<T> Node<T> {
     }
 
     fn can_attach(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
-         let success = if let Some(attach_fn) = &self.callback.attach_fn {
+        let success = if let Some(attach_fn) = &self.callback.attach_fn {
             attach_fn(id, addr, message, &mut self.user_data)
         } else {
             true
@@ -934,7 +934,7 @@ impl<T> Node<T> {
     }
 
     fn can_kill(&mut self, id: usize, addr: &Addr, message: &mut Message) -> io::Result<bool> {
-         let success = if let Some(kill_fn) = &self.callback.kill_fn {
+        let success = if let Some(kill_fn) = &self.callback.kill_fn {
             kill_fn(id, addr, message, &mut self.user_data)
         } else {
             true
