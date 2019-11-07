@@ -11,12 +11,12 @@ use nson::{Message};
 use slab::Slab;
 
 use crate::Stream;
-use crate::crypto::Aead;
+use crate::crypto::{Method, Aead};
 use crate::net::{NetStream};
 use crate::util::message::slice_msg;
 
 pub enum Packet {
-    NewConn(Stream, NetStream)
+    NewConn(Stream, NetStream, Option<(Method, String)>)
 }
 
 pub struct NetWork {
@@ -66,7 +66,7 @@ impl NetWork {
     fn dispatch_queue(&mut self) -> io::Result<()> {
         if let Some(packet) = self.queue.pop() {
             match packet {
-                Packet::NewConn(stream, net_stream) => {
+                Packet::NewConn(stream, net_stream, crypto) => {
                     let entry1 = self.streams.vacant_entry();
                     let entry2 = self.nets.vacant_entry();
 
@@ -79,7 +79,14 @@ impl NetWork {
                     self.epoll.add(&net_stream, Token(id2), Ready::readable() | Ready::hup(), EpollOpt::edge())?;
                 
                     entry1.insert(StreamConn::new(id, stream));
-                    entry2.insert(NetConn::new(id2, net_stream, None));
+
+                    let mut aead = None;
+
+                    if let Some((method, key)) = crypto {
+                        aead = Some(Aead::new(&method, key.as_bytes()));
+                    }
+
+                    entry2.insert(NetConn::new(id2, net_stream, aead));
                 }
             }
         }

@@ -12,6 +12,7 @@ use rand::seq::SliceRandom;
 
 use crate::Queen;
 use crate::net::{Listen, Addr, NetWork, Packet};
+use crate::crypto::Method;
 
 pub struct Node {
     queen: Queen,
@@ -20,11 +21,12 @@ pub struct Node {
     queues: Vec<Queue<Packet>>,
     listens: Vec<Listen>,
     rand: ThreadRng,
+    cryoto: Option<(Method, String)>,
     run: Arc<AtomicBool>
 }
 
 impl Node {
-    pub fn new(queen: Queen, works: usize, addrs: Vec<Addr>) -> io::Result<Node> {
+    pub fn new(queen: Queen, works: usize, addrs: Vec<Addr>, cryoto: Option<(Method, String)>) -> io::Result<Node> {
         let run = Arc::new(AtomicBool::new(true));
 
         let mut listens = Vec::new();
@@ -56,6 +58,7 @@ impl Node {
             queues,
             listens,
             rand: thread_rng(),
+            cryoto,
             run
         })
     }
@@ -90,7 +93,7 @@ impl Node {
                         match self.queen.connect(attr, None) {
                             Ok(stream) => {
                                 if let Some(queue) = self.queues.choose(&mut self.rand) {
-                                    queue.push(Packet::NewConn(stream, socket));
+                                    queue.push(Packet::NewConn(stream, socket, self.cryoto.clone()));
                                 }
                             },
                             Err(err) => {

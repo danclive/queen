@@ -15,6 +15,7 @@ use nson::message_id::MessageId;
 use crate::{Queen};
 use crate::net::{Addr};
 use crate::dict::*;
+use crate::crypto::Method;
 
 pub use recv::{Recv, AsyncRecv};
 use port_backend::{PortBackend, Packet};
@@ -30,19 +31,19 @@ pub struct Port {
 }
 
 pub enum Connector {
-    Net(Addr),
+    Net(Addr, Option<(Method, String)>),
     Queen(Queen, Message)
 }
 
 impl Port {
-    pub fn connect(connector: Connector) -> io::Result<Port> {
+    pub fn connect(connector: Connector, auth_msg: Message) -> io::Result<Port> {
         let run = Arc::new(AtomicBool::new(true));
 
         let queue = mpsc::Queue::new()?;
 
         let queue2 = queue.clone();
 
-        let mut inner = PortBackend::new(connector, queue2, run.clone())?;
+        let mut inner = PortBackend::new(connector, auth_msg, queue2, run.clone())?;
 
         thread::Builder::new().name("port_backend".to_string()).spawn(move || {
             let ret = inner.run();

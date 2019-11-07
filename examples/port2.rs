@@ -15,7 +15,9 @@ use queen::net::{NetStream, Listen, Addr};
 
 
 fn main() {
-    let port = Port::connect(Connector::Net(Addr::tcp("127.0.0.1:8888").unwrap())).unwrap();
+    let crypto = (Method::Aes256Gcm, "hahaha".to_string());
+
+    let port = Port::connect(Connector::Net(Addr::tcp("127.0.0.1:8888").unwrap(), Some(crypto)), msg!{}).unwrap();
 
     let recv = port.recv("aaa", None);
 

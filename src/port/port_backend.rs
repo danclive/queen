@@ -27,6 +27,7 @@ pub(crate) enum Packet {
 
 pub(crate) struct PortBackend {
     connector: Connector,
+    auth_msg: Message,
     queue: mpsc::Queue<Packet>,
     epoll: Epoll,
     events: Events,
@@ -40,11 +41,13 @@ impl PortBackend {
 
     pub(crate) fn new(
         connector: Connector,
+        auth_msg: Message,
         queue: mpsc::Queue<Packet>,
         run: Arc<AtomicBool>
     ) -> io::Result<PortBackend> {
         Ok(PortBackend {
             connector,
+            auth_msg,
             queue,
             epoll: Epoll::new()?,
             events: Events::with_capacity(64),
@@ -64,6 +67,7 @@ impl PortBackend {
             }
 
             if !self.is_link() {
+                thread::sleep(Duration::from_secs(1));
                 continue;
             }
 
@@ -86,7 +90,7 @@ impl PortBackend {
     fn is_connect(&mut self) -> io::Result<bool> {
         if self.session.state == State::UnConnect {
             match &self.connector {
-                Connector::Net(addr) => {
+                Connector::Net(addr, crypto) => {
                     if self.session.net_work.is_none() {
                         let queue: Queue<NetPacket> = Queue::with_cache(16)?;
                         let queue2 = queue.clone();
@@ -103,7 +107,7 @@ impl PortBackend {
                         Ok(net_stream) => {
                             let (stream1, stream2) = Stream::pipe(64, msg!{})?;
 
-                            self.session.net_work.as_ref().unwrap().push(NetPacket::NewConn(stream1, net_stream));
+                            self.session.net_work.as_ref().unwrap().push(NetPacket::NewConn(stream1, net_stream, crypto.clone()));
                             self.session.stream = Some(stream2);
                             self.session.state = State::UnAuth;
 
@@ -140,11 +144,14 @@ impl PortBackend {
 
     fn auth(&mut self) -> io::Result<()> {
         if self.session.state == State::UnAuth { 
-            let stream = self.session.stream.as_ref().unwrap();
-
-            stream.send(msg!{
+            let mut message = msg!{
                 CHAN: AUTH
-            });
+            };
+
+            message.extend(self.auth_msg.clone());
+
+            let stream = self.session.stream.as_ref().unwrap();
+            stream.send(message);
 
             self.epoll.add(stream, Token(Self::STREAM_TOKEN), Ready::readable(), EpollOpt::level())?;
 
