@@ -639,6 +639,44 @@ fn port_id() {
     assert!(recv.get_str("hello").unwrap() == "world");
     assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
 
+    // port to ports
+    stream3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        ACK: "123",
+        TO: [MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap(), MessageId::with_string("5932a005b4b4b4ac168cd9e7").unwrap()]
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream3.recv().unwrap();
+
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetPortIdNotExist));
+
+    stream3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        ACK: "123",
+        TO: [MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap(), MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()]
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // recv
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+
+    let recv = stream2.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+
     // generate message id
     let stream4 = queen.connect(msg!{}, None).unwrap();
 

@@ -1,7 +1,10 @@
-use std::time::Duration;
+#![allow(unused_imports)]
+
+use std::time::{Duration, Instant};
 use std::thread;
 
 use queen::queen::Queen;
+use queen::dict::*;
 
 use nson::message_id::MessageId;
 use nson::{Message, msg};
@@ -11,18 +14,27 @@ fn main() {
 
     let stream1 = queen.connect(msg!{}, None).unwrap();
 
-    stream1.send(msg!{
-        "aaa": "bbb"
-    });
+    let time1 = Instant::now();
 
-    thread::sleep(Duration::from_secs(1));
+    for i in 0..1000000 {
+        stream1.send(msg!{
+            CHAN: AUTH,
+            "i": i
+        });
 
-    println!("{:?}", stream1.recv());
+        stream1.send(msg!{
+            "aaa": "bbb",
+            "i": i
+        });
 
-    stream1.close();
-    stream1.close();
+        //stream1.recv();
+    }
 
-    // let queen2 = queen.clone();
+    drop(stream1);
 
-    thread::sleep(Duration::from_secs(2));
+    let time2 = Instant::now();
+
+    println!("{:?}", time2 - time1);
+
+    thread::sleep(Duration::from_secs(1000));
 }
