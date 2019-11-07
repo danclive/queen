@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt};
-use queen_io::queue::spsc::Queue;
+
 use queen_io::queue::mpsc;
 
 use nson::{Message, msg};
@@ -17,9 +17,14 @@ use slab::Slab;
 use rand::{self, thread_rng, rngs::ThreadRng};
 use rand::seq::SliceRandom;
 
-use crate::oneshot;
+use crate::stream::Stream;
+use crate::util::oneshot;
 use crate::dict::*;
 use crate::error::ErrorCode;
+
+pub use callback::Callback;
+
+mod callback;
 
 #[derive(Clone)]
 pub struct Queen {
@@ -37,11 +42,11 @@ impl Queen {
             run: run.clone()
         };
 
-        thread::spawn(move || {
+        thread::Builder::new().name("relay".to_string()).spawn(move || {
             let mut inner = QueenInner::new(id, queue, data, callback.unwrap_or_default(), run)?;
 
             inner.run()
-        });
+        }).unwrap();
 
         Ok(queen)
     }
@@ -55,25 +60,7 @@ impl Queen {
     }
 
     pub fn connect(&self, attr: Message, timeout: Option<Duration>) -> io::Result<Stream> {
-
-        let queue1 = Queue::with_cache(128)?;
-        let queue2 = Queue::with_cache(128)?;
-
-        let close = Arc::new(AtomicBool::new(false));
-
-        let stream1 = Stream {
-            tx: queue1.clone(),
-            rx: queue2.clone(),
-            close: close.clone(),
-            attr: attr.clone()
-        };
-
-        let stream2 = Stream {
-            tx: queue2,
-            rx: queue1,
-            close,
-            attr
-        };
+        let (stream1, stream2) = Stream::pipe(64, attr)?;
 
         let (tx, rx) = oneshot::oneshot::<bool>();
 
@@ -99,7 +86,7 @@ impl Queen {
     }
 }
 
-pub struct QueenInner<T> {
+struct QueenInner<T> {
     id: MessageId,
     epoll: Epoll,
     events: Events,
@@ -113,12 +100,14 @@ pub struct QueenInner<T> {
     run: Arc<AtomicBool>
 }
 
-pub enum Packet {
+enum Packet {
     NewConn(Stream, oneshot::Sender<bool>)
 }
 
 impl<T> QueenInner<T> {
-    pub fn new(id: MessageId, queue: mpsc::Queue<Packet>, data: T, callback: Callback<T>,run: Arc<AtomicBool>) -> io::Result<QueenInner<T>> {
+    const QUEUE_TOKEN: Token = Token(usize::max_value());
+
+    fn new(id: MessageId, queue: mpsc::Queue<Packet>, data: T, callback: Callback<T>,run: Arc<AtomicBool>) -> io::Result<QueenInner<T>> {
         let queen = QueenInner {
             id,
             epoll: Epoll::new()?,
@@ -136,19 +125,16 @@ impl<T> QueenInner<T> {
         Ok(queen)
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
-        const QUEUE_TOKEN: Token = Token(u32::max_value() as usize);
-
-        self.epoll.add(&self.queue, QUEUE_TOKEN, Ready::readable(), EpollOpt::level())?;
+    fn run(&mut self) -> io::Result<()> {
+        self.epoll.add(&self.queue, Self::QUEUE_TOKEN, Ready::readable(), EpollOpt::level())?;
 
         while self.run.load(Ordering::Relaxed) {
-
             let size = self.epoll.wait(&mut self.events, None)?;
 
             for i in 0..size {
                 let event = self.events.get(i).unwrap();
 
-                if event.token() == QUEUE_TOKEN {
+                if event.token() == Self::QUEUE_TOKEN {
                     self.dispatch_queue()?;
                 } else {
                     self.dispatch_conn(event.token().0)?;
@@ -174,7 +160,7 @@ impl<T> QueenInner<T> {
                     };
 
                     if success {
-                        self.epoll.add(&port.stream.rx, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
+                        self.epoll.add(&port.stream, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
                         
                         entry.insert(port);
 
@@ -208,7 +194,7 @@ impl<T> QueenInner<T> {
         if self.conns.contains(token) {
             let conn = self.conns.remove(token);
             // conn.stream.close();
-            self.epoll.delete(&conn.stream.rx)?;
+            self.epoll.delete(&conn.stream)?;
 
             for (chan, _) in &conn.chans {
                 if let Some(ids) = self.chans.get_mut(chan) {
@@ -870,8 +856,8 @@ pub struct Port {
     pub auth: bool,
     pub supe: bool,
     pub chans: HashMap<String, Vec<String>>,
+    pub stream: Stream,
     pub id: Option<MessageId>,
-    pub stream: Stream
 }
 
 impl Port {
@@ -881,86 +867,8 @@ impl Port {
             auth: false,
             supe: false,
             chans: HashMap::new(),
-            id: None,
-            stream
+            stream,
+            id: None
         }
-    }
-}
-
-pub struct Stream {
-    rx: Queue<Message>,
-    tx: Queue<Message>,
-    close: Arc<AtomicBool>,
-    pub attr: Message
-}
-
-impl Stream {
-    pub fn send(&self, message: Message) {
-        if !self.is_close() {
-            self.tx.push(message);
-        }
-    }
-
-    pub fn recv(&self) -> Option<Message> {
-        self.rx.pop()
-    }
-
-    pub fn close(&self) {
-        self.tx.push(msg!{});
-        self.close.store(true, Ordering::Relaxed);
-    }
-
-    pub fn is_close(&self) -> bool {
-        self.close.load(Ordering::Relaxed)
-    }
-}
-
-impl Drop for Stream {
-    fn drop(&mut self) {
-        self.close()
-    }
-}
-
-pub struct Callback<T> {
-    pub accept_fn: Option<AcceptFn<T>>,
-    pub remove_fn: Option<RemoveFn<T>>,
-    pub recv_fn: Option<RecvFn<T>>,
-    pub send_fn: Option<SendFn<T>>,
-    pub auth_fn: Option<AuthFn<T>>,
-    pub attach_fn: Option<AttachFn<T>>,
-    pub detach_fn: Option<DetachFn<T>>,
-    pub emit_fn: Option<EmitFn<T>>,
-    pub kill_fn: Option<KillFn<T>>
-}
-
-type AcceptFn<T> = Box<dyn Fn(&Port, &mut T) -> bool + Send>;
-type RemoveFn<T> = Box<dyn Fn(&Port, &mut T) + Send>;
-type RecvFn<T> = Box<dyn Fn(&Port, &mut Message, &mut T) -> bool + Send>;
-type SendFn<T> = Box<dyn Fn(&Port, &mut Message, &mut T) -> bool + Send>;
-type AuthFn<T> = Box<dyn Fn(&Port, &mut Message, &mut T) -> bool + Send>;
-type AttachFn<T> = Box<dyn Fn(&Port, &mut Message, &mut T) -> bool + Send>;
-type DetachFn<T> = Box<dyn Fn(&Port, &mut Message, &mut T) + Send>;
-type EmitFn<T> = Box<dyn Fn(&Port, &mut Message, &mut T) -> bool + Send>;
-type KillFn<T> = Box<dyn Fn(&Port, &mut Message, &mut T) -> bool + Send>;
-
-impl<T> Callback<T> {
-    pub fn new() -> Callback<T> {
-        Callback {
-            accept_fn: None,
-            remove_fn: None,
-            recv_fn: None,
-            send_fn: None,
-            auth_fn: None,
-            attach_fn: None,
-            detach_fn: None,
-            emit_fn: None,
-            kill_fn: None
-        }
-    }
-}
-
-impl<T> Default for Callback<T> {
-    fn default() -> Callback<T> {
-        Callback::new()
     }
 }
