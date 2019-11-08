@@ -11,6 +11,7 @@ use queen_io::queue::spsc::Queue;
 use queen_io::queue::mpsc;
 
 use nson::{Message, msg};
+use nson::message_id::MessageId;
 
 use crate::{Stream};
 use crate::net::{NetWork, Packet as NetPacket};
@@ -26,6 +27,7 @@ pub(crate) enum Packet {
 }
 
 pub(crate) struct PortBackend {
+    id: MessageId,
     connector: Connector,
     auth_msg: Message,
     queue: mpsc::Queue<Packet>,
@@ -40,12 +42,14 @@ impl PortBackend {
     const STREAM_TOKEN: usize = 1;
 
     pub(crate) fn new(
+        id: MessageId,
         connector: Connector,
         auth_msg: Message,
         queue: mpsc::Queue<Packet>,
         run: Arc<AtomicBool>
     ) -> io::Result<PortBackend> {
         Ok(PortBackend {
+            id,
             connector,
             auth_msg,
             queue,
@@ -145,7 +149,8 @@ impl PortBackend {
     fn auth(&mut self) -> io::Result<()> {
         if self.session.state == State::UnAuth { 
             let mut message = msg!{
-                CHAN: AUTH
+                CHAN: AUTH,
+                PORT_ID: self.id.clone()
             };
 
             message.extend(self.auth_msg.clone());

@@ -25,6 +25,7 @@ mod port_backend;
 
 #[derive(Clone)]
 pub struct Port {
+    id: MessageId,
     recv_id: Arc<AtomicUsize>,
     queue: mpsc::Queue<Packet>,
     run: Arc<AtomicBool>
@@ -36,14 +37,14 @@ pub enum Connector {
 }
 
 impl Port {
-    pub fn connect(connector: Connector, auth_msg: Message) -> io::Result<Port> {
+    pub fn connect(id: MessageId, connector: Connector, auth_msg: Message) -> io::Result<Port> {
         let run = Arc::new(AtomicBool::new(true));
 
         let queue = mpsc::Queue::new()?;
 
         let queue2 = queue.clone();
 
-        let mut inner = PortBackend::new(connector, auth_msg, queue2, run.clone())?;
+        let mut inner = PortBackend::new(id.clone(), connector, auth_msg, queue2, run.clone())?;
 
         thread::Builder::new().name("port_backend".to_string()).spawn(move || {
             let ret = inner.run();
@@ -51,6 +52,7 @@ impl Port {
         }).unwrap();
 
         Ok(Port {
+            id,
             recv_id: Arc::new(AtomicUsize::new(0)),
             queue,
             run
