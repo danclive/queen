@@ -6,15 +6,49 @@ use std::thread;
 use nson::message_id::MessageId;
 use nson::{Message, msg};
 
-use queen::queen::Queen;
+use queen::{Queen, Callback};
 use queen::node::Node;
 use queen::net::{NetStream, Listen, Addr};
 use queen::crypto::Method;
 
 fn main() {
-    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+    let mut callback = Callback::<()>::new();
 
-    let crypto = (Method::Aes256Gcm, "hahaha".to_string());
+    callback.accept(|port, _| {
+        println!("accept, port attr: {:?}", port.stream.attr);
+
+        return true
+    });
+
+    callback.remove(|port, _| {
+        println!("remove, port attr: {:?}", port.stream.attr);
+    });
+
+    callback.auth(move |port, message, _| {
+        println!("auth, port attr: {:?}, message: {:?}", port.stream.attr, message);
+
+        if let Ok(u) = message.get_str("user") {
+            if u != "test-user" {
+                return false
+            }
+        } else {
+            return false
+        }
+
+        if let Ok(p) = message.get_str("pass") {
+            if p != "test-pass" {
+                return false
+            }
+        } else {
+            return false
+        }
+
+        return true;
+    });
+
+    let queen = Queen::new(MessageId::new(), (), Some(callback)).unwrap();
+
+    let crypto = (Method::Aes256Gcm, "sep-centre".to_string());
 
     let mut node = Node::new(queen, 2, vec![Addr::tcp("127.0.0.1:8888").unwrap()], Some(crypto)).unwrap();
 

@@ -136,14 +136,20 @@ impl PortBackend {
         Ok(true)
     }
 
-    fn is_link(&mut self) -> bool {
-        if self.session.stream.as_ref().unwrap().is_close() {
-            self.session.stream = None;
-            self.session.net_work = None;
-            return false
-        }
+    fn is_link(&mut self) -> bool { 
+        match &self.session.stream {
+            Some(stream) => {
+                if stream.is_close() {
+                    self.session.stream = None;
+                    self.session.net_work = None;
 
-        true
+                    false
+                } else {
+                    true
+                }
+            }
+            None => false
+        }
     }
 
     fn auth(&mut self) -> io::Result<()> {
