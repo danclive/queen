@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt};
-
 use queen_io::queue::mpsc;
 
 use nson::{Message, msg};

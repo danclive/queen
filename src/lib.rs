@@ -1,6 +1,7 @@
 pub mod queen;
 pub mod node;
 pub mod port;
+pub mod rpc;
 pub mod stream;
 pub mod net;
 pub mod crypto;

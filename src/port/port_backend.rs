@@ -13,7 +13,7 @@ use queen_io::queue::mpsc;
 use nson::{Message, msg};
 use nson::message_id::MessageId;
 
-use crate::{Stream};
+use crate::Stream;
 use crate::net::{NetWork, Packet as NetPacket};
 use crate::dict::*;
 
@@ -67,6 +67,7 @@ impl PortBackend {
             let size = self.epoll.wait(&mut self.events, Some(<Duration>::from_secs(1)))?;
 
             if !self.is_connect()? {
+                thread::sleep(Duration::from_secs(1));
                 continue;
             }
 
@@ -140,6 +141,7 @@ impl PortBackend {
         match &self.session.stream {
             Some(stream) => {
                 if stream.is_close() {
+                    self.session.state = State::UnConnect;
                     self.session.stream = None;
                     self.session.net_work = None;
 
@@ -344,6 +346,19 @@ impl PortBackend {
                                 if let Ok(ok) = message.get_i32(OK) {
                                     if ok == 0 {
                                         self.session.state = State::Authed;
+
+                                        for (chan, set) in &self.session.chans {
+                                            let labels: Vec<String> = set.iter().map(|s| s.to_string()).collect();
+
+                                            let message = msg!{
+                                                CHAN: ATTACH,
+                                                VALUE: chan,
+                                                LABEL: labels
+                                            };
+
+                                            let stream = self.session.stream.as_ref().unwrap();
+                                            stream.send(message);
+                                        }
                                     } else {
                                         return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
                                     }
@@ -357,7 +372,7 @@ impl PortBackend {
                             _ => ()
                         }
                     } else {
-                        self.handle_message(chan.to_string(), message)?;
+                        self.handle_message(chan.to_string(), message);
                     }
                 }
             }
@@ -366,9 +381,22 @@ impl PortBackend {
         Ok(())
     }
 
-    fn handle_message(&mut self, chan: String, message: Message) -> io::Result<()> {
+    fn handle_message(&mut self, chan: String, message: Message) {
         if let Ok(_ok) = message.get_i32(OK) {
-            return Ok(())
+            if let Some(ids) = self.session.recvs.get(BACK) {
+                for (_, tx, _) in ids {
+                    match tx {
+                        SenderType::Block(tx) => {
+                            let _ = tx.send(message.clone());
+                        }
+                        SenderType::Async(queue) => {
+                            queue.push(message.clone());
+                        }
+                    }
+                }
+            }
+
+            return
         }
 
         if let Some(ids) = self.session.recvs.get(&chan) {
@@ -413,9 +441,20 @@ impl PortBackend {
                     }
                 }
             }
+        } else {
+            if let Some(ids) = self.session.recvs.get(UNKNOWN) {
+                for (_, tx, _) in ids {
+                    match tx {
+                        SenderType::Block(tx) => {
+                            let _ = tx.send(message.clone());
+                        }
+                        SenderType::Async(queue) => {
+                            queue.push(message.clone());
+                        }
+                    }
+                }
+            }
         }
-
-        Ok(())
     }
 }
 

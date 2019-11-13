@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.5.1"
+version       = "0.5.2"
 license       = "MIT"
 authors       = ["danclive <dangcheng@hotmail.com>"]
 description   = "server"

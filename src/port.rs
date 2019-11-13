@@ -4,7 +4,7 @@ use std::io::{self};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
-use std::sync::mpsc::{channel};
+use std::sync::mpsc::channel;
 
 use queen_io::queue::spsc::Queue;
 use queen_io::queue::mpsc;
@@ -71,7 +71,7 @@ impl Port {
         self.queue.push(Packet::AttatchBlock(id, chan.to_string(), lables, tx));
 
         Recv {
-            queue: self.queue.clone(),
+            port: self.clone(),
             id,
             recv: rx
         }
@@ -89,7 +89,7 @@ impl Port {
         self.queue.push(Packet::AttatchAsync(id, chan.to_string(), lables, queue.clone()));
 
         Ok(AsyncRecv {
-            queue: self.queue.clone(),
+            port: self.clone(),
             id,
             recv: queue
         })
@@ -132,6 +132,8 @@ impl Port {
 
 impl Drop for Port {
     fn drop(&mut self) {
-        self.run.store(false, Ordering::Relaxed);
+        if Arc::strong_count(&self.recv_id) == 1 {
+            self.run.store(false, Ordering::Relaxed);
+        }
     }
 }

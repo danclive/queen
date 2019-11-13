@@ -15,7 +15,6 @@ pub const SHARE:   &str = "_shar";
 pub const ACK:     &str = "_ack";
 pub const NONCE:   &str = "_nonc";
 pub const SUPER:   &str = "_supe";
-// pub const TOKEN:   &str = "_toke";
 
 // message
 pub const ID:        &str = "_id";
@@ -32,3 +31,12 @@ pub const PORT_BREAK:  &str = "_ptbr";
 pub const PORT_ATTACH: &str = "_ptat";
 pub const PORT_DETACH: &str = "_ptde";
 pub const PORT_KILL:   &str = "_ptki";
+
+// port
+pub const BACK:    &str = "_back";
+pub const UNKNOWN: &str = "_unknown";
+
+
+// rpc
+pub const REQUEST_ID: &str = "_reqid";
+pub const RPC_RECV: &str = "RPC/RECV";
