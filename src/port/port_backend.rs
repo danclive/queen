@@ -117,8 +117,8 @@ impl PortBackend {
                             self.session.state = State::UnAuth;
 
                         },
-                        Err(err) => {
-                            println!("{:?}", err);
+                        Err(_err) => {
+                            // println!("{:?}", err);
                             return Ok(false)
                         }
                     }
@@ -187,31 +187,16 @@ impl PortBackend {
 
                         let mut labels_set = HashSet::new();
 
-                        if let Some(labels) = &labels {
-                            for label in labels {
-                                labels_set.insert(label.to_string());
+                        if chan != BACK && chan != UNKNOWN {
+                            if let Some(labels) = &labels {
+                                for label in labels {
+                                    labels_set.insert(label.to_string());
+                                }
                             }
-                        }
 
-                        if ids.is_empty() {
-                            let labels: Vec<String> = labels_set.iter().map(|s| s.to_string()).collect();
+                            if ids.is_empty() {
+                                let labels: Vec<String> = labels_set.iter().map(|s| s.to_string()).collect();
 
-                            let message = msg!{
-                                CHAN: ATTACH,
-                                VALUE: &chan,
-                                LABEL: labels
-                            };
-
-                            let stream = self.session.stream.as_ref().unwrap();
-                            stream.send(message);
-
-                            self.session.chans.insert(chan.to_string(), labels_set);
-                        } else {
-                            let old_set = self.session.chans.get_mut(&chan).unwrap();
-
-                            let labels: Vec<String> = labels_set.iter().filter(|l| !old_set.contains(*l)).map(|s| s.to_string()).collect();
-                        
-                            if !labels.is_empty() {
                                 let message = msg!{
                                     CHAN: ATTACH,
                                     VALUE: &chan,
@@ -220,6 +205,23 @@ impl PortBackend {
 
                                 let stream = self.session.stream.as_ref().unwrap();
                                 stream.send(message);
+
+                                self.session.chans.insert(chan.to_string(), labels_set);
+                            } else {
+                                let old_set = self.session.chans.get_mut(&chan).unwrap();
+
+                                let labels: Vec<String> = labels_set.iter().filter(|l| !old_set.contains(*l)).map(|s| s.to_string()).collect();
+                            
+                                if !labels.is_empty() {
+                                    let message = msg!{
+                                        CHAN: ATTACH,
+                                        VALUE: &chan,
+                                        LABEL: labels
+                                    };
+
+                                    let stream = self.session.stream.as_ref().unwrap();
+                                    stream.send(message);
+                                }
                             }
                         }
 
@@ -231,31 +233,16 @@ impl PortBackend {
 
                         let mut labels_set = HashSet::new();
 
-                        if let Some(labels) = &labels {
-                            for label in labels {
-                                labels_set.insert(label.to_string());
+                        if chan != BACK && chan != UNKNOWN {
+                            if let Some(labels) = &labels {
+                                for label in labels {
+                                    labels_set.insert(label.to_string());
+                                }
                             }
-                        }
 
-                        if ids.is_empty() {
-                            let labels: Vec<String> = labels_set.iter().map(|s| s.to_string()).collect();
+                            if ids.is_empty() {
+                                let labels: Vec<String> = labels_set.iter().map(|s| s.to_string()).collect();
 
-                            let message = msg!{
-                                CHAN: ATTACH,
-                                VALUE: &chan,
-                                LABEL: labels
-                            };
-
-                            let stream = self.session.stream.as_ref().unwrap();
-                            stream.send(message);
-
-                            self.session.chans.insert(chan.to_string(), labels_set);
-                        } else {
-                            let old_set = self.session.chans.get_mut(&chan).unwrap();
-
-                            let labels: Vec<String> = labels_set.iter().filter(|l| !old_set.contains(*l)).map(|s| s.to_string()).collect();
-                        
-                            if !labels.is_empty() {
                                 let message = msg!{
                                     CHAN: ATTACH,
                                     VALUE: &chan,
@@ -264,6 +251,23 @@ impl PortBackend {
 
                                 let stream = self.session.stream.as_ref().unwrap();
                                 stream.send(message);
+
+                                self.session.chans.insert(chan.to_string(), labels_set);
+                            } else {
+                                let old_set = self.session.chans.get_mut(&chan).unwrap();
+
+                                let labels: Vec<String> = labels_set.iter().filter(|l| !old_set.contains(*l)).map(|s| s.to_string()).collect();
+                            
+                                if !labels.is_empty() {
+                                    let message = msg!{
+                                        CHAN: ATTACH,
+                                        VALUE: &chan,
+                                        LABEL: labels
+                                    };
+
+                                    let stream = self.session.stream.as_ref().unwrap();
+                                    stream.send(message);
+                                }
                             }
                         }
 
@@ -282,33 +286,35 @@ impl PortBackend {
                                 if ids.is_empty() {
                                     remove_chan = true;
                                 } else {
-                                    let old_set = self.session.chans.get_mut(&chan).unwrap();
-                                
-                                    let new_set: HashSet<String> = old_set.iter().filter(|l| {
-                                        for (_, _, labels) in ids.iter() {
-                                            if let Some(labels) = labels {
-                                                if labels.contains(l) {
-                                                    return true;
+                                    if chan != BACK && chan != UNKNOWN {
+                                        let old_set = self.session.chans.get_mut(&chan).unwrap();
+                                    
+                                        let new_set: HashSet<String> = old_set.iter().filter(|l| {
+                                            for (_, _, labels) in ids.iter() {
+                                                if let Some(labels) = labels {
+                                                    if labels.contains(l) {
+                                                        return true;
+                                                    }
                                                 }
                                             }
+
+                                            false
+                                        }).map(|s| s.to_string()).collect();
+
+                                        let change: Vec<String> = old_set.iter().filter(|l| {
+                                            !new_set.contains(&**l)
+                                        }).map(|s| s.to_string()).collect();
+
+                                        if !change.is_empty() {
+                                            let message = msg!{
+                                                CHAN: DETACH,
+                                                VALUE: &chan,
+                                                LABEL: change
+                                            };
+
+                                            let stream = self.session.stream.as_ref().unwrap();
+                                            stream.send(message);
                                         }
-
-                                        false
-                                    }).map(|s| s.to_string()).collect();
-
-                                    let change: Vec<String> = old_set.iter().filter(|l| {
-                                        !new_set.contains(&**l)
-                                    }).map(|s| s.to_string()).collect();
-
-                                    if !change.is_empty() {
-                                        let message = msg!{
-                                            CHAN: DETACH,
-                                            VALUE: &chan,
-                                            LABEL: change
-                                        };
-
-                                        let stream = self.session.stream.as_ref().unwrap();
-                                        stream.send(message);
                                     }
                                 }
                             }
@@ -317,13 +323,15 @@ impl PortBackend {
                                 self.session.recvs.remove(&chan);
                                 self.session.chans.remove(&chan);
                             
-                                let message = msg!{
-                                    CHAN: DETACH,
-                                    VALUE: chan
-                                };
+                                if chan != BACK && chan != UNKNOWN {
+                                    let message = msg!{
+                                        CHAN: DETACH,
+                                        VALUE: chan
+                                    };
 
-                                let stream = self.session.stream.as_ref().unwrap();
-                                stream.send(message);
+                                    let stream = self.session.stream.as_ref().unwrap();
+                                    stream.send(message);
+                                }
                             }
                         }
                     }
@@ -367,7 +375,7 @@ impl PortBackend {
                                 }
                             }
                             ATTACH => {
-                                println!("{:?}", message);
+                                // println!("{:?}", message);
                             }
                             _ => ()
                         }

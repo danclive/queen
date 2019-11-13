@@ -1,9 +1,5 @@
-#![allow(unused_imports)]
-#![allow(dead_code)]
-#![allow(unused_variables)]
-
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::io;
 use std::thread;
@@ -16,7 +12,7 @@ use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt};
 use nson::{msg, Message, MessageId};
 
 use crate::port::{Port, AsyncRecv};
-use crate::util::oneshot::{oneshot, Sender, Receiver};
+use crate::util::oneshot::{oneshot, Sender};
 use crate::dict::*;
 
 pub struct Rpc {
@@ -32,7 +28,7 @@ impl Rpc {
 
         let worker_queue = BlockQueue::with_capacity(128);
 
-        let mut inner = RpcInner::new(port, queue.clone(), worker_queue.clone(), run.clone())?;
+        let mut inner = RpcInner::new(port.clone(), queue.clone(), worker_queue.clone(), run.clone())?;
 
         thread::Builder::new().name("rpc_backend".to_string()).spawn(move || {
             let ret = inner.run();
@@ -42,7 +38,7 @@ impl Rpc {
         for i in 0..works {
             let worker = Worker {
                 worker_queue: worker_queue.clone(),
-                queue: queue.clone()
+                port: port.clone()
             };
 
             worker.run(format!("rpc_worker: {:?}", i));
@@ -62,7 +58,8 @@ impl Rpc {
     ) -> Result<Message, ()> {
         let request_id = MessageId::new();
 
-        request.insert("REQUEST_ID", request_id.clone());
+        request.insert(REQUEST_ID, request_id.clone());
+        request.insert(SHARE, true);
 
         let (tx, rx) = oneshot::<Message>();
 
@@ -101,6 +98,14 @@ impl Rpc {
 
         self.queue.push(packet);
     }
+
+    pub fn is_run(&self) -> bool {
+        self.run.load(Ordering::Relaxed)
+    }
+
+    pub fn stop(&self) {
+        self.run.store(false, Ordering::Relaxed);
+    }
 }
 
 type Handle = dyn Fn(Message) -> Message + Sync + Send + 'static;
@@ -108,8 +113,7 @@ type Handle = dyn Fn(Message) -> Message + Sync + Send + 'static;
 enum Packet {
     Call(MessageId, String, Message, Sender<Message>),
     UnCall(MessageId),
-    Add(String, Box<Handle>),
-    Response(Message)
+    Add(String, Box<Handle>)
 }
 
 struct RpcInner {
@@ -117,7 +121,7 @@ struct RpcInner {
     epoll: Epoll,
     events: Events,
     queue: Queue<Packet>,
-    worker_queue: BlockQueue<(String, MessageId, MessageId, Message, Arc<Box<Handle>>)>,
+    worker_queue: BlockQueue<(MessageId, MessageId, Message, Arc<Box<Handle>>)>,
     recv: Option<AsyncRecv>,
     req_recv: Option<AsyncRecv>,
     calling: HashMap<MessageId, Sender<Message>>,
@@ -133,7 +137,7 @@ impl RpcInner {
     fn new(
         port: Port,
         queue: Queue<Packet>,
-        worker_queue: BlockQueue<(String, MessageId, MessageId, Message, Arc<Box<Handle>>)>,
+        worker_queue: BlockQueue<(MessageId, MessageId, Message, Arc<Box<Handle>>)>,
         run: Arc<AtomicBool>
     ) -> io::Result<RpcInner> {
         Ok(RpcInner {
@@ -157,6 +161,9 @@ impl RpcInner {
         self.epoll.add(&recv.recv, Token(Self::RECV_TOKEN), Ready::readable(), EpollOpt::level())?;
         self.epoll.add(&req_recv.recv, Token(Self::REQ_RECV_TOKEN), Ready::readable(), EpollOpt::level())?;
         self.epoll.add(&self.queue, Token(Self::QUEUE_TOKEN), Ready::readable(), EpollOpt::level())?;
+
+        self.recv = Some(recv);
+        self.req_recv = Some(req_recv);
 
         while self.run.load(Ordering::Relaxed) {
             let size = self.epoll.wait(&mut self.events, Some(<Duration>::from_secs(1)))?;
@@ -192,31 +199,56 @@ impl RpcInner {
                 Packet::Add(method, handle) => {
                     let req_chan = format!("RPC/REQ/{}", method);
 
-                    self.port.send(ATTACH, msg!{VALUE: req_chan}, None);
+                    self.port.send(ATTACH, msg!{VALUE: &req_chan}, None);
 
                     self.handles.insert(req_chan, Arc::new(handle));
                 }
-                _ => ()
             }
         }
     }
 
     fn dispatch_recv(&mut self) {
-        if let Some(_message) = self.recv.as_ref().unwrap().recv() {
+        if let Some(message) = self.recv.as_ref().unwrap().recv() {
+            let request_id = match message.get_message_id(REQUEST_ID) {
+                Ok(id) => id,
+                Err(_) => return
+            };
 
+            if let Some(tx) = self.calling.remove(request_id) {
+                if tx.is_needed() {
+                    tx.send(message);
+                }
+            }
         }
     }
 
     fn dispatch_req_recv(&mut self) {
-        if let Some(_message) = self.req_recv.as_ref().unwrap().recv() {
-            
+        if let Some(message) = self.req_recv.as_ref().unwrap().recv() {
+            let req_chan = match message.get_str(CHAN) {
+                Ok(chan) => chan,
+                Err(_) => return
+            };
+
+            let from_id = match message.get_message_id(FROM) {
+                Ok(id) => id,
+                Err(_) => return
+            };
+
+            let request_id = match message.get_message_id(REQUEST_ID) {
+                Ok(id) => id,
+                Err(_) => return
+            };
+
+            if let Some(handle) = self.handles.get(req_chan) {
+                self.worker_queue.push((from_id.clone(), request_id.clone(), message, handle.clone()))
+            }
         }
     }
 }
 
 struct Worker {
-    worker_queue: BlockQueue<(String, MessageId, MessageId, Message, Arc<Box<Handle>>)>, // (req_key, from_id, message_id, handle, message)
-    queue: Queue<Packet>,
+    worker_queue: BlockQueue<(MessageId, MessageId, Message, Arc<Box<Handle>>)>, // (req_key, from_id, message_id, handle, message)
+    port: Port
 }
 
 impl Worker {
@@ -225,11 +257,14 @@ impl Worker {
             let worker = self;
 
             loop {
-                let (_, _, _, req_message, handle) = worker.worker_queue.pop();
+                let (from_id, request_id, req_message, handle) = worker.worker_queue.pop();
 
-                let res_message = handle(req_message);
+                let mut res_message = handle(req_message);
 
-                worker.queue.push(Packet::Response(res_message));
+                res_message.insert(TO, from_id);
+                res_message.insert(REQUEST_ID, request_id);
+
+                worker.port.send(RPC_RECV, res_message, None);
             }
         }).unwrap();
     }
