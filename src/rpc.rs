@@ -17,7 +17,9 @@ use crate::dict::*;
 
 pub struct Rpc {
     queue: Queue<Packet>,
-    run: Arc<AtomicBool>
+    run: Arc<AtomicBool>,
+    worker_queue: WorkerQueue,
+    works: Arc<usize>
 }
 
 impl Rpc {
@@ -46,7 +48,9 @@ impl Rpc {
 
         Ok(Rpc {
             queue,
-            run
+            run,
+            works: Arc::new(works),
+            worker_queue,
         })
     }
 
@@ -99,6 +103,10 @@ impl Rpc {
         self.queue.push(packet);
     }
 
+    pub fn remove(&self, method: &str) {
+        self.queue.push(Packet::Remove(method.to_string()))
+    }
+
     pub fn is_run(&self) -> bool {
         self.run.load(Ordering::Relaxed)
     }
@@ -108,20 +116,35 @@ impl Rpc {
     }
 }
 
+impl Drop for Rpc {
+    fn drop(&mut self) {
+        if Arc::strong_count(&self.works) == 1 {
+            self.run.store(false, Ordering::Relaxed);
+
+            for _ in 0..*self.works {
+                self.worker_queue.push(None);
+            }
+        }
+    }
+}
+
 type Handle = dyn Fn(Message) -> Message + Sync + Send + 'static;
 
 enum Packet {
     Call(MessageId, String, Message, Sender<Message>),
     UnCall(MessageId),
-    Add(String, Box<Handle>)
+    Add(String, Box<Handle>),
+    Remove(String)
 }
+
+type WorkerQueue = BlockQueue<Option<(MessageId, MessageId, Message, Arc<Box<Handle>>)>>;
 
 struct RpcInner {
     port: Port,
     epoll: Epoll,
     events: Events,
     queue: Queue<Packet>,
-    worker_queue: BlockQueue<(MessageId, MessageId, Message, Arc<Box<Handle>>)>,
+    worker_queue: WorkerQueue,
     recv: Option<AsyncRecv>,
     req_recv: Option<AsyncRecv>,
     calling: HashMap<MessageId, Sender<Message>>,
@@ -137,7 +160,7 @@ impl RpcInner {
     fn new(
         port: Port,
         queue: Queue<Packet>,
-        worker_queue: BlockQueue<(MessageId, MessageId, Message, Arc<Box<Handle>>)>,
+        worker_queue: WorkerQueue,
         run: Arc<AtomicBool>
     ) -> io::Result<RpcInner> {
         Ok(RpcInner {
@@ -203,6 +226,13 @@ impl RpcInner {
 
                     self.handles.insert(req_chan, Arc::new(handle));
                 }
+                Packet::Remove(method) => {
+                    let req_chan = format!("RPC/REQ/{}", method);
+
+                    self.port.send(DETACH, msg!{VALUE: &req_chan}, None);
+
+                    self.handles.remove(&req_chan);
+                }
             }
         }
     }
@@ -240,14 +270,14 @@ impl RpcInner {
             };
 
             if let Some(handle) = self.handles.get(req_chan) {
-                self.worker_queue.push((from_id.clone(), request_id.clone(), message, handle.clone()))
+                self.worker_queue.push(Some((from_id.clone(), request_id.clone(), message, handle.clone())))
             }
         }
     }
 }
 
 struct Worker {
-    worker_queue: BlockQueue<(MessageId, MessageId, Message, Arc<Box<Handle>>)>, // (req_key, from_id, message_id, handle, message)
+    worker_queue: WorkerQueue, // (req_key, from_id, message_id, handle, message)
     port: Port
 }
 
@@ -257,14 +287,16 @@ impl Worker {
             let worker = self;
 
             loop {
-                let (from_id, request_id, req_message, handle) = worker.worker_queue.pop();
+                if let Some((from_id, request_id, req_message, handle)) = worker.worker_queue.pop() {
+                    let mut res_message = handle(req_message);
 
-                let mut res_message = handle(req_message);
+                    res_message.insert(TO, from_id);
+                    res_message.insert(REQUEST_ID, request_id);
 
-                res_message.insert(TO, from_id);
-                res_message.insert(REQUEST_ID, request_id);
-
-                worker.port.send(RPC_RECV, res_message, None);
+                    worker.port.send(RPC_RECV, res_message, None);
+                } else {
+                    return
+                }
             }
         }).unwrap();
     }

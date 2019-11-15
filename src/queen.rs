@@ -176,7 +176,7 @@ impl<T> QueenInner<T> {
     }
 
     fn dispatch_conn(&mut self, token: usize) -> io::Result<()> {
-        if let Some(conn) = self.conns.get_mut(token) {
+        if let Some(conn) = self.conns.get(token) {
             if let Some(message) = conn.stream.recv() {
                 if message.is_empty() && conn.stream.is_close() {
                     self.remove_conn(token)?;
@@ -195,7 +195,7 @@ impl<T> QueenInner<T> {
             // conn.stream.close();
             self.epoll.delete(&conn.stream)?;
 
-            for (chan, _) in &conn.chans {
+            for chan in conn.chans.keys() {
                 if let Some(ids) = self.chans.get_mut(chan) {
                     ids.remove(&token);
 
@@ -268,7 +268,7 @@ impl<T> QueenInner<T> {
             self.relay_message(token, chan.to_string(), message);
         }
 
-        return Ok(())
+        Ok(())
     }
 
     fn auth(&mut self, token: usize, mut message: Message) {
@@ -521,10 +521,8 @@ impl<T> QueenInner<T> {
                             self.chans.remove(&chan);
                         }
                     }
-                } else {
-                    if let Some(vec) = conn.chans.get_mut(&chan) {
-                        *vec = vec.iter().filter(|label| !labels.contains(label)).map(|s| s.to_string()).collect();
-                    }
+                } else if let Some(vec) = conn.chans.get_mut(&chan) {
+                    *vec = vec.iter().filter(|label| !labels.contains(label)).map(|s| s.to_string()).collect();
                 }
 
                 if let Some(port_id) = &conn.id {
@@ -599,7 +597,7 @@ impl<T> QueenInner<T> {
             self.remove_conn(remove_id)?;
         }
 
-        return Ok(())
+        Ok(())
     }
 
     fn relay_message(&mut self, token: usize, chan: String, mut message: Message) {

@@ -285,36 +285,34 @@ impl PortBackend {
 
                                 if ids.is_empty() {
                                     remove_chan = true;
-                                } else {
-                                    if chan != BACK && chan != UNKNOWN {
-                                        let old_set = self.session.chans.get_mut(&chan).unwrap();
+                                } else if chan != BACK && chan != UNKNOWN {
+                                    let old_set = self.session.chans.get_mut(&chan).unwrap();
                                     
-                                        let new_set: HashSet<String> = old_set.iter().filter(|l| {
-                                            for (_, _, labels) in ids.iter() {
-                                                if let Some(labels) = labels {
-                                                    if labels.contains(l) {
-                                                        return true;
-                                                    }
+                                    let new_set: HashSet<String> = old_set.iter().filter(|l| {
+                                        for (_, _, labels) in ids.iter() {
+                                            if let Some(labels) = labels {
+                                                if labels.contains(l) {
+                                                    return true;
                                                 }
                                             }
-
-                                            false
-                                        }).map(|s| s.to_string()).collect();
-
-                                        let change: Vec<String> = old_set.iter().filter(|l| {
-                                            !new_set.contains(&**l)
-                                        }).map(|s| s.to_string()).collect();
-
-                                        if !change.is_empty() {
-                                            let message = msg!{
-                                                CHAN: DETACH,
-                                                VALUE: &chan,
-                                                LABEL: change
-                                            };
-
-                                            let stream = self.session.stream.as_ref().unwrap();
-                                            stream.send(message);
                                         }
+
+                                        false
+                                    }).map(|s| s.to_string()).collect();
+
+                                    let change: Vec<String> = old_set.iter().filter(|l| {
+                                        !new_set.contains(&**l)
+                                    }).map(|s| s.to_string()).collect();
+
+                                    if !change.is_empty() {
+                                        let message = msg!{
+                                            CHAN: DETACH,
+                                            VALUE: &chan,
+                                            LABEL: change
+                                        };
+
+                                        let stream = self.session.stream.as_ref().unwrap();
+                                        stream.send(message);
                                     }
                                 }
                             }
@@ -348,7 +346,7 @@ impl PortBackend {
         if let Some(stream) = &self.session.stream {
             if let Some(message) = stream.recv() {
                 if let Ok(chan) = message.get_str(CHAN) {
-                    if chan.starts_with("_") {
+                    if chan.starts_with('_') {
                         match chan {
                             AUTH => {
                                 if let Ok(ok) = message.get_i32(OK) {
@@ -449,16 +447,14 @@ impl PortBackend {
                     }
                 }
             }
-        } else {
-            if let Some(ids) = self.session.recvs.get(UNKNOWN) {
-                for (_, tx, _) in ids {
-                    match tx {
-                        SenderType::Block(tx) => {
-                            let _ = tx.send(message.clone());
-                        }
-                        SenderType::Async(queue) => {
-                            queue.push(message.clone());
-                        }
+        } else if let Some(ids) = self.session.recvs.get(UNKNOWN) {
+            for (_, tx, _) in ids {
+                match tx {
+                    SenderType::Block(tx) => {
+                        let _ = tx.send(message.clone());
+                    }
+                    SenderType::Async(queue) => {
+                        queue.push(message.clone());
                     }
                 }
             }
@@ -472,12 +468,14 @@ impl Drop for PortBackend {
     }
 }
 
+type RecvsMap = HashMap<String, Vec<(usize, SenderType, Option<Vec<String>>)>>;
+
 struct Session {
     state: State,
     stream: Option<Stream>,
     net_work: Option<Queue<NetPacket>>,
     chans: HashMap<String, HashSet<String>>, // HashMap<Chan, HashSet<Label>>
-    recvs: HashMap<String, Vec<(usize, SenderType, Option<Vec<String>>)>>, // HashMap<Chan, Vec<id, tx, Vec<Lable>>>
+    recvs: RecvsMap, // HashMap<Chan, Vec<id, tx, Vec<Lable>>>
     recvs_index: HashMap<usize, String>,
 }
 

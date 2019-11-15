@@ -47,9 +47,9 @@ impl Aead {
         let nonce_len = algorithm.nonce_len();
         let mut nonce = vec![0u8; nonce_len];
 
-        for i in 0..nonce_len {
-            nonce[i] = i as u8;
-        }
+        nonce[..5].clone_from_slice(&[113, 117, 101, 101, 110]);
+
+        println!("{:?}", nonce);
 
         Aead {
             aead,
@@ -60,9 +60,7 @@ impl Aead {
     pub fn set_nonce(&mut self, nonce: &[u8]) {
         let min = cmp::min(self.nonce.len(), nonce.len());
 
-        for i in 0..min {
-            self.nonce[i] = nonce[i];
-        }
+        self.nonce[..min].clone_from_slice(&nonce[..min])
     }
 
     pub fn encrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
