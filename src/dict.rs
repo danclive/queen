@@ -33,9 +33,7 @@ pub const PORT_DETACH: &str = "_ptde";
 pub const PORT_KILL:   &str = "_ptki";
 
 // port
-pub const BACK:    &str = "_back";
-pub const UNKNOWN: &str = "_unknown";
-
+pub const REPLY:   &str = "_reply";
 
 // rpc
 pub const REQUEST_ID: &str = "_reqid";

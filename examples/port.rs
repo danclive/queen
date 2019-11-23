@@ -10,8 +10,9 @@ use queen::nson::{Message, MessageId};
 use queen::util::message::{write_socket, read_socket, read_socket_no_aead};
 use queen::crypto::{Method, Aead};
 use queen::dict::*;
-use queen::port::{Port, Connector};
+use queen::port::Port;
 use queen::net::{NetStream, Listen, Addr};
+use queen::Connector;
 
 
 fn main() {

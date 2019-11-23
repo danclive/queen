@@ -46,6 +46,12 @@ fn main() {
         return true;
     });
 
+    callback.attach(|port, message, _| {
+        println!("attach, port attr: {:?}, message: {:?}", port.stream.attr, message);
+
+        return true
+    });
+
     let queen = Queen::new(MessageId::new(), (), Some(callback)).unwrap();
 
     let crypto = (Method::Aes256Gcm, "sep-centre".to_string());

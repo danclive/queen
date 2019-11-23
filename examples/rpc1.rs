@@ -1,28 +1,23 @@
-#![allow(unused_imports)]
-
-use std::net::TcpStream;
-use std::time::{Instant, Duration};
+use std::time::Duration;
 use std::thread;
-use std::io::{Write, Read};
 
 use queen::nson::msg;
-use queen::nson::{Message, MessageId};
-use queen::util::message::{write_socket, read_socket, read_socket_no_aead};
-use queen::crypto::{Method, Aead};
-use queen::dict::*;
-use queen::port::{Port, Connector};
-use queen::net::{NetStream, Listen, Addr};
-use queen::rpc::Rpc;
-
+use queen::nson::MessageId;
+use queen::crypto::Method;
+use queen::net::{Addr};
+use queen::{Rpc, Connector};
 
 fn main() {
     let crypto = (Method::Aes256Gcm, "sep-centre".to_string());
 
-    let port = Port::connect(MessageId::new(), Connector::Net(Addr::tcp("127.0.0.1:8888").unwrap(), Some(crypto)), msg!{"user": "test-user", "pass": "test-pass"}).unwrap();
+    let rpc = Rpc::new(
+        MessageId::new(),
+        Connector::Net(Addr::tcp("127.0.0.1:8888").unwrap(), Some(crypto)),
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
+        ).unwrap();
 
-    let rpc = Rpc::new(port, 2).unwrap();
-
-    rpc.add("hello", |message| {
+    rpc.add("hello", None, |message| {
         println!("{:?}", message);
 
         msg!{"hehehe": "lalala"}

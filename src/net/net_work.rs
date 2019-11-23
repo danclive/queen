@@ -126,9 +126,7 @@ impl NetWork {
 
     fn push_data(&mut self, index: usize, message: Message) -> io::Result<()> {
         if let Some(net_conn) = self.nets.get_mut(index) {
-            net_conn.push_data(message.to_vec().unwrap());
-
-            self.epoll.modify(&net_conn.stream, Token(net_conn.id), net_conn.interest, EpollOpt::edge())?;
+            net_conn.push_data(&self.epoll, message.to_vec().unwrap())?;
         }
 
         Ok(())
@@ -140,10 +138,6 @@ impl NetWork {
         if ready.is_readable() {
             if let Some(net_conn) = self.nets.get_mut(index) {
                 remove = net_conn.read(&self.streams[index]).is_err();
-
-                if !remove {
-                    self.epoll.modify(&net_conn.stream, Token(net_conn.id), net_conn.interest, EpollOpt::edge())?;
-                }
             }
         }
 
@@ -286,12 +280,19 @@ impl NetConn {
         Ok(())
     }
 
-    fn push_data(&mut self, mut data: Vec<u8>) {
+    fn push_data(&mut self, epoll: &Epoll, mut data: Vec<u8>) -> io::Result<()> {
         if let Some(aead) = &mut self.aead {
             aead.encrypt(&mut data).expect("encrypt error");
         }
 
         self.w_buffer.push_back(data);
-        self.interest.insert(Ready::writable());
+
+        if !self.interest.contains(Ready::writable()) {
+            self.interest.insert(Ready::writable());
+
+            epoll.modify(&self.stream, Token(self.id), self.interest, EpollOpt::edge())?;
+        }
+
+        Ok(())
     }
 }

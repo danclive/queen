@@ -12,10 +12,8 @@ use queen_io::queue::mpsc;
 use nson::{Message};
 use nson::message_id::MessageId;
 
-use crate::{Queen};
-use crate::net::{Addr};
 use crate::dict::*;
-use crate::crypto::Method;
+use crate::Connector;
 
 pub use recv::{Recv, AsyncRecv};
 use port_backend::{PortBackend, Packet};
@@ -25,15 +23,14 @@ mod port_backend;
 
 #[derive(Clone)]
 pub struct Port {
-    id: MessageId,
-    recv_id: Arc<AtomicUsize>,
-    queue: mpsc::Queue<Packet>,
+    inner: Arc<PortInner>,
     run: Arc<AtomicBool>
 }
 
-pub enum Connector {
-    Net(Addr, Option<(Method, String)>),
-    Queen(Queen, Message)
+struct PortInner {
+    id: MessageId,
+    recv_id: AtomicUsize,
+    queue: mpsc::Queue<Packet>
 }
 
 impl Port {
@@ -44,7 +41,13 @@ impl Port {
 
         let queue2 = queue.clone();
 
-        let mut inner = PortBackend::new(id.clone(), connector, auth_msg, queue2, run.clone())?;
+        let mut inner = PortBackend::new(
+                            id.clone(),
+                            connector,
+                            auth_msg,
+                            queue2,
+                            run.clone()
+                        )?;
 
         thread::Builder::new().name("port_backend".to_string()).spawn(move || {
             let ret = inner.run();
@@ -52,9 +55,11 @@ impl Port {
         }).unwrap();
 
         Ok(Port {
-            id,
-            recv_id: Arc::new(AtomicUsize::new(0)),
-            queue,
+            inner: Arc::new(PortInner {
+                id,
+                recv_id: AtomicUsize::new(0),
+                queue,
+            }),
             run
         })
     }
@@ -63,16 +68,17 @@ impl Port {
         &self,
         chan: &str,
         lables: Option<Vec<String>>
-    ) -> Recv { // iter
+    ) -> Recv {
         let (tx, rx) = channel();
 
-        let id = self.recv_id.fetch_add(1, Ordering::SeqCst);
+        let id = self.inner.recv_id.fetch_add(1, Ordering::SeqCst);
 
-        self.queue.push(Packet::AttatchBlock(id, chan.to_string(), lables, tx));
+        self.inner.queue.push(Packet::AttachBlock(id, chan.to_string(), lables, tx));
 
         Recv {
             port: self.clone(),
             id,
+            chan: chan.to_string(),
             recv: rx
         }
     }
@@ -84,13 +90,14 @@ impl Port {
     ) -> io::Result<AsyncRecv> {
         let queue = Queue::with_cache(64)?;
 
-        let id = self.recv_id.fetch_add(1, Ordering::SeqCst);
+        let id = self.inner.recv_id.fetch_add(1, Ordering::SeqCst);
 
-        self.queue.push(Packet::AttatchAsync(id, chan.to_string(), lables, queue.clone()));
+        self.inner.queue.push(Packet::AttachAsync(id, chan.to_string(), lables, queue.clone()));
 
         Ok(AsyncRecv {
             port: self.clone(),
             id,
+            chan: chan.to_string(),
             recv: queue
         })
     }
@@ -112,13 +119,17 @@ impl Port {
         }
 
         loop {
-            if self.queue.pending() < 64 {
-                self.queue.push(Packet::Send(msg));
+            if self.inner.queue.pending() < 64 {
+                self.inner.queue.push(Packet::Send(msg));
                 return
             }
 
             thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    pub fn id(&self) -> &MessageId {
+        &self.inner.id
     }
 
     pub fn is_run(&self) -> bool {
@@ -132,7 +143,7 @@ impl Port {
 
 impl Drop for Port {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.recv_id) == 1 {
+        if Arc::strong_count(&self.inner) == 1 {
             self.run.store(false, Ordering::Relaxed);
         }
     }

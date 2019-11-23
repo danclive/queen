@@ -85,12 +85,20 @@ impl Queen {
     }
 }
 
+impl Drop for Queen {
+    fn drop(&mut self) {
+        if Arc::strong_count(&self.run) == 1 {
+            self.run.store(false, Ordering::Relaxed);
+        }
+    }
+}
+
 struct QueenInner<T> {
     id: MessageId,
     epoll: Epoll,
     events: Events,
     queue: mpsc::Queue<Packet>,
-    conns: Slab<Port>,
+    conns: Slab<Session>,
     chans: HashMap<String, HashSet<usize>>,
     ports: HashMap<MessageId, usize>,
     rand: ThreadRng,
@@ -150,18 +158,18 @@ impl<T> QueenInner<T> {
                 Packet::NewConn(stream, sender) => {
                     let entry = self.conns.vacant_entry();
 
-                    let port = Port::new(entry.key(), stream);
+                    let session = Session::new(entry.key(), stream);
 
                     let success = if let Some(accept_fn) = &self.callback.accept_fn {
-                       accept_fn(&port, &mut self.data)
+                       accept_fn(&session, &mut self.data)
                     } else {
                        true
                     };
 
                     if success {
-                        self.epoll.add(&port.stream, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
+                        self.epoll.add(&session.stream, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
                         
-                        entry.insert(port);
+                        entry.insert(session);
 
                         sender.send(true);
                     } else {
@@ -393,15 +401,15 @@ impl<T> QueenInner<T> {
             }
 
             // label
-            let mut labels = vec![];
+            let mut labels = HashSet::new();
 
             if let Some(label) = message.get(LABEL) {
                 if let Some(label) = label.as_str() {
-                    labels.push(label.to_string());
+                    labels.insert(label.to_string());
                 } else if let Some(label_array) = label.as_array() {
                     for v in label_array {
                         if let Some(v) = v.as_str() {
-                            labels.push(v.to_string());
+                            labels.insert(v.to_string());
                         } else {
                             ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
@@ -471,15 +479,15 @@ impl<T> QueenInner<T> {
             }
 
             // label
-            let mut labels = vec![];
+            let mut labels = HashSet::new();
 
             if let Some(label) = message.get(LABEL) {
                 if let Some(label) = label.as_str() {
-                    labels.push(label.to_string());
+                    labels.insert(label.to_string());
                 } else if let Some(label_array) = label.as_array() {
                     for v in label_array {
                         if let Some(v) = v.as_str() {
-                            labels.push(v.to_string());
+                            labels.insert(v.to_string());
                         } else {
                             ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
@@ -521,8 +529,8 @@ impl<T> QueenInner<T> {
                             self.chans.remove(&chan);
                         }
                     }
-                } else if let Some(vec) = conn.chans.get_mut(&chan) {
-                    *vec = vec.iter().filter(|label| !labels.contains(label)).map(|s| s.to_string()).collect();
+                } else if let Some(set) = conn.chans.get_mut(&chan) {
+                    *set = set.iter().filter(|label| !labels.contains(*label)).map(|s| s.to_string()).collect();
                 }
 
                 if let Some(port_id) = &conn.id {
@@ -687,15 +695,15 @@ impl<T> QueenInner<T> {
         }
 
         // labels
-        let mut labels = vec![];
+        let mut labels = HashSet::new();
 
         if let Some(label) = message.get(LABEL) {
             if let Some(label) = label.as_str() {
-                labels.push(label.to_string());
+                labels.insert(label.to_string());
             } else if let Some(label_array) = label.as_array() {
                 for v in label_array {
                     if let Some(v) = v.as_str() {
-                        labels.push(v.to_string());
+                        labels.insert(v.to_string());
                     } else {
                         ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
@@ -848,18 +856,18 @@ impl<T> QueenInner<T> {
     }
 }
 
-pub struct Port {
+pub struct Session {
     pub token: usize,
     pub auth: bool,
     pub supe: bool,
-    pub chans: HashMap<String, Vec<String>>,
+    pub chans: HashMap<String, HashSet<String>>,
     pub stream: Stream,
     pub id: Option<MessageId>,
 }
 
-impl Port {
-    pub fn new(token: usize, stream: Stream) -> Port {
-        Port {
+impl Session {
+    pub fn new(token: usize, stream: Stream) -> Session {
+        Session {
             token,
             auth: false,
             supe: false,

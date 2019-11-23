@@ -21,9 +21,9 @@ use super::Connector;
 
 pub(crate) enum Packet {
     Send(Message),
-    AttatchBlock(usize, String, Option<Vec<String>>, Sender<Message>), // id, chan, lables, sender
-    AttatchAsync(usize, String, Option<Vec<String>>, Queue<Message>),
-    Detatch(usize)
+    AttachBlock(usize, String, Option<Vec<String>>, Sender<Message>), // id, chan, lables, sender
+    AttachAsync(usize, String, Option<Vec<String>>, Queue<Message>),
+    Detach(usize, String)
 }
 
 pub(crate) struct PortBackend {
@@ -182,12 +182,12 @@ impl PortBackend {
                         let stream = self.session.stream.as_ref().unwrap();
                         stream.send(message);
                     }
-                    Packet::AttatchBlock(id, chan, labels, tx) => {
+                    Packet::AttachBlock(id, chan, labels, tx) => {
                         let ids = self.session.recvs.entry(chan.clone()).or_insert_with(|| vec![]);
 
                         let mut labels_set = HashSet::new();
 
-                        if chan != BACK && chan != UNKNOWN {
+                        if chan != REPLY {
                             if let Some(labels) = &labels {
                                 for label in labels {
                                     labels_set.insert(label.to_string());
@@ -226,14 +226,13 @@ impl PortBackend {
                         }
 
                         ids.push((id, SenderType::Block(tx), labels));
-                        self.session.recvs_index.insert(id, chan);
                     }
-                    Packet::AttatchAsync(id, chan, labels, tx) => {
+                    Packet::AttachAsync(id, chan, labels, tx) => {
                         let ids = self.session.recvs.entry(chan.clone()).or_insert_with(|| vec![]);
 
                         let mut labels_set = HashSet::new();
 
-                        if chan != BACK && chan != UNKNOWN {
+                        if chan != REPLY {
                             if let Some(labels) = &labels {
                                 for label in labels {
                                     labels_set.insert(label.to_string());
@@ -272,64 +271,61 @@ impl PortBackend {
                         }
 
                         ids.push((id, SenderType::Async(tx), labels));
-                        self.session.recvs_index.insert(id, chan);
                     }
-                    Packet::Detatch(id) => {
-                        if let Some(chan) = self.session.recvs_index.remove(&id) {
-                            let mut remove_chan = false;
+                    Packet::Detach(id, chan) => {
+                        let mut remove_chan = false;
 
-                            if let Some(ids) = self.session.recvs.get_mut(&chan) {
-                                if let Some(pos) = ids.iter().position(|(x, _, _)| x == &id) {
-                                    ids.remove(pos);
-                                }
-
-                                if ids.is_empty() {
-                                    remove_chan = true;
-                                } else if chan != BACK && chan != UNKNOWN {
-                                    let old_set = self.session.chans.get_mut(&chan).unwrap();
-                                    
-                                    let new_set: HashSet<String> = old_set.iter().filter(|l| {
-                                        for (_, _, labels) in ids.iter() {
-                                            if let Some(labels) = labels {
-                                                if labels.contains(l) {
-                                                    return true;
-                                                }
-                                            }
-                                        }
-
-                                        false
-                                    }).map(|s| s.to_string()).collect();
-
-                                    let change: Vec<String> = old_set.iter().filter(|l| {
-                                        !new_set.contains(&**l)
-                                    }).map(|s| s.to_string()).collect();
-
-                                    if !change.is_empty() {
-                                        let message = msg!{
-                                            CHAN: DETACH,
-                                            VALUE: &chan,
-                                            LABEL: change
-                                        };
-
-                                        let stream = self.session.stream.as_ref().unwrap();
-                                        stream.send(message);
-                                    }
-                                }
+                        if let Some(ids) = self.session.recvs.get_mut(&chan) {
+                            if let Some(pos) = ids.iter().position(|(x, _, _)| x == &id) {
+                                ids.remove(pos);
                             }
 
-                            if remove_chan {
-                                self.session.recvs.remove(&chan);
-                                self.session.chans.remove(&chan);
-                            
-                                if chan != BACK && chan != UNKNOWN {
+                            if ids.is_empty() {
+                                remove_chan = true;
+                            } else if chan != REPLY {
+                                let old_set = self.session.chans.get_mut(&chan).unwrap();
+                                    
+                                let new_set: HashSet<String> = old_set.iter().filter(|l| {
+                                    for (_, _, labels) in ids.iter() {
+                                        if let Some(labels) = labels {
+                                            if labels.contains(l) {
+                                                return true;
+                                            }
+                                        }
+                                    }
+
+                                    false
+                                }).map(|s| s.to_string()).collect();
+
+                                let change: Vec<String> = old_set.iter().filter(|l| {
+                                    !new_set.contains(&**l)
+                                }).map(|s| s.to_string()).collect();
+
+                                if !change.is_empty() {
                                     let message = msg!{
                                         CHAN: DETACH,
-                                        VALUE: chan
+                                        VALUE: &chan,
+                                        LABEL: change
                                     };
 
                                     let stream = self.session.stream.as_ref().unwrap();
                                     stream.send(message);
                                 }
+                            }
+                        }
+
+                        if remove_chan {
+                            self.session.recvs.remove(&chan);
+                            self.session.chans.remove(&chan);
+                            
+                            if chan != REPLY {
+                                let message = msg!{
+                                    CHAN: DETACH,
+                                    VALUE: chan
+                                };
+
+                                let stream = self.session.stream.as_ref().unwrap();
+                                stream.send(message);
                             }
                         }
                     }
@@ -389,7 +385,7 @@ impl PortBackend {
 
     fn handle_message(&mut self, chan: String, message: Message) {
         if let Ok(_ok) = message.get_i32(OK) {
-            if let Some(ids) = self.session.recvs.get(BACK) {
+            if let Some(ids) = self.session.recvs.get(REPLY) {
                 for (_, tx, _) in ids {
                     match tx {
                         SenderType::Block(tx) => {
@@ -447,17 +443,6 @@ impl PortBackend {
                     }
                 }
             }
-        } else if let Some(ids) = self.session.recvs.get(UNKNOWN) {
-            for (_, tx, _) in ids {
-                match tx {
-                    SenderType::Block(tx) => {
-                        let _ = tx.send(message.clone());
-                    }
-                    SenderType::Async(queue) => {
-                        queue.push(message.clone());
-                    }
-                }
-            }
         }
     }
 }
@@ -476,7 +461,6 @@ struct Session {
     net_work: Option<Queue<NetPacket>>,
     chans: HashMap<String, HashSet<String>>, // HashMap<Chan, HashSet<Label>>
     recvs: RecvsMap, // HashMap<Chan, Vec<id, tx, Vec<Lable>>>
-    recvs_index: HashMap<usize, String>,
 }
 
 enum SenderType {
@@ -499,8 +483,7 @@ impl Session {
             stream: None,
             net_work: None,
             chans: HashMap::new(),
-            recvs: HashMap::new(),
-            recvs_index: HashMap::new()
+            recvs: HashMap::new()
         }
     }
 }

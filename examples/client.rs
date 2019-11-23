@@ -1,4 +1,6 @@
 #![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unreachable_code)]
 
 use std::net::TcpStream;
 use std::time::{Instant, Duration};

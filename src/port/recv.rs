@@ -9,6 +9,7 @@ use super::{Packet, Port};
 pub struct Recv {
     pub port: Port,
     pub id: usize,
+    pub chan: String,
     pub recv: Receiver<Message>
 }
 
@@ -22,13 +23,14 @@ impl Iterator for Recv {
 
 impl Drop for Recv {
     fn drop(&mut self) {
-        self.port.queue.push(Packet::Detatch(self.id));
+        self.port.inner.queue.push(Packet::Detach(self.id, self.chan.clone()));
     }
 }
 
 pub struct AsyncRecv {
     pub port: Port,
     pub id: usize,
+    pub chan: String,
     pub recv: Queue<Message>
 }
 
@@ -40,6 +42,6 @@ impl AsyncRecv {
 
 impl Drop for AsyncRecv {
     fn drop(&mut self) {
-        self.port.queue.push(Packet::Detatch(self.id));
+        self.port.inner.queue.push(Packet::Detach(self.id, self.chan.clone()));
     }
 }

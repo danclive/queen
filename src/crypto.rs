@@ -49,8 +49,6 @@ impl Aead {
 
         nonce[..5].clone_from_slice(&[113, 117, 101, 101, 110]);
 
-        println!("{:?}", nonce);
-
         Aead {
             aead,
             nonce

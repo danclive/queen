@@ -323,7 +323,7 @@ fn labels() {
     stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
-        LABEL: ["label1", "label2", "label3"]
+        LABEL: ["label1", "label2", "label3", "label1"]
     });
 
     stream2.send(msg!{
