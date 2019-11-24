@@ -50,8 +50,7 @@ impl Port {
                         )?;
 
         thread::Builder::new().name("port_backend".to_string()).spawn(move || {
-            let ret = inner.run();
-            println!("port_backend: {:?}", ret);
+            inner.run().unwrap();
         }).unwrap();
 
         Ok(Port {

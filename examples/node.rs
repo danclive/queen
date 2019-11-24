@@ -56,7 +56,12 @@ fn main() {
 
     let crypto = (Method::Aes256Gcm, "sep-centre".to_string());
 
-    let mut node = Node::new(queen, 2, vec![Addr::tcp("127.0.0.1:8888").unwrap()], Some(crypto)).unwrap();
+    let mut node = Node::new(
+        queen,
+        2,
+        vec![Addr::tcp("127.0.0.1:8888").unwrap()],
+        Some(crypto)
+    ).unwrap();
 
     node.run().unwrap();
 

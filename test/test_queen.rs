@@ -1,10 +1,9 @@
 use std::time::Duration;
 use std::thread;
 
-use nson::message_id::MessageId;
-use nson::msg;
+use nson::{msg, MessageId};
 
-use queen::queen::Queen;
+use queen::Queen;
 use queen::dict::*;
 use queen::error::ErrorCode;
 

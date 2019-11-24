@@ -48,8 +48,7 @@ impl Rpc {
                         )?;
 
         thread::Builder::new().name("rpc_backend".to_string()).spawn(move || {
-            let ret = inner.run();
-            println!("rpc_backend: {:?}", ret);
+            inner.run().unwrap();
         }).unwrap();
 
         for i in 0..works {
