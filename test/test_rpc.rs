@@ -25,14 +25,18 @@ fn connect_queen() {
         msg!{"hehehe": "lalala"}
     });
 
+    thread::sleep(Duration::from_secs(1));
+
     let rpc2 = Rpc::new(
         MessageId::new(),
         Connector::Queen(queen, msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
-        ).unwrap();
+    ).unwrap();
 
-    let res = rpc2.call("hello", None, msg!{"hello": "owlrd"}, Some(<Duration>::from_secs(2)));
+    thread::sleep(Duration::from_secs(1));
+
+    let res = rpc2.call("hello", None, msg!{"hello": "owlrd"}, Some(<Duration>::from_secs(10)));
     assert!(res.is_ok());
 }
 
@@ -61,21 +65,24 @@ fn connect_node() {
         Connector::Net(Addr::tcp(&addr).unwrap(),Some(crypto.clone())),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
-        ).unwrap();
+    ).unwrap();
 
     rpc1.add("hello", None, |_message| {
-        // println!("{:?}", message);
         msg!{"hehehe": "lalala"}
     });
+
+    thread::sleep(Duration::from_secs(1));
 
     let rpc2 = Rpc::new(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(),Some(crypto.clone())),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
-        ).unwrap();
+    ).unwrap();
 
-    let res = rpc2.call("hello", None, msg!{"hello": "owlrd"}, Some(<Duration>::from_secs(2)));
+    thread::sleep(Duration::from_secs(1));
+
+    let res = rpc2.call("hello", None, msg!{"hello": "owlrd"}, Some(<Duration>::from_secs(10)));
     assert!(res.is_ok());
 }
 
@@ -116,9 +123,9 @@ fn connect_mulit_node() {
 
     let rpc1 = Rpc::new(
         MessageId::new(),
-         Connector::Net(Addr::tcp(&addr1).unwrap(),Some(crypto.clone())),
-        msg!{"user": "test-user", "pass": "test-pass"},
-        2
+            Connector::Net(Addr::tcp(&addr1).unwrap(),Some(crypto.clone())),
+            msg!{"user": "test-user", "pass": "test-pass"},
+            2
         ).unwrap();
 
     rpc1.add("hello", None, |_message| {
@@ -126,13 +133,17 @@ fn connect_mulit_node() {
         msg!{"hehehe": "lalala"}
     });
 
+    thread::sleep(Duration::from_secs(1));
+
     let rpc2 = Rpc::new(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr2).unwrap(),Some(crypto)),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
-        ).unwrap();
+    ).unwrap();
 
-    let res = rpc2.call("hello", None, msg!{"hello": "owlrd"}, Some(Duration::from_secs(2)));
+    thread::sleep(Duration::from_secs(1));
+
+    let res = rpc2.call("hello", None, msg!{"hello": "owlrd"}, Some(Duration::from_secs(10)));
     assert!(res.is_ok());
 }

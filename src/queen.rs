@@ -8,7 +8,7 @@ use std::thread;
 use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt};
 use queen_io::queue::mpsc;
 
-use nson::{Message, msg};
+use nson::{Message, Value, Array, msg};
 use nson::message_id::MessageId;
 
 use slab::Slab;
@@ -32,7 +32,11 @@ pub struct Queen {
 }
 
 impl Queen {
-    pub fn new<T: Send + 'static>(id: MessageId, data: T, callback: Option<Callback<T>>) -> io::Result<Queen> {
+    pub fn new<T: Send + 'static>(
+        id: MessageId,
+        data: T,
+        callback: Option<Callback<T>>
+    ) -> io::Result<Queen> {
         let queue = mpsc::Queue::new()?;
         let run = Arc::new(AtomicBool::new(true));
 
@@ -114,8 +118,14 @@ enum Packet {
 impl<T> QueenInner<T> {
     const QUEUE_TOKEN: Token = Token(usize::max_value());
 
-    fn new(id: MessageId, queue: mpsc::Queue<Packet>, data: T, callback: Callback<T>,run: Arc<AtomicBool>) -> io::Result<QueenInner<T>> {
-        let queen = QueenInner {
+    fn new(
+        id: MessageId,
+        queue: mpsc::Queue<Packet>,
+        data: T,
+        callback: Callback<T>,
+        run: Arc<AtomicBool>
+    ) -> io::Result<QueenInner<T>> {
+        Ok(QueenInner {
             id,
             epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
@@ -127,9 +137,7 @@ impl<T> QueenInner<T> {
             callback,
             data,
             run
-        };
-
-        Ok(queen)
+        })
     }
 
     fn run(&mut self) -> io::Result<()> {
@@ -213,6 +221,15 @@ impl<T> QueenInner<T> {
                 }
             }
 
+            if let Some(remove_fn) = &self.callback.remove_fn {
+                remove_fn(&conn, &mut self.data);
+            }
+
+            // port event
+            // {
+            //     CHAN: PORT_BREAK,
+            //     PORT_ID: $port_id
+            // }
             let mut event_msg = msg!{
                 CHAN: PORT_BREAK
             };
@@ -220,10 +237,6 @@ impl<T> QueenInner<T> {
             if let Some(port_id) = conn.id.clone() {
                 self.ports.remove(&port_id);
                 event_msg.insert(PORT_ID, port_id);
-            }
-
-            if let Some(remove_fn) = &self.callback.remove_fn {
-                remove_fn(&conn, &mut self.data);
             }
 
             self.relay_super_message(token, PORT_BREAK, event_msg);
@@ -264,7 +277,7 @@ impl<T> QueenInner<T> {
                 ATTACH => self.attach(token, message),
                 DETACH => self.detach(token, message),
                 PING => self.ping(token, message),
-                // QUERY => self.node_query(id, message)?,
+                QUERY => self.query(token, message),
                 PORT_KILL => self.kill(token, message)?,
                 _ => {
                     ErrorCode::UnsupportedChan.insert_message(&mut message);
@@ -320,6 +333,10 @@ impl<T> QueenInner<T> {
                         }
                     }
 
+                    if let Some(port_id) = &conn.id {
+                        self.ports.remove(port_id);
+                    }
+
                     self.ports.insert(port_id.clone(), token);
 
                     conn.id = Some(port_id.clone());
@@ -331,11 +348,17 @@ impl<T> QueenInner<T> {
                 return
             }
         } else {
-            let id = MessageId::new();
+            if let Some(port_id) = &conn.id {
+                message.insert(PORT_ID, port_id.clone());
+            } else {
+                let port_id = MessageId::new();
 
-            conn.id = Some(id.clone());
+                self.ports.insert(port_id.clone(), token);
 
-            message.insert(PORT_ID, id);
+                conn.id = Some(port_id.clone());
+
+                message.insert(PORT_ID, port_id);
+            }
         }
 
         conn.auth = true;
@@ -344,6 +367,12 @@ impl<T> QueenInner<T> {
 
         ErrorCode::OK.insert_message(&mut message);
         
+        // port event
+        // {
+        //     CHAN: PORT_READY,
+        //     SUPER: $conn.supe,
+        //     PORT_ID: $port_id
+        // }
         let mut event_msg = msg!{
             CHAN: PORT_READY,
             SUPER: conn.supe
@@ -428,6 +457,12 @@ impl<T> QueenInner<T> {
             }
 
             // port event
+            // {
+            //     CHAN: PORT_ATTACH,
+            //     VALUE: $chan,
+            //     LABEL: $label, // string or array
+            //     PORT_ID: $port_id
+            // }
             let mut event_msg = msg!{
                 CHAN: PORT_ATTACH
             };
@@ -440,12 +475,11 @@ impl<T> QueenInner<T> {
 
             // session_attach
             let ids = self.chans.entry(chan.to_owned()).or_insert_with(HashSet::new);
-
             ids.insert(token);
 
             {
-                let conn = self.conns.get_mut(token).unwrap();
 
+                let conn = self.conns.get_mut(token).unwrap();
                 conn.chans.insert(chan, labels);
 
                 if let Some(port_id) = &conn.id {
@@ -506,6 +540,12 @@ impl<T> QueenInner<T> {
             }
 
             // port event
+            // {
+            //     CHAN: PORT_DETACH,
+            //     VALUE: $chan,
+            //     LABEL: $label, // string or array
+            //     PORT_ID: $port_id
+            // }
             let mut event_msg = msg!{
                 CHAN: PORT_DETACH,
                 VALUE: &chan
@@ -549,6 +589,105 @@ impl<T> QueenInner<T> {
     }
 
     fn ping(&mut self, token: usize, mut message: Message) {
+        ErrorCode::OK.insert_message(&mut message);
+
+        self.conns[token].stream.send(message);
+    }
+
+    fn query(&mut self, token: usize, mut message: Message) {
+        {
+            let conn = &mut self.conns[token];
+
+            if !conn.auth || !conn.supe {
+                ErrorCode::Unauthorized.insert_message(&mut message);
+
+                conn.stream.send(message);
+
+                return
+            }
+        }
+
+        for (key, value) in message.clone() {
+            if value == Value::String(QUERY_PORT_NUM.to_string()) {
+                message.insert(key, self.ports.len() as u32);
+            } else if value == Value::String(QUERY_CHAN_NUM.to_string()) {
+                message.insert(key, self.chans.len() as u32);
+            } else if value == Value::String(QUERY_PORTS.to_string()) {
+                let mut array = Array::new();
+
+                for (_, conn) in self.conns.iter() {
+                    let mut chans = Message::new();
+
+                    for (chan, labels) in &conn.chans {
+                        let labels: Vec<&String> = labels.iter().collect();
+
+                        chans.insert(chan, labels);
+                    }
+
+                    let port_id: Value = if let Some(id) = &conn.id {
+                        id.clone().into()
+                    } else {
+                        Value::Null
+                    };
+
+                    array.push(msg!{
+                        AUTH: conn.auth,
+                        SUPER: conn.supe,
+                        CHANS: chans,
+                        PORT_ID: port_id,
+                        ATTR: conn.stream.attr.clone()
+                    });
+                }
+
+                message.insert(key, array);
+            } else if value == Value::String(QUERY_PORT.to_string()) {
+                if let Ok(port_id) = message.get_message_id(PORT_ID) {
+                    if let Some(id) = self.ports.get(port_id) {
+                        if let Some(conn) = self.conns.get(*id) {
+                            let mut chans = Message::new();
+
+                            for (chan, labels) in &conn.chans {
+                                let labels: Vec<&String> = labels.iter().collect();
+
+                                chans.insert(chan, labels);
+                            }
+
+                            let port_id: Value = if let Some(id) = &conn.id {
+                                id.clone().into()
+                            } else {
+                                Value::Null
+                            };
+
+                            let port = msg!{
+                                AUTH: conn.auth,
+                                SUPER: conn.supe,
+                                CHANS: chans,
+                                PORT_ID: port_id,
+                                ATTR: conn.stream.attr.clone()
+                            };
+
+                            message.insert(key, port);
+                            message.remove(PORT_ID);
+                        } else {
+                            unreachable!()
+                        }
+                    } else {
+                        ErrorCode::NotFound.insert_message(&mut message);
+
+                        self.conns[token].stream.send(message);
+
+                        return
+                    }
+                } else {
+                    ErrorCode::InvalidPortIdFieldType.insert_message(&mut message);
+
+                    self.conns[token].stream.send(message);
+
+                    return
+                }
+            }
+        }
+
         ErrorCode::OK.insert_message(&mut message);
 
         self.conns[token].stream.send(message);
@@ -862,7 +1001,7 @@ pub struct Session {
     pub supe: bool,
     pub chans: HashMap<String, HashSet<String>>,
     pub stream: Stream,
-    pub id: Option<MessageId>,
+    pub id: Option<MessageId>
 }
 
 impl Session {

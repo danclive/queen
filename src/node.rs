@@ -26,7 +26,12 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(queen: Queen, works: usize, addrs: Vec<Addr>, cryoto: Option<(Method, String)>) -> io::Result<Node> {
+    pub fn new(
+        queen: Queen,
+        works: usize,
+        addrs: Vec<Addr>,
+        cryoto: Option<(Method, String)>
+    ) -> io::Result<Node> {
         let run = Arc::new(AtomicBool::new(true));
 
         let mut listens = Vec::new();

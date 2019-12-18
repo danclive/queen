@@ -6,7 +6,7 @@ use nson::{msg, MessageId};
 use queen::Queen;
 use queen::dict::*;
 use queen::error::ErrorCode;
-
+/*
 #[test]
 fn connect() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
@@ -875,4 +875,205 @@ fn port_event() {
 
     println!("{:?}", stream2.is_close());
     println!("{:?}", stream2.recv());
+}
+*/
+#[test]
+fn query() {
+    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+
+    let stream1 = queen.connect(msg!{}, None).unwrap();
+
+    // auth
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "port_num": QUERY_PORT_NUM
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
+
+    stream1.send(msg!{
+        CHAN: AUTH,
+        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "port_num": QUERY_PORT_NUM
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
+
+    stream1.send(msg!{
+        CHAN: AUTH
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "port_num": QUERY_PORT_NUM
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
+
+    // port num
+    stream1.send(msg!{
+        CHAN: AUTH,
+        SUPER: true
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "port_num": QUERY_PORT_NUM
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_u32("port_num").unwrap() == 1);
+
+    let stream2 = queen.connect(msg!{}, None).unwrap();
+
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "port_num": QUERY_PORT_NUM
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_u32("port_num").unwrap() == 1);
+
+    stream2.send(msg!{
+        CHAN: AUTH
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "port_num": QUERY_PORT_NUM
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_u32("port_num").unwrap() == 2);
+
+    // chan num
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "chan_num": QUERY_CHAN_NUM
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_u32("chan_num").unwrap() == 0);
+
+    stream2.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "chan_num": QUERY_CHAN_NUM
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_u32("chan_num").unwrap() == 1);
+
+    stream2.send(msg!{
+        CHAN: DETACH,
+        VALUE: "aaa"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "chan_num": QUERY_CHAN_NUM
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_u32("chan_num").unwrap() == 0);
+
+    // ports
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "ports": QUERY_PORTS
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_array("ports").unwrap().len() == 2);
+
+    // port
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "port": QUERY_PORT,
+        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NotFound));
+
+    stream1.send(msg!{
+        CHAN: QUERY,
+        "port": QUERY_PORT,
+        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_message("port").unwrap().get_message_id(PORT_ID).unwrap()
+        == &MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap());
 }

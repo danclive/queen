@@ -26,6 +26,7 @@ pub enum ErrorCode {
     EmptyFieldValue,
     KeyTooLong,
     BadValue,
+    NotFound,
     UnknownError,
 }
 
@@ -57,6 +58,7 @@ impl ErrorCode {
             ErrorCode::EmptyFieldValue => "EmptyFieldValue",
             ErrorCode::KeyTooLong => "KeyTooLong",
             ErrorCode::BadValue => "BadValue",
+            ErrorCode::NotFound => "NotFound",
             ErrorCode::UnknownError => "UnknownError"
         }
     }
