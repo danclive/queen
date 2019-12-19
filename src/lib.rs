@@ -1,7 +1,6 @@
 pub mod queen;
 pub mod node;
 pub mod port;
-pub mod rpc;
 pub mod stream;
 pub mod net;
 pub mod connector;
@@ -20,4 +19,3 @@ pub use crate::stream::Stream;
 pub use crate::node::Node;
 pub use crate::connector::Connector;
 pub use crate::port::{Port, Recv, AsyncRecv};
-pub use crate::rpc::Rpc;

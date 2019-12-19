@@ -11,13 +11,15 @@ fn main() {
     let port1 = Port::connect(
         MessageId::new(),
         Connector::Queen(queen.clone(), msg!{}),
-        msg!{"user": "test-user", "pass": "test-pass"}
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
     ).unwrap();
 
     let port2 = Port::connect(
         MessageId::new(),
         Connector::Queen(queen, msg!{}),
-        msg!{"user": "test-user", "pass": "test-pass"}
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
     ).unwrap();
 
     thread::sleep(Duration::from_secs(1));

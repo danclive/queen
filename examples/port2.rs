@@ -21,7 +21,8 @@ fn main() {
     let port = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp("127.0.0.1:8888").unwrap(),Some(crypto)),
-        msg!{"user": "test-user", "pass": "test-pass"}
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
     ).unwrap();
 
     let recv = port.recv("aaa", None);

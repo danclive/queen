@@ -3,7 +3,7 @@ use std::thread;
 
 use nson::{msg, MessageId};
 
-use queen::{Queen, Rpc, Connector, Node};
+use queen::{Queen, Port, Connector, Node};
 use queen::crypto::Method;
 use queen::net::Addr;
 
@@ -13,7 +13,7 @@ use super::get_free_addr;
 fn connect_queen() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let rpc1 = Rpc::new(
+    let rpc1 = Port::connect(
         MessageId::new(),
         Connector::Queen(queen.clone(), msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -27,7 +27,7 @@ fn connect_queen() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let rpc2 = Rpc::new(
+    let rpc2 = Port::connect(
         MessageId::new(),
         Connector::Queen(queen, msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -60,7 +60,7 @@ fn connect_node() {
         node.run().unwrap();
     });
 
-    let rpc1 = Rpc::new(
+    let rpc1 = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(),Some(crypto.clone())),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -73,7 +73,7 @@ fn connect_node() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let rpc2 = Rpc::new(
+    let rpc2 = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(),Some(crypto.clone())),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -121,7 +121,7 @@ fn connect_mulit_node() {
         node.run().unwrap();
     });
 
-    let rpc1 = Rpc::new(
+    let rpc1 = Port::connect(
         MessageId::new(),
             Connector::Net(Addr::tcp(&addr1).unwrap(),Some(crypto.clone())),
             msg!{"user": "test-user", "pass": "test-pass"},
@@ -135,7 +135,7 @@ fn connect_mulit_node() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let rpc2 = Rpc::new(
+    let rpc2 = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr2).unwrap(),Some(crypto)),
         msg!{"user": "test-user", "pass": "test-pass"},

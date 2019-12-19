@@ -18,7 +18,12 @@ use queen::Connector;
 fn main() {
     let crypto = (Method::Aes256Gcm, "sep-centre".to_string());
 
-    let port = Port::connect(MessageId::new(), Connector::Net(Addr::tcp("127.0.0.1:8888").unwrap(), Some(crypto)), msg!{"user": "test-user", "pass": "test-pass"}).unwrap();
+    let port = Port::connect(
+        MessageId::new(),
+        Connector::Net(Addr::tcp("127.0.0.1:8888").unwrap(),
+        Some(crypto)), msg!{"user": "test-user", "pass": "test-pass"},
+        2
+    ).unwrap();
 
     loop {
         port.send("aaa", msg!{"hello": "world"}, None);

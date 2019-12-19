@@ -9,22 +9,34 @@ use std::collections::{HashMap, HashSet};
 use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt};
 use queen_io::queue::spsc::Queue;
 use queen_io::queue::mpsc;
+use queen_io::plus::block_queue::BlockQueue;
 
 use nson::{Message, msg};
 use nson::message_id::MessageId;
 
 use crate::Stream;
 use crate::net::{NetWork, Packet as NetPacket};
+use crate::util::oneshot::Sender as OneshotSender;
 use crate::dict::*;
 
 use super::Connector;
+
+type Handle = dyn Fn(Message) -> Message + Sync + Send + 'static;
 
 pub(crate) enum Packet {
     Send(Message),
     AttachBlock(usize, String, Option<Vec<String>>, Sender<Message>), // id, chan, lables, sender
     AttachAsync(usize, String, Option<Vec<String>>, Queue<Message>),
-    Detach(usize, String)
+    Detach(usize, String),
+    // sync
+    Call(MessageId, String, Message, OneshotSender<Message>),
+    UnCall(MessageId),
+    Add(String, Box<Handle>, Option<Vec<String>>),
+    Remove(String),
+    Response(Message)
 }
+
+pub(crate) type WorkerQueue = BlockQueue<Option<(MessageId, MessageId, Message, Arc<Box<Handle>>)>>;
 
 pub(crate) struct PortBackend {
     id: MessageId,
@@ -34,6 +46,10 @@ pub(crate) struct PortBackend {
     epoll: Epoll,
     events: Events,
     session: Session,
+    // sync
+    calling: HashMap<MessageId, OneshotSender<Message>>,
+    handles: HashMap<String, Arc<Box<Handle>>>,
+    worker_queue: WorkerQueue,
     run: Arc<AtomicBool>
 }
 
@@ -46,6 +62,7 @@ impl PortBackend {
         connector: Connector,
         auth_msg: Message,
         queue: mpsc::Queue<Packet>,
+        worker_queue: WorkerQueue,
         run: Arc<AtomicBool>
     ) -> io::Result<PortBackend> {
         Ok(PortBackend {
@@ -56,6 +73,9 @@ impl PortBackend {
             epoll: Epoll::new()?,
             events: Events::with_capacity(64),
             session: Session::new(),
+            calling: HashMap::new(),
+            handles: HashMap::new(),
+            worker_queue,
             run
         })
     }
@@ -328,6 +348,60 @@ impl PortBackend {
                                 stream.send(message);
                             }
                         }
+                    },
+                    Packet::Call(id, method, mut message, tx) => {
+                        let req_chan = format!("RPC/REQ/{}", method);
+                        message.insert(CHAN, req_chan);
+
+                        let stream = self.session.stream.as_ref().unwrap();
+                        stream.send(message);
+
+                        self.calling.insert(id, tx);
+                    },
+                    Packet::UnCall(id) => {
+                        self.calling.remove(&id);
+                    },
+                    Packet::Add(method, handle, labels) => {
+                        let req_chan = format!("RPC/REQ/{}", method);
+
+                        let mut msg = msg!{
+                            CHAN: ATTACH,
+                            VALUE: &req_chan
+                        };
+
+                        let mut labels_set = HashSet::new();
+
+                        if let Some(labels) = labels {
+                            for label in &labels {
+                                labels_set.insert(label.to_string());
+                            }
+
+                            msg.insert(LABEL, labels);
+                        }
+
+                        let stream = self.session.stream.as_ref().unwrap();
+                        stream.send(msg);
+
+                        self.session.chans.insert(req_chan.to_string(), labels_set);
+                        self.handles.insert(req_chan, Arc::new(handle));
+                    },
+                    Packet::Remove(method) => {
+                        let req_chan = format!("RPC/REQ/{}", method);
+
+                        let msg = msg!{
+                            CHAN: DETACH,
+                            VALUE: &req_chan
+                        };
+
+                        let stream = self.session.stream.as_ref().unwrap();
+                        stream.send(msg);
+
+                        self.handles.remove(&req_chan);
+                        self.session.chans.remove(&req_chan);
+                    },
+                    Packet::Response(message) => {
+                        let stream = self.session.stream.as_ref().unwrap();
+                        stream.send(message);
                     }
                 }
             }
@@ -374,7 +448,9 @@ impl PortBackend {
                             _ => ()
                         }
                     } else {
-                        self.handle_message(chan.to_string(), message);
+                        let chan = chan.to_string();
+                        self.handle_message(&chan, &message);
+                        self.handle_message2(&chan, message);
                     }
                 }
             }
@@ -383,7 +459,7 @@ impl PortBackend {
         Ok(())
     }
 
-    fn handle_message(&mut self, chan: String, message: Message) {
+    fn handle_message(&mut self, chan: &str, message: &Message) {
         if let Ok(_ok) = message.get_i32(OK) {
             if let Some(ids) = self.session.recvs.get(REPLY) {
                 for (_, tx, _) in ids {
@@ -401,7 +477,7 @@ impl PortBackend {
             return
         }
 
-        if let Some(ids) = self.session.recvs.get(&chan) {
+        if let Some(ids) = self.session.recvs.get(chan) {
             let mut labels = vec![];
 
             if let Some(label) = message.get(LABEL) {
@@ -442,6 +518,44 @@ impl PortBackend {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    fn handle_message2(&mut self, chan: &str, message: Message) {
+        if let Ok(_ok) = message.get_i32(OK) {
+            return
+        }
+
+        if chan == RPC_RECV {
+            let request_id = match message.get_message_id(REQUEST_ID) {
+                Ok(id) => id,
+                Err(_) => return
+            };
+
+            if let Some(tx) = self.calling.remove(request_id) {
+                if tx.is_needed() {
+                    tx.send(message);
+                }
+            }
+        } else {
+            let req_chan = match message.get_str(CHAN) {
+                Ok(chan) => chan,
+                Err(_) => return
+            };
+
+            let from_id = match message.get_message_id(FROM) {
+                Ok(id) => id,
+                Err(_) => return
+            };
+
+            let request_id = match message.get_message_id(REQUEST_ID) {
+                Ok(id) => id,
+                Err(_) => return
+            };
+
+            if let Some(handle) = self.handles.get(req_chan) {
+                self.worker_queue.push(Some((from_id.clone(), request_id.clone(), message, handle.clone())))
             }
         }
     }

@@ -16,13 +16,15 @@ fn connect_queen() {
     let port1 = Port::connect(
         MessageId::new(),
         Connector::Queen(queen.clone(), msg!{}),
-        msg!{"user": "test-user", "pass": "test-pass"}
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
     ).unwrap();
 
     let port2 = Port::connect(
         MessageId::new(),
         Connector::Queen(queen, msg!{}),
-        msg!{"user": "test-user", "pass": "test-pass"}
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
     ).unwrap();
 
     thread::sleep(Duration::from_secs(1));
@@ -61,13 +63,15 @@ fn connect_node() {
     let port1 = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(),Some(crypto.clone())),
-        msg!{"user": "test-user", "pass": "test-pass"}
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
     ).unwrap();
 
      let port2 = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(),Some(crypto)),
-        msg!{"user": "test-user", "pass": "test-pass"}
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
     ).unwrap();
 
     thread::sleep(Duration::from_secs(1));
@@ -121,13 +125,15 @@ fn connect_mulit_node() {
     let port1 = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr1).unwrap(),Some(crypto.clone())),
-        msg!{"user": "test-user", "pass": "test-pass"}
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
     ).unwrap();
 
      let port2 = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr2).unwrap(),Some(crypto)),
-        msg!{"user": "test-user", "pass": "test-pass"}
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
     ).unwrap();
 
     thread::sleep(Duration::from_secs(1));
