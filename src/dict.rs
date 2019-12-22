@@ -42,6 +42,7 @@ pub const QUERY_PORT: &str = "$port";
 
 // port
 pub const REPLY:   &str = "_reply";
+pub const UNKNOWN: &str = "_unknown";
 
 // rpc
 pub const REQUEST_ID: &str = "_reqid";

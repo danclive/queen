@@ -23,7 +23,7 @@ impl Iterator for Recv {
 
 impl Drop for Recv {
     fn drop(&mut self) {
-        self.port.inner.queue.push(Packet::Detach(self.id, self.chan.clone()));
+        self.port.inner.queue.push(Packet::Detach(self.id));
     }
 }
 
@@ -42,6 +42,6 @@ impl AsyncRecv {
 
 impl Drop for AsyncRecv {
     fn drop(&mut self) {
-        self.port.inner.queue.push(Packet::Detach(self.id, self.chan.clone()));
+        self.port.inner.queue.push(Packet::Detach(self.id));
     }
 }

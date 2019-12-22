@@ -6,7 +6,7 @@ use nson::{msg, MessageId};
 use queen::Queen;
 use queen::dict::*;
 use queen::error::ErrorCode;
-/*
+
 #[test]
 fn connect() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
@@ -289,6 +289,79 @@ fn label() {
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
+
+    let stream4 = queen.connect(msg!{}, None).unwrap();
+
+    // auth
+    stream4.send(msg!{
+        CHAN: AUTH
+    });
+
+    // attach
+    stream4.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        LABEL: "label1"
+    });
+
+    stream4.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        LABEL: "label2"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // send with label
+    stream3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        LABEL: "label1",
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // recv
+    let recv = stream4.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+
+    // detach
+    stream4.send(msg!{
+        CHAN: DETACH,
+        VALUE: "aaa",
+        LABEL: "label1"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // send with label
+    stream3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        LABEL: "label2",
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // recv
+    let recv = stream4.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
 }
 
 #[test]
@@ -547,6 +620,251 @@ fn labels() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     assert!(stream2.recv().is_none());
+
+    let stream4 = queen.connect(msg!{}, None).unwrap();
+
+    // auth
+    stream4.send(msg!{
+        CHAN: AUTH
+    });
+
+    // attach
+    stream4.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        LABEL: ["label1", "label2"]
+    });
+
+    stream4.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        LABEL: ["label3", "label4"]
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // send with label
+    stream3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        LABEL: "label1",
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // recv
+    let recv = stream4.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+
+    // detach
+    stream4.send(msg!{
+        CHAN: DETACH,
+        VALUE: "aaa",
+        LABEL: ["label2", "label3"]
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // send with label
+    stream3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        LABEL: "label1",
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // recv
+    let recv = stream4.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+}
+
+#[test]
+fn share() {
+    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+
+    let stream1 = queen.connect(msg!{}, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None).unwrap();
+    let stream3 = queen.connect(msg!{}, None).unwrap();
+    let stream4 = queen.connect(msg!{}, None).unwrap();
+
+    // auth
+    stream1.send(msg!{
+        CHAN: AUTH
+    });
+
+    stream2.send(msg!{
+        CHAN: AUTH
+    });
+
+    stream3.send(msg!{
+        CHAN: AUTH
+    });
+
+    stream4.send(msg!{
+        CHAN: AUTH
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // attatch
+    stream1.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa"
+    });
+
+    stream2.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // send
+    stream3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+
+    let recv = stream2.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+
+    // send with share
+    stream3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        SHARE: true,
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    let mut read_num = 0;
+
+    if stream1.recv().is_some() {
+        read_num += 1;
+    }
+
+    if stream2.recv().is_some() {
+        read_num += 1;
+    }
+
+    assert!(read_num == 1);
+
+    // with label
+
+    // attatch
+    stream1.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "bbb",
+        LABEL: "label1"
+    });
+
+    stream2.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "bbb",
+        LABEL: "label1"
+    });
+
+    stream3.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "bbb"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // send with share
+    stream4.send(msg!{
+        CHAN: "bbb",
+        "hello": "world",
+        LABEL: "label1",
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "bbb");
+    assert!(recv.get_str("hello").unwrap() == "world");
+
+    let recv = stream2.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "bbb");
+    assert!(recv.get_str("hello").unwrap() == "world");
+
+    assert!(stream3.recv().is_none());
+
+    // send with share
+    stream4.send(msg!{
+        CHAN: "bbb",
+        "hello": "world",
+        LABEL: "label1",
+        SHARE: true,
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    let mut read_num = 0;
+
+    if stream1.recv().is_some() {
+        read_num += 1;
+    }
+
+    if stream2.recv().is_some() {
+        read_num += 1;
+    }
+
+    assert!(read_num == 1);
+
+    assert!(stream3.recv().is_none());
 }
 
 #[test]
@@ -876,7 +1194,7 @@ fn port_event() {
     println!("{:?}", stream2.is_close());
     println!("{:?}", stream2.recv());
 }
-*/
+
 #[test]
 fn query() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();

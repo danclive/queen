@@ -480,7 +480,8 @@ impl<T> QueenInner<T> {
             {
 
                 let conn = self.conns.get_mut(token).unwrap();
-                conn.chans.insert(chan, labels);
+                let set = conn.chans.entry(chan).or_insert_with(HashSet::new);
+                set.extend(labels);
 
                 if let Some(port_id) = &conn.id {
                     event_msg.insert(PORT_ID, port_id.clone());
@@ -890,8 +891,11 @@ impl<T> QueenInner<T> {
                         if !labels.is_empty() {
                             let conn_labels = conn.chans.get(&chan).expect("It shouldn't be executed here!");
 
-                            if !conn_labels.iter().any(|l| labels.contains(l)) {
-                                continue
+                            // if !conn_labels.iter().any(|l| labels.contains(l)) {
+                            //     continue
+                            // }
+                            if (conn_labels & &labels).is_empty() {
+                                continue;
                             }
                         }
 

@@ -1,9 +1,9 @@
 [package]
 name          = "queen"
-version       = "0.5.5"
+version       = "0.5.6"
 license       = "MIT"
 authors       = ["danclive <dangcheng@hotmail.com>"]
-description   = "server"
+description   = "message queue"
 documentation = "https://docs.rs/queen"
 homepage      = "https://github.com/danclive/queen"
 repository    = "https://github.com/danclive/queen"

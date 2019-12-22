@@ -79,13 +79,13 @@ impl Port {
     pub fn recv(
         &self,
         chan: &str,
-        lables: Option<Vec<String>>
+        labels: Option<Vec<String>>
     ) -> Recv {
         let (tx, rx) = channel();
 
         let id = self.inner.recv_id.fetch_add(1, Ordering::SeqCst);
 
-        self.inner.queue.push(Packet::AttachBlock(id, chan.to_string(), lables, tx));
+        self.inner.queue.push(Packet::AttachBlock(id, chan.to_string(), labels, tx));
 
         Recv {
             port: self.clone(),
@@ -98,13 +98,13 @@ impl Port {
     pub fn async_recv(
         &self,
         chan: &str,
-        lables: Option<Vec<String>>
+        labels: Option<Vec<String>>
     ) -> io::Result<AsyncRecv> {
         let queue = Queue::with_cache(64)?;
 
         let id = self.inner.recv_id.fetch_add(1, Ordering::SeqCst);
 
-        self.inner.queue.push(Packet::AttachAsync(id, chan.to_string(), lables, queue.clone()));
+        self.inner.queue.push(Packet::AttachAsync(id, chan.to_string(), labels, queue.clone()));
 
         Ok(AsyncRecv {
             port: self.clone(),
@@ -118,12 +118,12 @@ impl Port {
         &self,
         chan: &str,
         mut msg: Message,
-        lable: Option<Vec<String>>
+        label: Option<Vec<String>>
     ) {
         msg.insert(CHAN, chan);
 
-        if let Some(lable) = lable {
-            msg.insert(LABEL, lable);
+        if let Some(label) = label {
+            msg.insert(LABEL, label);
         }
 
         if msg.get_message_id(ID).is_err() {
@@ -143,17 +143,16 @@ impl Port {
     pub fn call(
         &self,
         method: &str,
-        lables: Option<Vec<String>>,
+        labels: Option<Vec<String>>,
         mut request: Message,
         timeout: Option<Duration>
     ) -> Result<Message, ()> {
         let request_id = MessageId::new();
 
         request.insert(REQUEST_ID, request_id.clone());
-        request.insert(SHARE, true);
 
-        if let Some(lables) = lables {
-            request.insert(LABEL, lables);
+        if let Some(labels) = labels {
+            request.insert(LABEL, labels);
         }
 
         let (tx, rx) = oneshot::<Message>();
@@ -184,20 +183,26 @@ impl Port {
     pub fn add(
         &self,
         method: &str,
-        lables: Option<Vec<String>>,
+        labels: Option<Vec<String>>,
         handle: impl Fn(Message) -> Message + Sync + Send + 'static
-    ) {
+    ) -> usize {
+
+        let id = self.inner.recv_id.fetch_add(1, Ordering::SeqCst);
+
         let packet = Packet::Add(
+            id,
             method.to_string(),
             Box::new(handle),
-            lables
+            labels
         );
 
         self.inner.queue.push(packet);
+
+        id
     }
 
-    pub fn remove(&self, method: &str) {
-        self.inner.queue.push(Packet::Remove(method.to_string()))
+    pub fn remove(&self, id: usize) {
+        self.inner.queue.push(Packet::Remove(id))
     }
 
     pub fn id(&self) -> &MessageId {
