@@ -1,6 +1,6 @@
 // node
 pub const CHAN:    &str = "_chan";
-pub const CHANS:   &str = "_chans";
+pub const CHANS:   &str = "_chas";
 pub const AUTH:    &str = "_auth";
 pub const ATTACH:  &str = "_atta";
 pub const DETACH:  &str = "_deta";
@@ -17,6 +17,7 @@ pub const ACK:     &str = "_ack";
 pub const NONCE:   &str = "_nonc";
 pub const SUPER:   &str = "_supe";
 pub const ATTR:    &str = "_attr";
+pub const CUSTOM:  &str = "_cust";
 
 // message
 pub const ID:        &str = "_id";
