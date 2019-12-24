@@ -695,7 +695,7 @@ impl<T> QueenInner<T> {
         {
             let conn = &mut self.sessions.conns[token];
 
-            if !conn.auth || !conn.supe {
+            if !conn.auth {
                 ErrorCode::Unauthorized.insert_message(&mut message);
 
                 conn.stream.send(message);
@@ -705,7 +705,7 @@ impl<T> QueenInner<T> {
         }
 
         if let Some(custom_fn) = &self.callback.custom_fn {
-            custom_fn(&self.sessions, &mut message, &mut self.data);
+            custom_fn(&self.sessions, token, &mut message, &mut self.data);
         }
     }
 

@@ -24,7 +24,7 @@ type AttachFn<T> = Box<dyn Fn(&Session, &mut Message, &mut T) -> bool + Send>;
 type DetachFn<T> = Box<dyn Fn(&Session, &mut Message, &mut T) + Send>;
 type EmitFn<T> = Box<dyn Fn(&Session, &mut Message, &mut T) -> bool + Send>;
 type KillFn<T> = Box<dyn Fn(&Session, &mut Message, &mut T) -> bool + Send>;
-type CustomFn<T> = Box<dyn Fn(&Sessions, &mut Message, &mut T) + Send>;
+type CustomFn<T> = Box<dyn Fn(&Sessions, usize, &mut Message, &mut T) + Send>;
 
 impl<T> Callback<T> {
     pub fn new() -> Callback<T> {
@@ -78,7 +78,7 @@ impl<T> Callback<T> {
         self.kill_fn = Some(Box::new(f))
     }
 
-    pub fn custom<F>(&mut self, f: F) where F: Fn(&Sessions, &mut Message, &mut T) + Send + 'static {
+    pub fn custom<F>(&mut self, f: F) where F: Fn(&Sessions, usize, &mut Message, &mut T) + Send + 'static {
         self.custom_fn = Some(Box::new(f))
     }
 }
