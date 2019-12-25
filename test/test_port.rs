@@ -44,18 +44,14 @@ fn connect_queen() {
 #[test]
 fn connect_node() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
-
-    let crypto = (Method::Aes256Gcm, "sep-centre".to_string());
     let addr = get_free_addr();
 
-    let crypto2 = crypto.clone();
     let addr2 = addr.clone();
     thread::spawn(move || {
         let mut node = Node::new(
             queen,
             2,
-            vec![Addr::tcp(&addr2).unwrap()],
-            Some(crypto2)
+            vec![Addr::tcp(&addr2).unwrap()]
         ).unwrap();
 
         node.run().unwrap();
@@ -63,14 +59,14 @@ fn connect_node() {
 
     let port1 = Port::connect(
         MessageId::new(),
-        Connector::Net(Addr::tcp(&addr).unwrap(),Some(crypto.clone())),
+        Connector::Net(Addr::tcp(&addr).unwrap(), None),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
 
      let port2 = Port::connect(
         MessageId::new(),
-        Connector::Net(Addr::tcp(&addr).unwrap(),Some(crypto)),
+        Connector::Net(Addr::tcp(&addr).unwrap(), None),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
@@ -89,35 +85,183 @@ fn connect_node() {
 }
 
 #[test]
+fn connect_node_crypto() {
+    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+
+    let crypto = (Method::Aes256Gcm, "access_key".to_string(), "secret_key".to_string());
+    let addr = get_free_addr();
+
+    let addr2 = addr.clone();
+    thread::spawn(move || {
+        let mut node = Node::new(
+            queen,
+            2,
+            vec![Addr::tcp(&addr2).unwrap()]
+        ).unwrap();
+
+        node.set_access_fn(|access_key| {
+            assert!(access_key == access_key);
+
+            Some("secret_key".to_string())
+        });
+
+        node.run().unwrap();
+    });
+
+    let port1 = Port::connect(
+        MessageId::new(),
+        Connector::Net(Addr::tcp(&addr).unwrap(), Some(crypto.clone())),
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
+    ).unwrap();
+
+    let port2 = Port::connect(
+        MessageId::new(),
+        Connector::Net(Addr::tcp(&addr).unwrap(), Some(crypto)),
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
+    ).unwrap();
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = port1.async_recv("aaa", None).unwrap();
+
+    thread::sleep(Duration::from_secs(1));
+
+    port2.send("aaa", msg!{"hello": "world"}, None);
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(recv.recv().is_some());
+}
+
+#[test]
+fn connect_node_crypto2() {
+    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+
+    let crypto = (Method::Aes256Gcm, "access_key".to_string(), "secret_key".to_string());
+    let addr = get_free_addr();
+
+    let addr2 = addr.clone();
+    thread::spawn(move || {
+        let mut node = Node::new(
+            queen,
+            2,
+            vec![Addr::tcp(&addr2).unwrap()]
+        ).unwrap();
+
+        // node.set_access_fn(|access_key| {
+        //     assert!(access_key == access_key);
+
+        //     Some("secret_key".to_string())
+        // });
+
+        node.run().unwrap();
+    });
+
+    let port1 = Port::connect(
+        MessageId::new(),
+        Connector::Net(Addr::tcp(&addr).unwrap(), None),
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
+    ).unwrap();
+
+    let port2 = Port::connect(
+        MessageId::new(),
+        Connector::Net(Addr::tcp(&addr).unwrap(), Some(crypto)),
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
+    ).unwrap();
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = port1.async_recv("aaa", None).unwrap();
+
+    thread::sleep(Duration::from_secs(1));
+
+    port2.send("aaa", msg!{"hello": "world"}, None);
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(recv.recv().is_none());
+}
+
+#[test]
+fn connect_node_crypto3() {
+    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+
+    let crypto = (Method::Aes256Gcm, "access_key".to_string(), "secret_key".to_string());
+    let addr = get_free_addr();
+
+    let addr2 = addr.clone();
+    thread::spawn(move || {
+        let mut node = Node::new(
+            queen,
+            2,
+            vec![Addr::tcp(&addr2).unwrap()]
+        ).unwrap();
+
+        node.set_access_fn(|access_key| {
+            assert!(access_key == access_key);
+
+            Some("secret_key".to_string())
+        });
+
+        node.run().unwrap();
+    });
+
+    let port1 = Port::connect(
+        MessageId::new(),
+        Connector::Net(Addr::tcp(&addr).unwrap(), Some(crypto.clone())),
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
+    ).unwrap();
+
+    let port2 = Port::connect(
+        MessageId::new(),
+        Connector::Net(Addr::tcp(&addr).unwrap(), None),
+        msg!{"user": "test-user", "pass": "test-pass"},
+        2
+    ).unwrap();
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = port1.async_recv("aaa", None).unwrap();
+
+    thread::sleep(Duration::from_secs(1));
+
+    port2.send("aaa", msg!{"hello": "world"}, None);
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(recv.recv().is_none());
+}
+
+#[test]
 fn connect_mulit_node() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let crypto = (Method::Aes256Gcm, "sep-centre".to_string());
     let addr1 = get_free_addr();
     let addr2 = get_free_addr();
 
     let queen2 = queen.clone();
-    let crypto2 = crypto.clone();
     let addr = addr1.clone();
     thread::spawn(move || {
         let mut node = Node::new(
             queen2,
             2,
-            vec![Addr::tcp(&addr).unwrap()],
-            Some(crypto2)
+            vec![Addr::tcp(&addr).unwrap()]
         ).unwrap();
 
         node.run().unwrap();
     });
 
-    let crypto2 = crypto.clone();
     let addr = addr2.clone();
     thread::spawn(move || {
         let mut node = Node::new(
             queen,
             2,
-            vec![Addr::tcp(&addr).unwrap()],
-            Some(crypto2)
+            vec![Addr::tcp(&addr).unwrap()]
         ).unwrap();
 
         node.run().unwrap();
@@ -125,14 +269,14 @@ fn connect_mulit_node() {
 
     let port1 = Port::connect(
         MessageId::new(),
-        Connector::Net(Addr::tcp(&addr1).unwrap(),Some(crypto.clone())),
+        Connector::Net(Addr::tcp(&addr1).unwrap(), None),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
 
      let port2 = Port::connect(
         MessageId::new(),
-        Connector::Net(Addr::tcp(&addr2).unwrap(),Some(crypto)),
+        Connector::Net(Addr::tcp(&addr2).unwrap(), None),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();

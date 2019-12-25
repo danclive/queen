@@ -5,6 +5,6 @@ use crate::net::Addr;
 use crate::crypto::Method;
 
 pub enum Connector {
-    Net(Addr, Option<(Method, String)>),
+    Net(Addr, Option<(Method, String, String)>),
     Queen(Queen, Message)
 }

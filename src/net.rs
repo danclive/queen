@@ -1,7 +1,7 @@
 pub use addr::Addr;
 pub use listen::Listen;
 pub use net_stream::NetStream;
-pub use net_work::{NetWork, Packet};
+pub use net_work::{NetWork, Packet, AccessFn};
 
 mod addr;
 mod listen;

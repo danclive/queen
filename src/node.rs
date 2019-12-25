@@ -11,8 +11,7 @@ use rand::{self, thread_rng, rngs::ThreadRng};
 use rand::seq::SliceRandom;
 
 use crate::Queen;
-use crate::net::{Listen, Addr, NetWork, Packet};
-use crate::crypto::Method;
+use crate::net::{Listen, Addr, NetWork, Packet, AccessFn};
 
 pub struct Node {
     queen: Queen,
@@ -21,7 +20,7 @@ pub struct Node {
     queues: Vec<Queue<Packet>>,
     listens: Vec<Listen>,
     rand: ThreadRng,
-    cryoto: Option<(Method, String)>,
+    access_fn: Option<AccessFn>,
     run: Arc<AtomicBool>
 }
 
@@ -29,8 +28,7 @@ impl Node {
     pub fn new(
         queen: Queen,
         works: usize,
-        addrs: Vec<Addr>,
-        cryoto: Option<(Method, String)>
+        addrs: Vec<Addr>
     ) -> io::Result<Node> {
         let run = Arc::new(AtomicBool::new(true));
 
@@ -63,9 +61,15 @@ impl Node {
             queues,
             listens,
             rand: thread_rng(),
-            cryoto,
+            access_fn: None,
             run
         })
+    }
+
+    pub fn set_access_fn<F>(&mut self, f: F)
+        where F: Fn(String) -> Option<String> + Send + Sync + 'static
+    {
+        self.access_fn = Some(Arc::new(Box::new(f)))
     }
 
     pub fn run(&mut self) -> io::Result<()> {
@@ -98,7 +102,7 @@ impl Node {
                         match self.queen.connect(attr, None) {
                             Ok(stream) => {
                                 if let Some(queue) = self.queues.choose(&mut self.rand) {
-                                    queue.push(Packet::NewConn(stream, socket, self.cryoto.clone()));
+                                    queue.push(Packet::NewServ(stream, socket, self.access_fn.clone()));
                                 }
                             },
                             Err(err) => {

@@ -2,11 +2,12 @@ use std::collections::{VecDeque};
 use std::io::{self, Write, Read, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::str::FromStr;
 
 use queen_io::epoll::{Epoll, Event, Events, Token, Ready, EpollOpt};
 use queen_io::queue::spsc::Queue;
 
-use nson::Message;
+use nson::{Message, Value};
 
 use slab::Slab;
 
@@ -14,9 +15,13 @@ use crate::Stream;
 use crate::crypto::{Method, Aead};
 use crate::net::{NetStream};
 use crate::util::message::slice_msg;
+use crate::dict::*;
+
+pub type AccessFn = Arc<Box<dyn Fn(String) -> Option<String> + Send + Sync>>;
 
 pub enum Packet {
-    NewConn(Stream, NetStream, Option<(Method, String)>)
+    NewConn(Stream, NetStream, Option<(Method, String, String)>), // crypto method, access, secret
+    NewServ(Stream, NetStream, Option<AccessFn>)
 }
 
 pub struct NetWork {
@@ -32,8 +37,8 @@ impl NetWork {
     const START_TOKEN: usize = 2;
     const QUEUE_TOKEN: usize = 0;
 
-    pub fn new(queue: Queue<Packet>, run: Arc<AtomicBool>) -> io::Result<NetWork> {
-        Ok(NetWork {
+    pub fn new(queue: Queue<Packet>, run: Arc<AtomicBool>) -> io::Result<Self> {
+        Ok(Self {
             epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
             queue,
@@ -81,13 +86,57 @@ impl NetWork {
                 
                     entry1.insert(StreamConn::new(id, stream));
 
-                    let mut aead = None;
+                    let mut conn = NetConn::new(id2, net_stream);
 
-                    if let Some((method, key)) = crypto {
-                        aead = Some(Aead::new(&method, key.as_bytes()));
+                    // handshake message
+                    let mut msg = Message::new();
+                    let mut crypto2 = None;
+
+                    if let Some((method, access, secret)) = crypto {
+                        let nonce = Aead::rand_nonce();
+                        let aead = Aead::new(&method, secret.as_bytes());
+
+                        crypto2 = Some(Crypto {
+                            aead,
+                            r_nonce: nonce,
+                            w_nonce: nonce
+                        });
+
+                        msg.insert(HANDSHAKE, method.as_str());
+                        msg.insert(ACCESS, access);
+                        msg.insert(NONCE, Value::Binary(nonce.to_vec()));
+                    } else {
+                        msg.insert(HANDSHAKE, "");
                     }
 
-                    entry2.insert(NetConn::new(id2, net_stream, aead));
+                    conn.push_data(&self.epoll, msg)?;
+
+                    conn.role = Role::Conn;
+                    conn.crypto = crypto2;
+                    conn.handshake = true;
+
+                    entry2.insert(conn);
+                }
+                Packet::NewServ(stream, net_stream, access_fn) => {
+                    let entry1 = self.streams.vacant_entry();
+                    let entry2 = self.nets.vacant_entry();
+
+                    assert_eq!(entry1.key(), entry2.key());
+
+                    let id = Self::START_TOKEN + entry1.key() * 2;
+                    let id2 = Self::START_TOKEN + entry2.key() * 2 + 1;
+
+                    self.epoll.add(&stream, Token(id), Ready::readable(), EpollOpt::level())?;
+                    self.epoll.add(&net_stream, Token(id2), Ready::readable() | Ready::hup(), EpollOpt::edge())?;
+                
+                    entry1.insert(StreamConn::new(id, stream));
+
+                    let mut conn = NetConn::new(id2, net_stream);
+
+                    conn.role = Role::Serv;
+                    conn.access_fn = access_fn;
+
+                    entry2.insert(conn);
                 }
             }
         }
@@ -186,7 +235,16 @@ struct NetConn {
     interest: Ready,
     r_buffer: Vec<u8>,
     w_buffer: VecDeque<Vec<u8>>,
+    handshake: bool,
+    role: Role,
+    access_fn: Option<AccessFn>,
     crypto: Option<Crypto>
+}
+
+#[derive(Debug)]
+enum Role {
+    Conn,
+    Serv
 }
 
 struct Crypto {
@@ -196,20 +254,17 @@ struct Crypto {
 }
 
 impl NetConn {
-    fn new(id: usize, stream: NetStream, aead: Option<Aead>) -> NetConn {
-        NetConn {
+    fn new(id: usize, stream: NetStream) -> Self {
+        Self {
             id,
             stream,
             interest: Ready::readable() | Ready::hup(),
             r_buffer: Vec::new(),
             w_buffer: VecDeque::new(),
-            crypto: aead.and_then(|aead| {
-                Some(Crypto {
-                    aead,
-                    r_nonce: Aead::init_nonce(),
-                    w_nonce: Aead::init_nonce()
-                })
-            })
+            handshake: false,
+            role: Role::Conn,
+            access_fn: None,
+            crypto: None
         }
     }
 
@@ -229,20 +284,92 @@ impl NetConn {
                         let vec = slice_msg(&mut self.r_buffer, &buf[..size])?;
 
                         for mut data in vec {
-                            if let Some(crypto) = &mut self.crypto {
-                                Aead::increase_nonce(&mut crypto.r_nonce);
+                            if self.handshake {
+                                if let Some(crypto) = &mut self.crypto {
+                                    Aead::increase_nonce(&mut crypto.r_nonce);
 
-                                if crypto.aead.decrypt(crypto.r_nonce, &mut data).is_err() {
-                                    return Err(io::Error::new(InvalidData, "InvalidData"))
+                                    if crypto.aead.decrypt(crypto.r_nonce, &mut data).is_err() {
+                                        return Err(io::Error::new(InvalidData, "InvalidData"))
+                                    }
                                 }
-                            }
 
-                            match Message::from_slice(&data) {
-                                Ok(message) => {
-                                    stream_conn.stream.send(message);
-                                },
-                                Err(_err) => {
-                                    return Err(io::Error::new(InvalidData, "InvalidData"))
+                                match Message::from_slice(&data) {
+                                    Ok(message) => {
+                                        stream_conn.stream.send(message);
+                                    },
+                                    Err(_err) => {
+                                        return Err(io::Error::new(InvalidData, "InvalidData"))
+                                    }
+                                }
+                            } else {
+                                match &self.role {
+                                    Role::Conn => return Err(io::Error::new(InvalidData, "InvalidData")),
+                                    Role::Serv => {
+                                        let message =  match Message::from_slice(&data) {
+                                            Ok(message) => {
+                                                message
+                                            },
+                                            Err(_err) => {
+                                                return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            }
+                                        };
+
+                                        let handshake = if let Ok(handshake) = message.get_str(HANDSHAKE) {
+                                            handshake
+                                        } else {
+                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                        };
+
+                                        if handshake == "" {
+                                            if self.access_fn.is_none() {
+                                                    self.handshake = true;
+                                            } else {
+                                                return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            }
+                                        } else {
+                                            if self.access_fn.is_none() {
+                                                return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            };
+
+                                            let method = if let Ok(method) = Method::from_str(handshake) {
+                                                method
+                                            } else {
+                                                return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            };
+
+                                            let access = if let Ok(access) = message.get_str(ACCESS) {
+                                                access
+                                            } else {
+                                                return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            };
+
+                                            let nonce = if let Ok(nonce) = message.get_binary(NONCE) {
+                                                nonce
+                                            } else {
+                                                return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            };
+
+                                            let secret = if let Some(secret) = self.access_fn.as_ref().unwrap()(access.to_string()) {
+                                                secret
+                                            } else {
+                                                return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            };
+
+                                            let mut buf = [0u8; Aead::NONCE_LEN];
+
+                                            Aead::set_nonce(&mut buf, nonce);
+
+                                            let aead = Aead::new(&method, secret.as_bytes());
+
+                                            self.crypto = Some(Crypto {
+                                                aead,
+                                                r_nonce: buf,
+                                                w_nonce: buf
+                                            });
+
+                                            self.handshake = true;
+                                        }
+                                    }
                                 }
                             }
                         }

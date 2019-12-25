@@ -1,4 +1,5 @@
 use std::cmp;
+use std::str::FromStr;
 
 use ring::aead::{Algorithm, LessSafeKey, Nonce, UnboundKey, Aad};
 use ring::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305};
@@ -6,6 +7,8 @@ use ring::digest;
 use ring::error;
 
 use rand::{self, thread_rng, Rng};
+
+use crate::dict;
 
 #[derive(Debug, Clone)]
 pub enum Method {
@@ -15,11 +18,32 @@ pub enum Method {
 }
 
 impl Method {
-    fn algorithm(&self) -> &'static Algorithm {
+    pub fn algorithm(&self) -> &'static Algorithm {
         match self {
             Method::Aes128Gcm => &AES_128_GCM,
             Method::Aes256Gcm => &AES_256_GCM,
             Method::ChaCha20Poly1305 => &CHACHA20_POLY1305
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Method::Aes128Gcm => dict::AES_128_GCM,
+            Method::Aes256Gcm => dict::AES_256_GCM,
+            Method::ChaCha20Poly1305 => dict::CHACHA20_POLY1305
+        }
+    }
+}
+
+impl FromStr for Method {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            dict::AES_128_GCM => Ok(Method::Aes128Gcm),
+            dict::AES_256_GCM => Ok(Method::Aes256Gcm),
+            dict::CHACHA20_POLY1305 => Ok(Method::ChaCha20Poly1305),
+            _ => Err(())
         }
     }
 }
@@ -102,7 +126,7 @@ impl Aead {
         }
     }
 
-    pub fn set_nonce(&mut self, nonce: &mut [u8; Self::NONCE_LEN], bytes: &[u8]) {
+    pub fn set_nonce(nonce: &mut [u8; Self::NONCE_LEN], bytes: &[u8]) {
         let min = cmp::min(nonce.len(), bytes.len());
         nonce[..min].clone_from_slice(&bytes[..min]);
     }

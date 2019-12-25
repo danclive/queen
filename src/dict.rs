@@ -37,8 +37,18 @@ pub const PORT_KILL:   &str = "_ptki";
 // query
 pub const QUERY_PORT_NUM: &str = "$port_num";
 pub const QUERY_CHAN_NUM: &str = "$chan_num";
-pub const QUERY_PORTS: &str = "$ports";
-pub const QUERY_PORT: &str = "$port";
+pub const QUERY_PORTS:    &str = "$ports";
+pub const QUERY_PORT:     &str = "$port";
+
+// crypto
+pub const AES_128_GCM:       &str = "AES_128_GCM";
+pub const AES_256_GCM:       &str = "AES_256_GCM";
+pub const CHACHA20_POLY1305: &str = "CHACHA20_POLY1305";
+pub const NONCE:             &str = "_nonc";
+
+// network
+pub const HANDSHAKE: &str = "_hand";
+pub const ACCESS:    &str = "_acce";
 
 // port
 pub const REPLY:   &str = "_reply";
@@ -46,4 +56,4 @@ pub const UNKNOWN: &str = "_unknown";
 
 // rpc
 pub const REQUEST_ID: &str = "_reqid";
-pub const RPC_RECV: &str = "RPC/RECV";
+pub const RPC_RECV:   &str = "RPC/RECV";
