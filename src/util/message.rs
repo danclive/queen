@@ -1,8 +1,8 @@
 use std::mem;
-use std::io::{self, Read, Write, Error, ErrorKind::InvalidData};
+use std::io::{self, Error, ErrorKind::InvalidData};
 
 use crate::MAX_MESSAGE_LEN;
-use crate::crypto::Aead;
+// use crate::crypto::Aead;
 
 #[inline]
 pub fn get_length(buf: &[u8], start: usize) -> usize {
@@ -118,55 +118,55 @@ pub fn slice_msg(buf1: &mut Vec<u8>, buf2: &[u8]) -> io::Result<Vec<Vec<u8>>>{
     Ok(messages)
 }
 
-pub fn write_socket(writer: &mut impl Write, aead: &mut Aead, mut data: Vec<u8>) -> io::Result<usize> {
-    if aead.encrypt(&mut data).is_err() {
-        return Err(Error::new(InvalidData, "InvalidData"))
-    }
+// pub fn write_socket(writer: &mut impl Write, aead: &mut Aead, mut data: Vec<u8>) -> io::Result<usize> {
+//     if aead.encrypt(&mut data).is_err() {
+//         return Err(Error::new(InvalidData, "InvalidData"))
+//     }
 
-    writer.write(&data)
-}
+//     writer.write(&data)
+// }
 
-pub fn write_socket_no_aead(writer: &mut impl Write, data: Vec<u8>) -> io::Result<usize> {
-    writer.write(&data)
-}
+// pub fn write_socket_no_aead(writer: &mut impl Write, data: Vec<u8>) -> io::Result<usize> {
+//     writer.write(&data)
+// }
 
-pub fn read_socket(reader: &mut impl Read, aead: &mut Aead) -> io::Result<Vec<u8>> {
-    let mut len_buf = [0u8; 4];
-    reader.read_exact(&mut len_buf)?;
+// pub fn read_socket(reader: &mut impl Read, aead: &mut Aead) -> io::Result<Vec<u8>> {
+//     let mut len_buf = [0u8; 4];
+//     reader.read_exact(&mut len_buf)?;
 
-    let len = get_length(&len_buf, 0);
+//     let len = get_length(&len_buf, 0);
 
-    let mut buf = vec![0u8; len - 4];
-    reader.read_exact(&mut buf)?;
+//     let mut buf = vec![0u8; len - 4];
+//     reader.read_exact(&mut buf)?;
 
-    let mut data: Vec<u8> = Vec::with_capacity(128);
+//     let mut data: Vec<u8> = Vec::with_capacity(128);
 
-    data.extend_from_slice(&len_buf);
-    data.extend_from_slice(&buf);
+//     data.extend_from_slice(&len_buf);
+//     data.extend_from_slice(&buf);
 
-    if aead.encrypt(&mut data).is_err() {
-        return Err(Error::new(InvalidData, "InvalidData"))
-    }
+//     if aead.encrypt(&mut data).is_err() {
+//         return Err(Error::new(InvalidData, "InvalidData"))
+//     }
 
-    Ok(data)
-}
+//     Ok(data)
+// }
 
-pub fn read_socket_no_aead(reader: &mut impl Read) -> io::Result<Vec<u8>> {
-    let mut len_buf = [0u8; 4];
-    reader.read_exact(&mut len_buf)?;
+// pub fn read_socket_no_aead(reader: &mut impl Read) -> io::Result<Vec<u8>> {
+//     let mut len_buf = [0u8; 4];
+//     reader.read_exact(&mut len_buf)?;
 
-    let len = get_length(&len_buf, 0);
+//     let len = get_length(&len_buf, 0);
 
-    let mut buf = vec![0u8; len - 4];
-    reader.read_exact(&mut buf)?;
+//     let mut buf = vec![0u8; len - 4];
+//     reader.read_exact(&mut buf)?;
 
-    let mut data: Vec<u8> = Vec::with_capacity(128);
+//     let mut data: Vec<u8> = Vec::with_capacity(128);
 
-    data.extend_from_slice(&len_buf);
-    data.extend_from_slice(&buf);
+//     data.extend_from_slice(&len_buf);
+//     data.extend_from_slice(&buf);
 
-    Ok(data)
-}
+//     Ok(data)
+// }
 
 #[cfg(test)]
 mod test {

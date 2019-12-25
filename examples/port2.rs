@@ -7,7 +7,6 @@ use std::io::{Write, Read};
 
 use queen::nson::msg;
 use queen::nson::{Message, MessageId};
-use queen::util::message::{write_socket, read_socket, read_socket_no_aead};
 use queen::crypto::{Method, Aead};
 use queen::dict::*;
 use queen::port::Port;

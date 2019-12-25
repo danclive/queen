@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use queen_io::epoll::{Epoll, Event, Events, Token, Ready, EpollOpt};
 use queen_io::queue::spsc::Queue;
 
-use nson::{Message};
+use nson::Message;
 
 use slab::Slab;
 
@@ -39,6 +39,7 @@ impl NetWork {
             queue,
             streams: Slab::new(),
             nets: Slab::new(),
+
             run
         })
     }
@@ -126,7 +127,7 @@ impl NetWork {
 
     fn push_data(&mut self, index: usize, message: Message) -> io::Result<()> {
         if let Some(net_conn) = self.nets.get_mut(index) {
-            net_conn.push_data(&self.epoll, message.to_vec().unwrap())?;
+            net_conn.push_data(&self.epoll, message)?;
         }
 
         Ok(())
@@ -185,7 +186,13 @@ struct NetConn {
     interest: Ready,
     r_buffer: Vec<u8>,
     w_buffer: VecDeque<Vec<u8>>,
-    aead: Option<Aead>
+    crypto: Option<Crypto>
+}
+
+struct Crypto {
+    aead: Aead,
+    r_nonce: [u8; Aead::NONCE_LEN],
+    w_nonce: [u8; Aead::NONCE_LEN]
 }
 
 impl NetConn {
@@ -196,7 +203,13 @@ impl NetConn {
             interest: Ready::readable() | Ready::hup(),
             r_buffer: Vec::new(),
             w_buffer: VecDeque::new(),
-            aead
+            crypto: aead.and_then(|aead| {
+                Some(Crypto {
+                    aead,
+                    r_nonce: Aead::init_nonce(),
+                    w_nonce: Aead::init_nonce()
+                })
+            })
         }
     }
 
@@ -216,14 +229,18 @@ impl NetConn {
                         let vec = slice_msg(&mut self.r_buffer, &buf[..size])?;
 
                         for mut data in vec {
-                            if let Some(aead) = &mut self.aead {
-                                if aead.decrypt(&mut data).is_err() {
+                            if let Some(crypto) = &mut self.crypto {
+                                Aead::increase_nonce(&mut crypto.r_nonce);
+
+                                if crypto.aead.decrypt(crypto.r_nonce, &mut data).is_err() {
                                     return Err(io::Error::new(InvalidData, "InvalidData"))
                                 }
                             }
 
                             match Message::from_slice(&data) {
-                                Ok(message) => stream_conn.stream.send(message),
+                                Ok(message) => {
+                                    stream_conn.stream.send(message);
+                                },
                                 Err(_err) => {
                                     return Err(io::Error::new(InvalidData, "InvalidData"))
                                 }
@@ -280,9 +297,13 @@ impl NetConn {
         Ok(())
     }
 
-    fn push_data(&mut self, epoll: &Epoll, mut data: Vec<u8>) -> io::Result<()> {
-        if let Some(aead) = &mut self.aead {
-            aead.encrypt(&mut data).expect("encrypt error");
+    fn push_data(&mut self, epoll: &Epoll, message: Message) -> io::Result<()> {
+        let mut data = message.to_vec().unwrap();
+
+        if let Some(crypto) = &mut self.crypto {
+            Aead::increase_nonce(&mut crypto.w_nonce);
+
+            crypto.aead.encrypt(crypto.w_nonce, &mut data).expect("encrypt error");
         }
 
         self.w_buffer.push_back(data);

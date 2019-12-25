@@ -14,7 +14,6 @@ pub const TO:      &str = "_to";
 pub const FROM:    &str = "_from";
 pub const SHARE:   &str = "_shar";
 pub const ACK:     &str = "_ack";
-pub const NONCE:   &str = "_nonc";
 pub const SUPER:   &str = "_supe";
 pub const ATTR:    &str = "_attr";
 pub const CUSTOM:  &str = "_cust";

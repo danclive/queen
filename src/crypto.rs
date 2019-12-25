@@ -5,6 +5,8 @@ use ring::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305};
 use ring::digest;
 use ring::error;
 
+use rand::{self, thread_rng, Rng};
+
 #[derive(Debug, Clone)]
 pub enum Method {
     Aes128Gcm,
@@ -24,17 +26,18 @@ impl Method {
 
 impl Default for Method {
     fn default() -> Self {
-        Method::Aes256Gcm
+        Method::Aes128Gcm
     }
 }
 
 #[derive(Debug)]
 pub struct Aead {
-    aead: LessSafeKey,
-    nonce: Vec<u8>
+    inner: LessSafeKey
 }
 
 impl Aead {
+    pub const NONCE_LEN: usize = 96 / 8;
+
     pub fn new(method: &Method, key: &[u8]) -> Aead {
         let algorithm = method.algorithm();
 
@@ -42,29 +45,16 @@ impl Aead {
         let key = digest::digest(&digest::SHA256, key).as_ref().to_vec();
 
         let key = UnboundKey::new(algorithm, &key[0..key_len]).expect("Fails if key_bytes.len() != algorithm.key_len()`.");
-        let aead = LessSafeKey::new(key);
-
-        let nonce_len = algorithm.nonce_len();
-        let mut nonce = vec![0u8; nonce_len];
-
-        nonce[..5].clone_from_slice(&[113, 117, 101, 101, 110]);
 
         Aead {
-            aead,
-            nonce
+            inner: LessSafeKey::new(key)
         }
     }
 
-    pub fn set_nonce(&mut self, nonce: &[u8]) {
-        let min = cmp::min(self.nonce.len(), nonce.len());
+    pub fn encrypt(&mut self, nonce: [u8; Self::NONCE_LEN], in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
+        let nonce = Nonce::assume_unique_for_key(nonce);
 
-        self.nonce[..min].clone_from_slice(&nonce[..min])
-    }
-
-    pub fn encrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
-        let nonce = Nonce::try_assume_unique_for_key(&self.nonce).unwrap();
-
-        let tag = self.aead.seal_in_place_separate_tag(nonce, Aad::empty(), &mut in_out[4..])?;
+        let tag = self.inner.seal_in_place_separate_tag(nonce, Aad::empty(), &mut in_out[4..])?;
 
         in_out.extend_from_slice(tag.as_ref());
 
@@ -74,18 +64,46 @@ impl Aead {
         Ok(())
     }
 
-    pub fn decrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
-        let nonce = Nonce::try_assume_unique_for_key(&self.nonce).unwrap();
+    pub fn decrypt(&mut self, nonce: [u8; Self::NONCE_LEN], in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
+        let nonce = Nonce::assume_unique_for_key(nonce);
 
-        self.aead.open_in_place(nonce, Aad::empty(), &mut in_out[4..]).map(|_| {})?;
+        self.inner.open_in_place(nonce, Aad::empty(), &mut in_out[4..]).map(|_| {})?;
 
-        unsafe {
-            in_out.set_len(in_out.len() - self.aead.algorithm().tag_len());
-        }
+        in_out.truncate(in_out.len() - self.inner.algorithm().tag_len());
 
         let len = (in_out.len() as i32).to_le_bytes();
         in_out[..4].clone_from_slice(&len);
 
         Ok(())
+    }
+
+    pub fn init_nonce() -> [u8; Self::NONCE_LEN] {
+        let mut nonce = [0u8; Self::NONCE_LEN];
+        nonce[..5].clone_from_slice(&[113, 117, 101, 101, 110]);
+
+        nonce
+    }
+
+    pub fn rand_nonce() -> [u8; Self::NONCE_LEN] {
+        let mut buf = [0u8; Self::NONCE_LEN];
+        thread_rng().fill(&mut buf);
+
+        buf
+    }
+
+    pub fn increase_nonce(nonce: &mut [u8; Self::NONCE_LEN]) {
+        for i in nonce {
+            if std::u8::MAX == *i {
+                *i = 0;
+            } else {
+                *i += 1;
+                return;
+            }
+        }
+    }
+
+    pub fn set_nonce(&mut self, nonce: &mut [u8; Self::NONCE_LEN], bytes: &[u8]) {
+        let min = cmp::min(nonce.len(), bytes.len());
+        nonce[..min].clone_from_slice(&bytes[..min]);
     }
 }
