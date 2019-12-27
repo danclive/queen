@@ -56,7 +56,8 @@ impl Default for Method {
 
 #[derive(Debug)]
 pub struct Aead {
-    inner: LessSafeKey
+    inner: LessSafeKey,
+    nonce: [u8; Aead::NONCE_LEN]
 }
 
 impl Aead {
@@ -71,16 +72,19 @@ impl Aead {
         let key = UnboundKey::new(algorithm, &key[0..key_len]).expect("Fails if key_bytes.len() != algorithm.key_len()`.");
 
         Aead {
-            inner: LessSafeKey::new(key)
+            inner: LessSafeKey::new(key),
+            nonce: Self::rand_nonce()
         }
     }
 
-    pub fn encrypt(&mut self, nonce: [u8; Self::NONCE_LEN], in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
-        let nonce = Nonce::assume_unique_for_key(nonce);
+    pub fn encrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
+        Self::increase_nonce(&mut self.nonce);
+        let nonce = Nonce::assume_unique_for_key(self.nonce);
 
         let tag = self.inner.seal_in_place_separate_tag(nonce, Aad::empty(), &mut in_out[4..])?;
 
         in_out.extend_from_slice(tag.as_ref());
+        in_out.extend_from_slice(&self.nonce);
 
         let len = (in_out.len() as i32).to_le_bytes();
         in_out[..4].clone_from_slice(&len);
@@ -88,12 +92,14 @@ impl Aead {
         Ok(())
     }
 
-    pub fn decrypt(&mut self, nonce: [u8; Self::NONCE_LEN], in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
-        let nonce = Nonce::assume_unique_for_key(nonce);
+    pub fn decrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
+        let nonce = Nonce::try_assume_unique_for_key(&in_out[(in_out.len() - Self::NONCE_LEN)..])?;
 
-        self.inner.open_in_place(nonce, Aad::empty(), &mut in_out[4..]).map(|_| {})?;
+        let end = in_out.len() - Self::NONCE_LEN;
 
-        in_out.truncate(in_out.len() - self.inner.algorithm().tag_len());
+        self.inner.open_in_place(nonce, Aad::empty(), &mut in_out[4..end]).map(|_| {})?;
+
+        in_out.truncate(in_out.len() - self.inner.algorithm().tag_len() - Self::NONCE_LEN);
 
         let len = (in_out.len() as i32).to_le_bytes();
         in_out[..4].clone_from_slice(&len);

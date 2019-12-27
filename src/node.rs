@@ -21,7 +21,7 @@ pub struct Node {
     listens: Vec<Listen>,
     rand: ThreadRng,
     access_fn: Option<AccessFn>,
-    run: Arc<AtomicBool>
+    pub run: Arc<AtomicBool>
 }
 
 impl Node {

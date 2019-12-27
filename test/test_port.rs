@@ -100,8 +100,7 @@ fn connect_node_crypto() {
         ).unwrap();
 
         node.set_access_fn(|access_key| {
-            assert!(access_key == access_key);
-
+            assert!(access_key == "access_key");
             Some("secret_key".to_string())
         });
 
@@ -111,14 +110,14 @@ fn connect_node_crypto() {
     let port1 = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(), Some(crypto.clone())),
-        msg!{"user": "test-user", "pass": "test-pass"},
+        msg!{},
         2
     ).unwrap();
 
     let port2 = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(), Some(crypto)),
-        msg!{"user": "test-user", "pass": "test-pass"},
+        msg!{},
         2
     ).unwrap();
 

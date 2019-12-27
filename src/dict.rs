@@ -44,7 +44,6 @@ pub const QUERY_PORT:     &str = "$port";
 pub const AES_128_GCM:       &str = "AES_128_GCM";
 pub const AES_256_GCM:       &str = "AES_256_GCM";
 pub const CHACHA20_POLY1305: &str = "CHACHA20_POLY1305";
-pub const NONCE:             &str = "_nonc";
 
 // network
 pub const HANDSHAKE: &str = "_hand";

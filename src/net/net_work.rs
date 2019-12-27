@@ -7,7 +7,7 @@ use std::str::FromStr;
 use queen_io::epoll::{Epoll, Event, Events, Token, Ready, EpollOpt};
 use queen_io::queue::spsc::Queue;
 
-use nson::{Message, Value};
+use nson::Message;
 
 use slab::Slab;
 
@@ -93,18 +93,12 @@ impl NetWork {
                     let mut crypto2 = None;
 
                     if let Some((method, access, secret)) = crypto {
-                        let nonce = Aead::rand_nonce();
                         let aead = Aead::new(&method, secret.as_bytes());
 
-                        crypto2 = Some(Crypto {
-                            aead,
-                            r_nonce: nonce,
-                            w_nonce: nonce
-                        });
+                        crypto2 = Some(aead);
 
                         msg.insert(HANDSHAKE, method.as_str());
                         msg.insert(ACCESS, access);
-                        msg.insert(NONCE, Value::Binary(nonce.to_vec()));
                     } else {
                         msg.insert(HANDSHAKE, "");
                     }
@@ -238,19 +232,13 @@ struct NetConn {
     handshake: bool,
     role: Role,
     access_fn: Option<AccessFn>,
-    crypto: Option<Crypto>
+    crypto: Option<Aead>
 }
 
 #[derive(Debug)]
 enum Role {
     Conn,
     Serv
-}
-
-struct Crypto {
-    aead: Aead,
-    r_nonce: [u8; Aead::NONCE_LEN],
-    w_nonce: [u8; Aead::NONCE_LEN]
 }
 
 impl NetConn {
@@ -285,10 +273,8 @@ impl NetConn {
 
                         for mut data in vec {
                             if self.handshake {
-                                if let Some(crypto) = &mut self.crypto {
-                                    Aead::increase_nonce(&mut crypto.r_nonce);
-
-                                    if crypto.aead.decrypt(crypto.r_nonce, &mut data).is_err() {
+                                if let Some(aead) = &mut self.crypto {
+                                    if aead.decrypt(&mut data).is_err() {
                                         return Err(io::Error::new(InvalidData, "InvalidData"))
                                     }
                                 }
@@ -343,29 +329,15 @@ impl NetConn {
                                                 return Err(io::Error::new(InvalidData, "InvalidData"))
                                             };
 
-                                            let nonce = if let Ok(nonce) = message.get_binary(NONCE) {
-                                                nonce
-                                            } else {
-                                                return Err(io::Error::new(InvalidData, "InvalidData"))
-                                            };
-
                                             let secret = if let Some(secret) = self.access_fn.as_ref().unwrap()(access.to_string()) {
                                                 secret
                                             } else {
                                                 return Err(io::Error::new(InvalidData, "InvalidData"))
                                             };
 
-                                            let mut buf = [0u8; Aead::NONCE_LEN];
-
-                                            Aead::set_nonce(&mut buf, nonce);
-
                                             let aead = Aead::new(&method, secret.as_bytes());
 
-                                            self.crypto = Some(Crypto {
-                                                aead,
-                                                r_nonce: buf,
-                                                w_nonce: buf
-                                            });
+                                            self.crypto = Some(aead);
 
                                             self.handshake = true;
                                         }
@@ -427,10 +399,8 @@ impl NetConn {
     fn push_data(&mut self, epoll: &Epoll, message: Message) -> io::Result<()> {
         let mut data = message.to_vec().unwrap();
 
-        if let Some(crypto) = &mut self.crypto {
-            Aead::increase_nonce(&mut crypto.w_nonce);
-
-            crypto.aead.encrypt(crypto.w_nonce, &mut data).expect("encrypt error");
+        if let Some(aead) = &mut self.crypto {
+            aead.encrypt(&mut data).expect("encrypt error");
         }
 
         self.w_buffer.push_back(data);
