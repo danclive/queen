@@ -12,7 +12,7 @@ pub mod error;
 
 pub use nson;
 
-pub const MAX_MESSAGE_LEN: usize = 16_777_216; // 16 MB
+pub const MAX_MESSAGE_LEN: usize = 32 * 1024 * 1024; // 32 MB
 
 pub use crate::queen::{Queen, Session, Callback};
 pub use crate::stream::Stream;

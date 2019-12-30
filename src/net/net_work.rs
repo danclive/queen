@@ -162,7 +162,7 @@ impl NetWork {
         }
 
         if remove {
-            self.remove_conn(index);
+            self.remove_conn(index)?;
         }
 
         Ok(())
@@ -181,7 +181,8 @@ impl NetWork {
 
         if ready.is_readable() {
             if let Some(net_conn) = self.nets.get_mut(index) {
-                remove = net_conn.read(&self.streams[index]).is_err();
+                let ret = net_conn.read(&self.streams[index]);
+                remove = ret.is_err();
             }
         }
 
@@ -196,15 +197,20 @@ impl NetWork {
         }
 
         if remove {
-            self.remove_conn(index);
+            self.remove_conn(index)?;
         }
 
         Ok(())
     }
 
-    fn remove_conn(&mut self, index: usize) {
-        self.streams.remove(index);
-        self.nets.remove(index);
+    fn remove_conn(&mut self, index: usize) -> io::Result<()> {
+        let stream = self.streams.remove(index);
+        self.epoll.delete(&stream.stream)?;
+
+        let net = self.nets.remove(index);
+        self.epoll.delete(&net.stream)?;
+
+        Ok(())
     }
 }
 
@@ -261,9 +267,9 @@ impl NetConn {
             return Ok(())
         }
 
-        loop {
-            let mut buf = [0; 4 * 1024];
+        let mut buf = [0; 4 * 1024];
 
+        loop {
             match self.stream.read(&mut buf) {
                 Ok(size) => {
                     if size == 0 {
@@ -308,7 +314,7 @@ impl NetConn {
 
                                         if handshake == "" {
                                             if self.access_fn.is_none() {
-                                                    self.handshake = true;
+                                                self.handshake = true;
                                             } else {
                                                 return Err(io::Error::new(InvalidData, "InvalidData"))
                                             }

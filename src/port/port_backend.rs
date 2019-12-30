@@ -29,7 +29,7 @@ pub(crate) enum Packet {
     AttachAsync(usize, String, Option<Vec<String>>, Queue<Message>),
     Detach(usize),
     // sync
-    Call(MessageId, String, Message, OneshotSender<Message>),
+    Call(MessageId, String, Message, OneshotSender<Message>), // id, method, message, sender
     UnCall(MessageId),
     Add(usize, String, Box<Handle>, Option<Vec<String>>), // id, method, hendle, labels
     Remove(usize),

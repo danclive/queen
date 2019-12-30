@@ -56,8 +56,7 @@ impl Default for Method {
 
 #[derive(Debug)]
 pub struct Aead {
-    inner: LessSafeKey,
-    nonce: [u8; Aead::NONCE_LEN]
+    inner: LessSafeKey
 }
 
 impl Aead {
@@ -72,19 +71,18 @@ impl Aead {
         let key = UnboundKey::new(algorithm, &key[0..key_len]).expect("Fails if key_bytes.len() != algorithm.key_len()`.");
 
         Aead {
-            inner: LessSafeKey::new(key),
-            nonce: Self::rand_nonce()
+            inner: LessSafeKey::new(key)
         }
     }
 
     pub fn encrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
-        Self::increase_nonce(&mut self.nonce);
-        let nonce = Nonce::assume_unique_for_key(self.nonce);
+        let nonce_bytes = Self::rand_nonce();
+        let nonce = Nonce::assume_unique_for_key(nonce_bytes);
 
         let tag = self.inner.seal_in_place_separate_tag(nonce, Aad::empty(), &mut in_out[4..])?;
 
         in_out.extend_from_slice(tag.as_ref());
-        in_out.extend_from_slice(&self.nonce);
+        in_out.extend_from_slice(&nonce_bytes);
 
         let len = (in_out.len() as i32).to_le_bytes();
         in_out[..4].clone_from_slice(&len);
