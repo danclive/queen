@@ -1,5 +1,5 @@
 use std::time::Duration;
-use std::io::{self, ErrorKind::PermissionDenied};
+use std::io::{self, ErrorKind::{PermissionDenied, InvalidData}};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -18,21 +18,22 @@ use crate::Stream;
 use crate::net::{NetWork, Packet as NetPacket};
 use crate::util::oneshot::Sender as OneshotSender;
 use crate::dict::*;
+use crate::error::{Result, ErrorCode};
 
 use super::Connector;
 
 type Handle = dyn Fn(Message) -> Message + Sync + Send + 'static;
 
 pub(crate) enum Packet {
-    Send(Message),
-    AttachBlock(usize, String, Option<Vec<String>>, Sender<Message>), // id, chan, labels, sender
-    AttachAsync(usize, String, Option<Vec<String>>, Queue<Message>),
-    Detach(usize),
+    Send(Message, OneshotSender<Result<()>>),
+    AttachBlock(u32, String, Option<Vec<String>>, Sender<Message>, OneshotSender<Result<()>>), // id, chan, labels, sender
+    AttachAsync(u32, String, Option<Vec<String>>, Queue<Message>, OneshotSender<Result<()>>),
+    Detach(u32),
     // sync
     Call(MessageId, String, Message, OneshotSender<Message>), // id, method, message, sender
     UnCall(MessageId),
-    Add(usize, String, Box<Handle>, Option<Vec<String>>), // id, method, hendle, labels
-    Remove(usize),
+    Add(u32, String, Box<Handle>, Option<Vec<String>>, OneshotSender<Result<()>>), // id, method, hendle, labels
+    Remove(u32),
     Response(Message)
 }
 
@@ -46,9 +47,10 @@ pub(crate) struct PortBackend {
     epoll: Epoll,
     events: Events,
     session: Session,
-    // sync
+    attaching: HashMap<u32, OneshotSender<Result<()>>>,
+    sending: HashMap<MessageId, OneshotSender<Result<()>>>,
     calling: HashMap<MessageId, OneshotSender<Message>>,
-    handles: HashMap<usize, Arc<Box<Handle>>>,
+    handles: HashMap<u32, Arc<Box<Handle>>>,
     worker_queue: WorkerQueue,
     run: Arc<AtomicBool>
 }
@@ -73,6 +75,8 @@ impl PortBackend {
             epoll: Epoll::new()?,
             events: Events::with_capacity(64),
             session: Session::new(),
+            attaching: HashMap::new(),
+            sending: HashMap::new(),
             calling: HashMap::new(),
             handles: HashMap::new(),
             worker_queue,
@@ -132,7 +136,8 @@ impl PortBackend {
                         Ok(net_stream) => {
                             let (stream1, stream2) = Stream::pipe(64, msg!{})?;
 
-                            self.session.net_work.as_ref().unwrap().push(NetPacket::NewConn(stream1, net_stream, crypto.clone()));
+                            self.session.net_work.as_ref().unwrap()
+                                .push(NetPacket::NewConn(stream1, net_stream, crypto.clone()));
                             self.session.stream = Some(stream2);
                             self.session.state = State::UnAuth;
 
@@ -194,7 +199,7 @@ impl PortBackend {
         Ok(())
     }
 
-    fn attach(&mut self, chan: &str, labels_set: &mut HashSet<String>) {
+    fn attach(&mut self, id: u32, chan: &str, labels_set: &mut HashSet<String>, attaching_tx: OneshotSender<Result<()>>) {
         let must_attach = !self.session.chans.contains_key(chan);
 
         // chan
@@ -204,6 +209,7 @@ impl PortBackend {
             // attach
             let mut message = msg!{
                 CHAN: ATTACH,
+                ATTACH_ID: id,
                 VALUE: chan
             };
 
@@ -214,6 +220,9 @@ impl PortBackend {
 
             let stream = self.session.stream.as_ref().unwrap();
             stream.send(message);
+
+            // attaching
+            self.attaching.insert(id, attaching_tx);
         } else {
             if !labels_set.is_empty() {
                 let diff_labels = &*labels_set - set;
@@ -221,6 +230,7 @@ impl PortBackend {
                 if !diff_labels.is_empty() {
                     let mut message = msg!{
                         CHAN: ATTACH,
+                        ATTACH_ID: id,
                         VALUE: chan
                     };
 
@@ -229,14 +239,21 @@ impl PortBackend {
 
                     let stream = self.session.stream.as_ref().unwrap();
                     stream.send(message);
+
+                    // attaching
+                    self.attaching.insert(id, attaching_tx);
+                } else {
+                    attaching_tx.send(Ok(()));
                 }
+            } else {
+                attaching_tx.send(Ok(()));
             }
         }
 
         set.extend(labels_set.clone());
     }
 
-    fn detach(&mut self, id: usize, chan: String, labels: HashSet<String>) {
+    fn detach(&mut self, id: u32, chan: String, labels: HashSet<String>) {
         let mut remove_chan = false;
 
         if let Some(ids) = self.session.chans2.get_mut(&chan) {
@@ -244,7 +261,7 @@ impl PortBackend {
 
             if ids.is_empty() {
                 remove_chan = true;
-            } else if chan != REPLY && chan != UNKNOWN {
+            } else if chan != UNKNOWN {
                 let mut labels_set = HashSet::new();
 
                 for (_, value) in &self.session.recvs {
@@ -279,7 +296,7 @@ impl PortBackend {
             self.session.chans.remove(&chan);
             self.session.chans2.remove(&chan);
 
-            if chan != REPLY && chan != UNKNOWN {
+            if chan != UNKNOWN {
                 let message = msg!{
                     CHAN: DETACH,
                     VALUE: chan
@@ -291,25 +308,65 @@ impl PortBackend {
         }
     }
 
+    fn detach_no_send(&mut self, id: u32, chan: String, labels: HashSet<String>) {
+        let mut remove_chan = false;
+
+        if let Some(ids) = self.session.chans2.get_mut(&chan) {
+            ids.remove(&id);
+
+            if ids.is_empty() {
+                remove_chan = true;
+            } else {
+                let mut labels_set = HashSet::new();
+
+                for (_, value) in &self.session.recvs {
+                    labels_set.extend(value.2.clone());
+                }
+
+                for (_, value) in &self.session.recvs2 {
+                    labels_set.extend(value.1.clone());
+                }
+
+                let diff_labels = &labels - &labels_set;
+
+                if !diff_labels.is_empty() {
+                    // chans 1
+                    self.session.chans.insert(chan.to_string(), labels_set);
+                }
+            }
+        }
+
+        if remove_chan {
+            self.session.chans.remove(&chan);
+            self.session.chans2.remove(&chan);
+        }
+    }
+
     fn dispatch_queue(&mut self) -> io::Result<()> {
         if self.session.state == State::Authed {
             if let Some(packet) = self.queue.pop() {
                 match packet {
-                    Packet::Send(message) => {
+                    Packet::Send(message, tx) => {
+                        let message_id = message.get_message_id(ID).expect("InvalidData");
+
+                        self.sending.insert(message_id.to_owned(), tx);
+
                         let stream = self.session.stream.as_ref().unwrap();
                         stream.send(message);
                     }
-                    Packet::AttachBlock(id, chan, labels, tx) => {
+                    Packet::AttachBlock(id, chan, labels, tx, tx2) => {
                         let mut labels_set = HashSet::new();
 
-                        if chan != REPLY && chan != UNKNOWN {
+                        if chan == UNKNOWN {
+                            tx2.send(Ok(()));
+                        } else {
                             if let Some(labels) = labels {
                                 for label in labels {
                                     labels_set.insert(label.to_string());
                                 }
                             }
 
-                            self.attach(&chan, &mut labels_set);
+                            self.attach(id, &chan, &mut labels_set, tx2);
                         }
 
                         // chan2
@@ -319,17 +376,19 @@ impl PortBackend {
                         // recvs
                         self.session.recvs.insert(id, (chan, SenderType::Block(tx), labels_set));
                     }
-                    Packet::AttachAsync(id, chan, labels, tx) => {
+                    Packet::AttachAsync(id, chan, labels, tx, tx2) => {
                         let mut labels_set = HashSet::new();
 
-                        if chan != REPLY && chan != UNKNOWN {
+                        if chan == UNKNOWN {
+                            tx2.send(Ok(()));
+                        } else {
                             if let Some(labels) = labels {
                                 for label in labels {
                                     labels_set.insert(label.to_string());
                                 }
                             }
 
-                            self.attach(&chan, &mut labels_set);
+                            self.attach(id, &chan, &mut labels_set, tx2);
                         }
 
                         // chans 2
@@ -357,7 +416,7 @@ impl PortBackend {
                     Packet::UnCall(id) => {
                         self.calling.remove(&id);
                     },
-                    Packet::Add(id, method, handle, labels) => {
+                    Packet::Add(id, method, handle, labels, tx) => {
                         let req_chan = format!("RPC/REQ/{}", method);
 
                         let mut labels_set = HashSet::new();
@@ -368,7 +427,7 @@ impl PortBackend {
                             }
                         }
 
-                        self.attach(&req_chan, &mut labels_set);
+                        self.attach(id, &req_chan, &mut labels_set, tx);
 
                         // chans 2
                         let set = self.session.chans2.entry(req_chan.clone()).or_insert_with(HashSet::new);
@@ -423,17 +482,43 @@ impl PortBackend {
                                         return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
                                     }
                                 } else {
-                                    return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
+                                    return Err(io::Error::new(InvalidData, "InvalidData"))
                                 }
                             }
                             ATTACH => {
-                                // println!("{:?}", message);
+                                let ok = if let Ok(ok) = message.get_i32(OK) {
+                                    ok
+                                } else {
+                                    return Err(io::Error::new(InvalidData, "InvalidData"))
+                                };
+
+                                let attach_id = if let Ok(attach_id) = message.get_u32(ATTACH_ID) {
+                                    attach_id
+                                } else {
+                                    return Err(io::Error::new(InvalidData, "InvalidData"))
+                                };
+
+                                if let Some(attaching_tx) = self.attaching.remove(&attach_id) {
+                                    if ok == 0 {
+                                        attaching_tx.send(Ok(()));
+                                    } else {
+                                        attaching_tx.send(Err(ErrorCode::from_i32(ok).into()));
+
+                                        if let Some(recv) = self.session.recvs.remove(&attach_id) {
+                                            self.detach_no_send(attach_id, recv.0, recv.2);
+                                        }
+
+                                        if let Some(recv) = self.session.recvs2.remove(&attach_id) {
+                                            self.detach_no_send(attach_id, recv.0, recv.1);
+                                        }
+                                    }
+                                }
                             }
                             _ => ()
                         }
                     } else {
                         let chan = chan.to_string();
-                        self.handle_message(&chan, message);
+                        self.handle_message(&chan, message)?;
                     }
                 }
             }
@@ -442,24 +527,21 @@ impl PortBackend {
         Ok(())
     }
 
-    fn handle_message(&mut self, chan: &str, message: Message) {
-        if let Ok(_ok) = message.get_i32(OK) {
-            if let Some(ids) = self.session.chans2.get(REPLY) {
-                for id in ids {
-                    if let Some((_, tx, _)) = self.session.recvs.get(id) {
-                        match tx {
-                            SenderType::Block(tx) => {
-                                let _ = tx.send(message.clone());
-                            }
-                            SenderType::Async(queue) => {
-                                queue.push(message.clone());
-                            }
-                        }
+    fn handle_message(&mut self, chan: &str, message: Message) -> io::Result<()> {
+        if let Ok(ok) = message.get_i32(OK) {
+            if let Ok(message_id) = message.get_message_id(ID) {
+                if let Some(sending_tx) = self.sending.remove(message_id) {
+                    if ok == 0 {
+                        sending_tx.send(Ok(()));
+                    } else {
+                        sending_tx.send(Err(ErrorCode::from_i32(ok).into()));
                     }
                 }
+            } else {
+                return Err(io::Error::new(InvalidData, "InvalidData"));
             }
 
-            return
+            return Ok(())
         }
 
         if chan == RPC_RECV {
@@ -470,6 +552,8 @@ impl PortBackend {
                     }
                 }
             }
+
+            return Ok(())
         }
 
         if let Some(ids) = self.session.chans2.get(chan) {
@@ -521,6 +605,8 @@ impl PortBackend {
                     }
                 }
             }
+
+            return Ok(())
         }
 
         if let Some(ids) = self.session.chans2.get(UNKNOWN) {
@@ -537,6 +623,8 @@ impl PortBackend {
                 }
             }
         }
+
+        return Ok(())
     }
 }
 
@@ -551,9 +639,9 @@ struct Session {
     stream: Option<Stream>,
     net_work: Option<Queue<NetPacket>>,
     chans: HashMap<String, HashSet<String>>, // HashMap<Chan, HashSet<Label>>
-    chans2: HashMap<String, HashSet<usize>>, // HashMap<Chan, id>
-    recvs: HashMap<usize, (String, SenderType, HashSet<String>)>, // HashMap<id, (Chan, tx, Labels)>
-    recvs2: HashMap<usize, (String, HashSet<String>)> // HashMap<id, (Chan, Labels)>
+    chans2: HashMap<String, HashSet<u32>>, // HashMap<Chan, id>
+    recvs: HashMap<u32, (String, SenderType, HashSet<String>)>, // HashMap<id, (Chan, tx, Labels)>
+    recvs2: HashMap<u32, (String, HashSet<String>)> // HashMap<id, (Chan, Labels)>
 }
 
 enum SenderType {

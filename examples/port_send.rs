@@ -20,6 +20,7 @@ fn main() {
     loop {
         thread::sleep(Duration::from_secs(1));
         println!("{:?}", "send");
-        port1.send("aaa", msg!{"hello": "world"}, None);
+        let ret = port1.send("aaa", msg!{"hello": "world"}, None, None);
+        println!("ret: {:?}", ret);
     }
 }

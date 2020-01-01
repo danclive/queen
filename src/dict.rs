@@ -1,22 +1,23 @@
 // node
-pub const CHAN:    &str = "_chan";
-pub const CHANS:   &str = "_chas";
-pub const AUTH:    &str = "_auth";
-pub const ATTACH:  &str = "_atta";
-pub const DETACH:  &str = "_deta";
-pub const PING:    &str = "_ping";
-pub const QUERY:   &str = "_quer";
-pub const NODE_ID: &str = "_noid";
-pub const PORT_ID: &str = "_ptid";
-pub const VALUE:   &str = "_valu";
-pub const LABEL:   &str = "_labe";
-pub const TO:      &str = "_to";
-pub const FROM:    &str = "_from";
-pub const SHARE:   &str = "_shar";
-pub const ACK:     &str = "_ack";
-pub const SUPER:   &str = "_supe";
-pub const ATTR:    &str = "_attr";
-pub const CUSTOM:  &str = "_cust";
+pub const CHAN:      &str = "_chan";
+pub const CHANS:     &str = "_chas";
+pub const AUTH:      &str = "_auth";
+pub const ATTACH:    &str = "_atta";
+pub const ATTACH_ID: &str = "_atid";
+pub const DETACH:    &str = "_deta";
+pub const PING:      &str = "_ping";
+pub const QUERY:     &str = "_quer";
+pub const NODE_ID:   &str = "_noid";
+pub const PORT_ID:   &str = "_ptid";
+pub const VALUE:     &str = "_valu";
+pub const LABEL:     &str = "_labe";
+pub const TO:        &str = "_to";
+pub const FROM:      &str = "_from";
+pub const SHARE:     &str = "_shar";
+pub const ACK:       &str = "_ack";
+pub const SUPER:     &str = "_supe";
+pub const ATTR:      &str = "_attr";
+pub const CUSTOM:    &str = "_cust";
 
 // message
 pub const ID:        &str = "_id";
@@ -50,7 +51,7 @@ pub const HANDSHAKE: &str = "_hand";
 pub const ACCESS:    &str = "_acce";
 
 // port
-pub const REPLY:   &str = "_reply";
+// pub const REPLY:   &str = "_reply";
 pub const UNKNOWN: &str = "_unknown";
 
 // rpc

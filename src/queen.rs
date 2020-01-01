@@ -72,7 +72,7 @@ impl Queen {
         self.queue.push(packet);
 
         if let Some(timeout) = timeout {
-            let ret = rx.wait_timeout(timeout);
+            let ret = rx.wait_timeout(timeout)?;
 
             if !ret.unwrap_or_default() {
                 return Err(io::Error::new(ConnectionAborted, "ConnectionAborted"))
@@ -789,9 +789,13 @@ impl<T> QueenInner<T> {
 
         let reply_msg = if let Some(ack) = message.get(ACK) {
             let mut reply_msg = msg!{
-                CHAN: ACK,
+                CHAN: &chan,
                 ACK: ack.clone()
             };
+
+            if let Ok(message_id) = message.get_message_id(ID) {
+                reply_msg.insert(ID, message_id);
+            }
 
             ErrorCode::OK.insert_message(&mut reply_msg);
 

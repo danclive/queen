@@ -8,7 +8,7 @@ use super::{Packet, Port};
 
 pub struct Recv {
     pub port: Port,
-    pub id: usize,
+    pub id: u32,
     pub chan: String,
     pub recv: Receiver<Message>
 }
@@ -29,7 +29,7 @@ impl Drop for Recv {
 
 pub struct AsyncRecv {
     pub port: Port,
-    pub id: usize,
+    pub id: u32,
     pub chan: String,
     pub recv: Queue<Message>
 }

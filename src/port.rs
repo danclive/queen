@@ -1,8 +1,8 @@
 use std::time::Duration;
-use std::io::{self};
+use std::io::{self, ErrorKind::UnexpectedEof};
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread;
 use std::sync::mpsc::channel;
 
@@ -10,12 +10,13 @@ use queen_io::queue::spsc::Queue;
 use queen_io::queue::mpsc;
 use queen_io::plus::block_queue::BlockQueue;
 
-use nson::{Message};
+use nson::{Message, Value};
 use nson::message_id::MessageId;
 
 use crate::dict::*;
 use crate::Connector;
 use crate::util::oneshot::oneshot;
+use crate::error::Result;
 
 pub use recv::{Recv, AsyncRecv};
 use port_backend::{PortBackend, Packet, WorkerQueue};
@@ -31,12 +32,12 @@ pub struct Port {
 
 struct PortInner {
     id: MessageId,
-    recv_id: AtomicUsize,
+    recv_id: AtomicU32,
     queue: mpsc::Queue<Packet>
 }
 
 impl Port {
-    pub fn connect(id: MessageId, connector: Connector, auth_msg: Message, works: usize) -> io::Result<Port> {
+    pub fn connect(id: MessageId, connector: Connector, auth_msg: Message, works: usize) -> Result<Port> {
         let run = Arc::new(AtomicBool::new(true));
 
         let queue = mpsc::Queue::new()?;
@@ -69,7 +70,7 @@ impl Port {
         Ok(Port {
             inner: Arc::new(PortInner {
                 id,
-                recv_id: AtomicUsize::new(0),
+                recv_id: AtomicU32::new(0),
                 queue,
             }),
             run
@@ -79,32 +80,49 @@ impl Port {
     pub fn recv(
         &self,
         chan: &str,
-        labels: Option<Vec<String>>
-    ) -> Recv {
+        labels: Option<Vec<String>>,
+        timeout: Option<Duration>
+    ) -> Result<Recv> {
         let (tx, rx) = channel();
+        let (tx2, rx2) = oneshot::<Result<()>>();
 
         let id = self.inner.recv_id.fetch_add(1, Ordering::SeqCst);
 
-        self.inner.queue.push(Packet::AttachBlock(id, chan.to_string(), labels, tx));
+        self.inner.queue.push(Packet::AttachBlock(id, chan.to_string(), labels, tx, tx2));
 
-        Recv {
+        // wait
+        let timeout = timeout.unwrap_or(Duration::from_secs(60));
+        let ret = rx2.wait_timeout(timeout)?;
+
+        ret.unwrap_or(Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))?;
+
+        Ok(Recv {
             port: self.clone(),
             id,
             chan: chan.to_string(),
             recv: rx
-        }
+        })
     }
 
     pub fn async_recv(
         &self,
         chan: &str,
-        labels: Option<Vec<String>>
-    ) -> io::Result<AsyncRecv> {
+        labels: Option<Vec<String>>,
+        timeout: Option<Duration>
+    ) -> Result<AsyncRecv> {
+        let (tx, rx) = oneshot::<Result<()>>();
+
         let queue = Queue::with_cache(64)?;
 
         let id = self.inner.recv_id.fetch_add(1, Ordering::SeqCst);
 
-        self.inner.queue.push(Packet::AttachAsync(id, chan.to_string(), labels, queue.clone()));
+        self.inner.queue.push(Packet::AttachAsync(id, chan.to_string(), labels, queue.clone(), tx));
+
+        // wait
+        let timeout = timeout.unwrap_or(Duration::from_secs(60));
+        let ret = rx.wait_timeout(timeout)?;
+
+        ret.unwrap_or(Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))?;
 
         Ok(AsyncRecv {
             port: self.clone(),
@@ -118,9 +136,11 @@ impl Port {
         &self,
         chan: &str,
         mut msg: Message,
-        label: Option<Vec<String>>
-    ) {
+        label: Option<Vec<String>>,
+        timeout: Option<Duration>
+    ) -> Result<()> {
         msg.insert(CHAN, chan);
+        msg.insert(ACK, Value::Null);
 
         if let Some(label) = label {
             msg.insert(LABEL, label);
@@ -130,14 +150,15 @@ impl Port {
             msg.insert(ID, MessageId::new());
         }
 
-        loop {
-            if self.inner.queue.pending() < 64 {
-                self.inner.queue.push(Packet::Send(msg));
-                return
-            }
+        let (tx, rx) = oneshot::<Result<()>>();
 
-            thread::sleep(Duration::from_millis(40));
-        }
+        self.inner.queue.push(Packet::Send(msg, tx));
+
+        // wait
+        let timeout = timeout.unwrap_or(Duration::from_secs(60));
+        let ret = rx.wait_timeout(timeout)?;
+
+        ret.unwrap_or(Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))
     }
 
     pub fn call(
@@ -146,7 +167,7 @@ impl Port {
         labels: Option<Vec<String>>,
         mut request: Message,
         timeout: Option<Duration>
-    ) -> Result<Message, ()> {
+    ) -> Result<Message> {
         let request_id = MessageId::new();
 
         request.insert(REQUEST_ID, request_id.clone());
@@ -166,17 +187,24 @@ impl Port {
 
         self.inner.queue.push(packet);
 
-        if let Some(timeout) = timeout {
-            let ret = rx.wait_timeout(timeout);
+        // wait
+        let timeout = timeout.unwrap_or(Duration::from_secs(60));
+        let ret = rx.wait_timeout(timeout);
 
-            if ret.is_none() {
-                let packet = Packet::UnCall(request_id);
-                self.inner.queue.push(packet);
+        match ret {
+            Err(err) => {
+                self.inner.queue.push(Packet::UnCall(request_id));
+                Err(err.into())
             }
-
-            ret.ok_or(())
-        } else {
-            rx.wait().ok_or(())
+            Ok(value) => {
+                match value {
+                    Some(v) => Ok(v),
+                    None => {
+                        self.inner.queue.push(Packet::UnCall(request_id));
+                        Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into())
+                    }
+                }
+            }
         }
     }
 
@@ -184,24 +212,34 @@ impl Port {
         &self,
         method: &str,
         labels: Option<Vec<String>>,
-        handle: impl Fn(Message) -> Message + Sync + Send + 'static
-    ) -> usize {
+        handle: impl Fn(Message) -> Message + Sync + Send + 'static,
+        timeout: Option<Duration>
+    ) -> Result<u32> {
 
         let id = self.inner.recv_id.fetch_add(1, Ordering::SeqCst);
+
+        let (tx, rx) = oneshot::<Result<()>>();
 
         let packet = Packet::Add(
             id,
             method.to_string(),
             Box::new(handle),
-            labels
+            labels,
+            tx
         );
 
         self.inner.queue.push(packet);
 
-        id
+        // wait
+        let timeout = timeout.unwrap_or(Duration::from_secs(60));
+        let ret = rx.wait_timeout(timeout)?;
+
+        ret.unwrap_or(Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))?;
+
+        Ok(id)
     }
 
-    pub fn remove(&self, id: usize) {
+    pub fn remove(&self, id: u32) {
         self.inner.queue.push(Packet::Remove(id))
     }
 

@@ -25,7 +25,7 @@ fn recv() {
         
         atomic2.fetch_add(1, Ordering::SeqCst);
         msg!{"hehehe": "lalala"}
-    });
+    }, Some(Duration::from_secs(1))).unwrap();
 
     let rpc2 = Port::connect(
         MessageId::new(),
@@ -39,7 +39,7 @@ fn recv() {
         
         atomic2.fetch_add(1, Ordering::SeqCst);
         msg!{"hehehe": "lalala"}
-    });
+    }, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
@@ -53,7 +53,8 @@ fn recv() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let res = rpc3.call("hello", None, msg!{"hello": "owlrd"}, Some(<Duration>::from_secs(10)));
+    let res = rpc3.call("hello", None, msg!{"hello": "world"},
+        Some(<Duration>::from_secs(10)));
     assert!(res.is_ok());
 
     assert!(atomic.load(Ordering::SeqCst) == 1);

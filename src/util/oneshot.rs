@@ -76,11 +76,8 @@ impl<T> Receiver<T> {
         self.inner.wait()
     }
 
-    pub fn wait_timeout(self, timeout: Duration) -> Option<T> {
-        match self.inner.wait_timeout(timeout) {
-            Ok(ret) => ret,
-            Err(_) => None
-        }
+    pub fn wait_timeout(self, timeout: Duration) -> io::Result<Option<T>> {
+        self.inner.wait_timeout(timeout)
     }
 
     pub fn try_recv(self) -> Result<Option<T>, Receiver<T>> {
@@ -132,7 +129,8 @@ mod tests {
     use super::oneshot;
     use std::thread;
     use std::time::Duration;
-    
+    use std::io::ErrorKind::TimedOut;
+
     #[test]
     fn test_wait_setting() {
         let (tx, rx) = oneshot();
@@ -186,7 +184,10 @@ mod tests {
             tx.send(123);
         });
 
-        assert_eq!(rx.wait_timeout(Duration::from_millis(100)), None);
+        let ret = rx.wait_timeout(Duration::from_millis(100));
+
+        assert!(ret.is_err());
+        assert!(ret.err().unwrap().kind() == TimedOut);
 
         h.join().unwrap();
     }
@@ -200,7 +201,10 @@ mod tests {
             tx.send(123);
         });
 
-        assert_eq!(rx.wait_timeout(Duration::from_millis(500)), Some(123));
+        let ret = rx.wait_timeout(Duration::from_millis(500));
+
+        assert!(ret.is_ok());
+        assert!(ret.unwrap() == Some(123));
 
         h.join().unwrap();
     }

@@ -14,7 +14,7 @@ fn main() {
         2
     ).unwrap();
 
-    let mut recv = port1.recv("aaa", None);
+    let mut recv = port1.recv("aaa", None, None).unwrap();
 
     loop {
         println!("recv: {:?}", recv.next());

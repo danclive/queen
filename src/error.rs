@@ -1,6 +1,54 @@
+use std::{io, result};
+use std::error;
+use std::fmt;
+
 use nson::Message;
 
 use crate::dict::*;
+
+#[derive(Debug)]
+pub enum Error {
+    IoError(io::Error),
+    ErrorCode(ErrorCode)
+}
+
+pub type Result<T> = result::Result<T, Error>;
+
+impl From<io::Error> for Error {
+    fn from(err: io::Error) -> Error {
+        Error::IoError(err)
+    }
+}
+
+impl From<ErrorCode> for Error {
+    fn from(err: ErrorCode) -> Error {
+        Error::ErrorCode(err)
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::IoError(ref inner) => inner.fmt(fmt),
+            Error::ErrorCode(ref inner) => inner.fmt(fmt)
+        }
+    }
+}
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        match *self {
+            Error::IoError(ref inner) => inner.description(),
+            Error::ErrorCode(ref inner) => inner.to_str()
+        }
+    }
+    fn cause(&self) -> Option<&dyn error::Error> {
+        match *self {
+            Error::IoError(ref inner) => Some(inner),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(i32)]
@@ -33,6 +81,14 @@ pub enum ErrorCode {
 impl ErrorCode {
     pub fn code(self) -> i32 {
         self as i32
+    }
+
+    pub fn from_i32(code: i32) -> ErrorCode {
+        if code < 0 || code > ErrorCode::UnknownError as i32 {
+            return ErrorCode::UnknownError
+        }
+
+        unsafe { std::mem::transmute(code) }
     }
 
     pub fn to_str(&self) -> &str{
@@ -83,5 +139,12 @@ impl ErrorCode {
         }
 
         None
+    }
+}
+
+
+impl fmt::Display for ErrorCode {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "code: {}, error: {}", self.code(), self.to_str())
     }
 }

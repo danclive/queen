@@ -106,7 +106,7 @@ impl Node {
                                 }
                             },
                             Err(err) => {
-                                println!("{:?}", err);
+                                println!("connect: {:?}", err);
                             }
                         }
                     }

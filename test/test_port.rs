@@ -7,6 +7,7 @@ use queen::{Queen, Port, Connector, Node};
 use queen::crypto::Method;
 use queen::net::Addr;
 use queen::dict::*;
+use queen::error::{Error, ErrorCode};
 
 use super::get_free_addr;
 
@@ -30,11 +31,11 @@ fn connect_queen() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let recv = port1.async_recv("aaa", None).unwrap();
+    let recv = port1.async_recv(
+        "aaa", None, Some(Duration::from_secs(1))).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
-
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
@@ -73,11 +74,11 @@ fn connect_node() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let recv = port1.async_recv("aaa", None).unwrap();
+    let recv = port1.async_recv(
+        "aaa", None, Some(Duration::from_secs(1))).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
-
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
@@ -123,11 +124,9 @@ fn connect_node_crypto() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let recv = port1.async_recv("aaa", None).unwrap();
+    let recv = port1.async_recv("aaa", None, Some(Duration::from_secs(1))).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
-
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    port2.send("aaa", msg!{"hello": "world"}, None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
@@ -174,11 +173,13 @@ fn connect_node_crypto2() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let recv = port1.async_recv("aaa", None).unwrap();
+    let recv = port1.async_recv(
+        "aaa", None, Some(Duration::from_secs(1))).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
+    let ret = port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1)));
 
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    assert!(ret.is_err());
 
     thread::sleep(Duration::from_secs(1));
 
@@ -225,11 +226,13 @@ fn connect_node_crypto3() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let recv = port1.async_recv("aaa", None).unwrap();
+    let recv = port1.async_recv(
+        "aaa", None, Some(Duration::from_secs(1))).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
+    let ret = port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1)));
 
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    assert!(ret.is_err());
 
     thread::sleep(Duration::from_secs(1));
 
@@ -282,11 +285,11 @@ fn connect_mulit_node() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let recv = port1.async_recv("aaa", None).unwrap();
+    let recv = port1.async_recv(
+        "aaa", None, Some(Duration::from_secs(1))).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
-
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
@@ -313,55 +316,52 @@ fn recv() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let reply = port1.async_recv(REPLY, None).unwrap();
-    let reply2 = port2.async_recv(REPLY, None).unwrap();
+    let recv = port1.async_recv(
+        "aaa", None, Some(Duration::from_secs(1))).unwrap();
 
-    let recv = port1.async_recv("aaa", None).unwrap();
-
-    thread::sleep(Duration::from_secs(1));
-
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv.recv().is_some());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_none());
 
-    let recv2 = port1.async_recv("aaa", None).unwrap();
+    let recv2 = port1.async_recv(
+        "aaa", None, Some(Duration::from_secs(2))).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
-
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv.recv().is_some());
     assert!(recv2.recv().is_some());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_none());
 
     drop(recv2);
 
     thread::sleep(Duration::from_secs(1));
 
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv.recv().is_some());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_none());
 
     drop(recv);
 
     thread::sleep(Duration::from_secs(1));
 
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    let ret = port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1)));
 
-    thread::sleep(Duration::from_secs(1));
+    assert!(ret.is_err());
 
-    assert!(reply2.recv().is_some());
+    if let Error::ErrorCode(ErrorCode::NoConsumers) = ret.err().unwrap() {
+
+    } else {
+        panic!("");
+    }
 }
 
 #[test]
@@ -384,101 +384,116 @@ fn labels() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let reply = port1.async_recv(REPLY, None).unwrap();
-    let reply2 = port2.async_recv(REPLY, None).unwrap();
 
-    let recv = port1.async_recv("aaa", Some(vec!["label1".to_string()])).unwrap();
+    let recv = port1.async_recv(
+        "aaa",
+        Some(vec!["label1".to_string()]),
+        Some(Duration::from_secs(1))
+    ).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
-
-    port2.send("aaa", msg!{"hello": "world"}, None);
-
-    thread::sleep(Duration::from_secs(1));
-
-    assert!(recv.recv().is_some());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_none());
-
-    port2.send("aaa", msg!{"hello": "world"}, Some(vec!["label1".to_string()]));
+    port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv.recv().is_some());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_none());
 
-    port2.send("aaa", msg!{"hello": "world"}, Some(vec!["label2".to_string()]));
+
+    port2.send("aaa", msg!{"hello": "world"},
+        Some(vec!["label1".to_string()]),
+        Some(Duration::from_secs(1))).unwrap();
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(recv.recv().is_some());
+
+
+    let ret = port2.send(
+        "aaa",
+        msg!{"hello": "world"},
+        Some(vec!["label2".to_string()]),
+        Some(Duration::from_secs(1))
+    );
+    assert!(ret.is_err());
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv.recv().is_none());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_some());
 
-    let recv2 = port1.async_recv("aaa", Some(vec!["label2".to_string()])).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
+    let recv2 = port1.async_recv(
+        "aaa",
+        Some(vec!["label2".to_string()]),
+        Some(Duration::from_secs(1))
+    ).unwrap();
 
-    port2.send("aaa", msg!{"hello": "world"}, Some(vec!["label2".to_string()]));
+    port2.send("aaa", msg!{"hello": "world"},
+        Some(vec!["label2".to_string()]),
+        Some(Duration::from_secs(1))
+    ).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv.recv().is_none());
     assert!(recv2.recv().is_some());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_none());
+
 
     drop(recv);
 
-    port2.send("aaa", msg!{"hello": "world"}, Some(vec!["label2".to_string()]));
+    port2.send("aaa", msg!{"hello": "world"},
+        Some(vec!["label2".to_string()]),
+        Some(Duration::from_secs(1))
+    ).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv2.recv().is_some());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_none());
 
-    port2.send("aaa", msg!{"hello": "world"}, Some(vec!["label1".to_string()]));
+
+    let ret = port2.send("aaa", msg!{"hello": "world"},
+        Some(vec!["label1".to_string()]),
+        Some(Duration::from_secs(1))
+    );
+    assert!(ret.is_err());
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv2.recv().is_none());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_some());
 
-    let recv3 = port1.async_recv("aaa", None).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
+    let recv3 = port1.async_recv("aaa",
+        None, Some(Duration::from_secs(1))).unwrap();
 
-    port2.send("aaa", msg!{"hello": "world"}, Some(vec!["label2".to_string()]));
+    port2.send("aaa", msg!{"hello": "world"},
+        Some(vec!["label2".to_string()]),
+        Some(Duration::from_secs(1))
+    ).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv2.recv().is_some());
     assert!(recv3.recv().is_none());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_none());
 
-    port2.send("aaa", msg!{"hello": "world"}, None);
+
+    port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv2.recv().is_some());
     assert!(recv3.recv().is_some());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_none());
+
 
     drop(recv3);
 
     thread::sleep(Duration::from_secs(1));
 
-    port2.send("aaa", msg!{"hello": "world"}, None);
+    port2.send("aaa", msg!{"hello": "world"},
+        None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(recv2.recv().is_some());
-    assert!(reply.recv().is_none());
-    assert!(reply2.recv().is_none());
 }
 
 #[test]
@@ -501,12 +516,12 @@ fn unknow_topic() {
 
     thread::sleep(Duration::from_secs(1));
 
-    let recv = port1.async_recv(UNKNOWN, None).unwrap();
+    let recv = port1.async_recv(UNKNOWN, None, Some(Duration::from_secs(1))).unwrap();
 
     port2.send("aaa", msg!{
         "hello": "world",
         TO: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
-    }, None);
+    }, None, Some(Duration::from_secs(1))).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
