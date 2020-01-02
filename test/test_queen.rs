@@ -1395,3 +1395,97 @@ fn query() {
     assert!(recv.get_message("port").unwrap().get_message_id(PORT_ID).unwrap()
         == &MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap());
 }
+
+#[test]
+fn port_event_send_recv() {
+    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+
+    let stream1 = queen.connect(msg!{}, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None).unwrap();
+    let stream3 = queen.connect(msg!{}, None).unwrap();
+
+    // auth
+    stream1.send(msg!{
+        CHAN: AUTH
+    });
+
+    stream2.send(msg!{
+        CHAN: AUTH
+    });
+
+    stream3.send(msg!{
+        CHAN: AUTH,
+        SUPER: true
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // attach port event
+    stream3.send(msg!{
+        CHAN: ATTACH,
+        VALUE: PORT_SEND,
+    });
+
+    stream3.send(msg!{
+        CHAN: ATTACH,
+        VALUE: PORT_RECV,
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // try send
+    stream1.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
+    assert!(stream3.recv().is_none());
+
+    // attach
+    stream2.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa"
+    });
+
+    // send
+    stream1.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+
+    let recv = stream2.recv().unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+
+    // recv
+    let recv = stream2.recv().unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+
+    let recv = stream3.recv().unwrap();
+    assert!(recv.get_str(CHAN).unwrap() == PORT_RECV);
+
+    let recv = stream3.recv().unwrap();
+    assert!(recv.get_str(CHAN).unwrap() == PORT_SEND);
+}

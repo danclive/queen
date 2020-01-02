@@ -223,31 +223,29 @@ impl PortBackend {
 
             // attaching
             self.attaching.insert(id, attaching_tx);
-        } else {
-            if !labels_set.is_empty() {
-                let diff_labels = &*labels_set - set;
+        } else if !labels_set.is_empty() {
+            let diff_labels = &*labels_set - set;
 
-                if !diff_labels.is_empty() {
-                    let mut message = msg!{
-                        CHAN: ATTACH,
-                        ATTACH_ID: id,
-                        VALUE: chan
-                    };
+            if !diff_labels.is_empty() {
+                let mut message = msg!{
+                    CHAN: ATTACH,
+                    ATTACH_ID: id,
+                    VALUE: chan
+                };
 
-                    let labels: Vec<String> = diff_labels.iter().map(|s| s.to_string()).collect();
-                    message.insert(LABEL, labels);
+                let labels: Vec<String> = diff_labels.iter().map(|s| s.to_string()).collect();
+                message.insert(LABEL, labels);
 
-                    let stream = self.session.stream.as_ref().unwrap();
-                    stream.send(message);
+                let stream = self.session.stream.as_ref().unwrap();
+                stream.send(message);
 
-                    // attaching
-                    self.attaching.insert(id, attaching_tx);
-                } else {
-                    attaching_tx.send(Ok(()));
-                }
+                // attaching
+                self.attaching.insert(id, attaching_tx);
             } else {
                 attaching_tx.send(Ok(()));
             }
+        } else {
+            attaching_tx.send(Ok(()));
         }
 
         set.extend(labels_set.clone());
@@ -264,11 +262,11 @@ impl PortBackend {
             } else if chan != UNKNOWN {
                 let mut labels_set = HashSet::new();
 
-                for (_, value) in &self.session.recvs {
+                for value in self.session.recvs.values() {
                     labels_set.extend(value.2.clone());
                 }
 
-                for (_, value) in &self.session.recvs2 {
+                for value in self.session.recvs2.values() {
                     labels_set.extend(value.1.clone());
                 }
 
@@ -319,11 +317,11 @@ impl PortBackend {
             } else {
                 let mut labels_set = HashSet::new();
 
-                for (_, value) in &self.session.recvs {
+                for value in self.session.recvs.values() {
                     labels_set.extend(value.2.clone());
                 }
 
-                for (_, value) in &self.session.recvs2 {
+                for value in self.session.recvs2.values() {
                     labels_set.extend(value.1.clone());
                 }
 
@@ -573,11 +571,9 @@ impl PortBackend {
 
             for id in ids {
                 if let Some((_, tx, label2)) = self.session.recvs.get(id) {
-                    if !labels.is_empty() {
-                        if (&labels & label2).is_empty() {
-                            continue;
-                        }
-                    }
+                    if !labels.is_empty() && (&labels & label2).is_empty() {
+    continue;
+}
 
                     match tx {
                         SenderType::Block(tx) => {
@@ -590,10 +586,8 @@ impl PortBackend {
                 }
 
                 if let Some((_, label2)) = self.session.recvs2.get(id) {
-                    if !labels.is_empty() {
-                        if (&labels & label2).is_empty() {
-                            continue;
-                        }
+                    if !labels.is_empty() && (&labels & label2).is_empty() {
+                        continue;
                     }
 
                     if let Ok(from_id) = message.get_message_id(FROM) {
@@ -624,7 +618,7 @@ impl PortBackend {
             }
         }
 
-        return Ok(())
+        Ok(())
     }
 }
 

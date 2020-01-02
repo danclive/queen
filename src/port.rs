@@ -94,7 +94,7 @@ impl Port {
         let timeout = timeout.unwrap_or(Duration::from_secs(60));
         let ret = rx2.wait_timeout(timeout)?;
 
-        ret.unwrap_or(Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))?;
+        ret.unwrap_or_else(|| Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))?;
 
         Ok(Recv {
             port: self.clone(),
@@ -122,7 +122,7 @@ impl Port {
         let timeout = timeout.unwrap_or(Duration::from_secs(60));
         let ret = rx.wait_timeout(timeout)?;
 
-        ret.unwrap_or(Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))?;
+        ret.unwrap_or_else(|| Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))?;
 
         Ok(AsyncRecv {
             port: self.clone(),
@@ -158,7 +158,7 @@ impl Port {
         let timeout = timeout.unwrap_or(Duration::from_secs(60));
         let ret = rx.wait_timeout(timeout)?;
 
-        ret.unwrap_or(Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))
+        ret.unwrap_or_else(|| Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))
     }
 
     pub fn call(
@@ -234,7 +234,7 @@ impl Port {
         let timeout = timeout.unwrap_or(Duration::from_secs(60));
         let ret = rx.wait_timeout(timeout)?;
 
-        ret.unwrap_or(Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))?;
+        ret.unwrap_or_else(|| Err(io::Error::new(UnexpectedEof, "UnexpectedEof").into()))?;
 
         Ok(id)
     }

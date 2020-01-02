@@ -92,7 +92,7 @@ impl DataBus {
 
     pub fn set(&self, key: &str, value: Value) -> Option<Value> {
         let mut map = self.inner.map.lock().unwrap();
-        map.insert(key.to_owned(), value.clone())
+        map.insert(key.to_owned(), value)
     }
 
     pub fn get(&self, key: &str) -> Option<Value>{

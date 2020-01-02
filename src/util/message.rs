@@ -2,7 +2,6 @@ use std::mem;
 use std::io::{self, Error, ErrorKind::InvalidData};
 
 use crate::MAX_MESSAGE_LEN;
-// use crate::crypto::Aead;
 
 #[inline]
 pub fn get_length(buf: &[u8], start: usize) -> usize {

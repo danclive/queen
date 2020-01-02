@@ -31,6 +31,9 @@ pub struct Queen {
     run: Arc<AtomicBool>
 }
 
+#[derive(Debug)]
+struct A;
+
 impl Queen {
     pub fn new<T: Send + 'static>(
         id: MessageId,
@@ -165,7 +168,7 @@ impl<T> QueenInner<T> {
                     let session = Session::new(entry.key(), stream);
 
                     let success = if let Some(accept_fn) = &self.callback.accept_fn {
-                       accept_fn(&session, &mut self.data)
+                       accept_fn(&session, &self.data)
                     } else {
                        true
                     };
@@ -218,7 +221,7 @@ impl<T> QueenInner<T> {
             }
 
             if let Some(remove_fn) = &self.callback.remove_fn {
-                remove_fn(&conn, &mut self.data);
+                remove_fn(&conn, &self.data);
             }
 
             // port event
@@ -230,7 +233,7 @@ impl<T> QueenInner<T> {
                 CHAN: PORT_BREAK
             };
 
-            if let Some(port_id) = conn.id.clone() {
+            if let Some(port_id) = conn.id {
                 self.sessions.ports.remove(&port_id);
                 event_msg.insert(PORT_ID, port_id);
             }
@@ -243,7 +246,7 @@ impl<T> QueenInner<T> {
 
     fn handle_message(&mut self, token: usize, mut message: Message) -> io::Result<()> {
         let success = if let Some(recv_fn) = &self.callback.recv_fn {
-            recv_fn(&self.sessions.conns[token], &mut message, &mut self.data)
+            recv_fn(&self.sessions.conns[token], &mut message, &self.data)
         } else {
             true
         };
@@ -291,7 +294,7 @@ impl<T> QueenInner<T> {
 
     fn auth(&mut self, token: usize, mut message: Message) {
         let success = if let Some(auth_fn) = &self.callback.auth_fn {
-            auth_fn(&self.sessions.conns[token], &mut message, &mut self.data)
+            auth_fn(&self.sessions.conns[token], &mut message, &self.data)
         } else {
             true
         };
@@ -344,18 +347,16 @@ impl<T> QueenInner<T> {
 
                 return
             }
+        } else if let Some(port_id) = &conn.id {
+            message.insert(PORT_ID, port_id.clone());
         } else {
-            if let Some(port_id) = &conn.id {
-                message.insert(PORT_ID, port_id.clone());
-            } else {
-                let port_id = MessageId::new();
+            let port_id = MessageId::new();
 
-                self.sessions.ports.insert(port_id.clone(), token);
+            self.sessions.ports.insert(port_id.clone(), token);
 
-                conn.id = Some(port_id.clone());
+            conn.id = Some(port_id.clone());
 
-                message.insert(PORT_ID, port_id);
-            }
+            message.insert(PORT_ID, port_id);
         }
 
         conn.auth = true;
@@ -397,7 +398,7 @@ impl<T> QueenInner<T> {
         if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
             // check super
             match chan.as_str() {
-                PORT_READY | PORT_BREAK | PORT_ATTACH | PORT_DETACH => {
+                PORT_READY | PORT_BREAK | PORT_ATTACH | PORT_DETACH | PORT_SEND | PORT_RECV => {
 
                     if !self.sessions.conns[token].supe {
                         ErrorCode::Unauthorized.insert_message(&mut message);
@@ -413,7 +414,7 @@ impl<T> QueenInner<T> {
 
             // can attach
             let success = if let Some(attach_fn) = &self.callback.attach_fn {
-                attach_fn(&self.sessions.conns[token], &mut message, &mut self.data)
+                attach_fn(&self.sessions.conns[token], &mut message, &self.data)
             } else {
                 true
             };
@@ -507,7 +508,7 @@ impl<T> QueenInner<T> {
 
         if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
             if let Some(detach_fn) = &self.callback.detach_fn {
-                detach_fn(&self.sessions.conns[token], &mut message, &mut self.data);
+                detach_fn(&self.sessions.conns[token], &mut message, &self.data);
             }
 
             // label
@@ -586,15 +587,15 @@ impl<T> QueenInner<T> {
         self.sessions.conns[token].stream.send(message);
     }
 
-    fn ping(&mut self, token: usize, mut message: Message) {
+    fn ping(&self, token: usize, mut message: Message) {
         ErrorCode::OK.insert_message(&mut message);
 
         self.sessions.conns[token].stream.send(message);
     }
 
-    fn query(&mut self, token: usize, mut message: Message) {
+    fn query(&self, token: usize, mut message: Message) {
         {
-            let conn = &mut self.sessions.conns[token];
+            let conn = &self.sessions.conns[token];
 
             if !conn.auth || !conn.supe {
                 ErrorCode::Unauthorized.insert_message(&mut message);
@@ -691,9 +692,9 @@ impl<T> QueenInner<T> {
         self.sessions.conns[token].stream.send(message);
     }
 
-    fn custom(&mut self, token: usize, mut message: Message) {
+    fn custom(&self, token: usize, mut message: Message) {
         {
-            let conn = &mut self.sessions.conns[token];
+            let conn = &self.sessions.conns[token];
 
             if !conn.auth {
                 ErrorCode::Unauthorized.insert_message(&mut message);
@@ -705,13 +706,13 @@ impl<T> QueenInner<T> {
         }
 
         if let Some(custom_fn) = &self.callback.custom_fn {
-            custom_fn(&self.sessions, token, &mut message, &mut self.data);
+            custom_fn(&self.sessions, token, &mut message, &self.data);
         }
     }
 
     fn kill(&mut self, token: usize, mut message: Message) -> io::Result<()> {
         {
-            let conn = &mut self.sessions.conns[token];
+            let conn = &self.sessions.conns[token];
 
             if !conn.auth || !conn.supe {
                 ErrorCode::Unauthorized.insert_message(&mut message);
@@ -723,7 +724,7 @@ impl<T> QueenInner<T> {
         }
 
         let success = if let Some(kill_fn) = &self.callback.kill_fn {
-            kill_fn(&self.sessions.conns[token], &mut message, &mut self.data)
+            kill_fn(&self.sessions.conns[token], &mut message, &self.data)
         } else {
             true
         };
@@ -774,7 +775,7 @@ impl<T> QueenInner<T> {
         }
 
         let success = if let Some(emit_fn) = &self.callback.emit_fn {
-            emit_fn(&self.sessions.conns[token], &mut message, &mut self.data)
+            emit_fn(&self.sessions.conns[token], &mut message, &self.data)
         } else {
             true
         };
@@ -787,6 +788,7 @@ impl<T> QueenInner<T> {
             return
         }
 
+        // build reply message
         let reply_msg = if let Some(ack) = message.get(ACK) {
             let mut reply_msg = msg!{
                 CHAN: &chan,
@@ -880,6 +882,38 @@ impl<T> QueenInner<T> {
             }
         }
 
+        macro_rules! send {
+            ($self: ident, $conn: ident, $message: ident) => {
+                let success = if let Some(send_fn) = &$self.callback.send_fn {
+                    send_fn(&$conn, &mut $message, &$self.data)
+                } else {
+                    true
+                };
+
+                if success {
+                    $conn.stream.send($message.clone());
+
+                    // port event
+                    // {
+                    //     CHAN: PORT_RECV,
+                    //     VALUE: $message
+                    // }
+                    let mut event_msg = msg!{
+                        CHAN: PORT_RECV,
+                        VALUE: $message.clone()
+                    };
+
+                    if let Some(port_id) = &$conn.id {
+                        event_msg.insert(TO, port_id);
+                    }
+
+                    let id = $conn.token;
+
+                    $self.relay_super_message(id, PORT_RECV, event_msg);
+                }
+            };
+        }
+
         let mut no_consumers = true;
 
         if !to_ids.is_empty() {
@@ -887,16 +921,8 @@ impl<T> QueenInner<T> {
 
             for to in &to_ids {
                 if let Some(conn_id) = self.sessions.ports.get(to) {
-                    if let Some(conn) = self.sessions.conns.get_mut(*conn_id) {
-                        let success = if let Some(send_fn) = &self.callback.send_fn {
-                            send_fn(&conn, &mut message, &mut self.data)
-                        } else {
-                            true
-                        };
-
-                        if success {
-                            conn.stream.send(message.clone());
-                        }
+                    if let Some(conn) = self.sessions.conns.get(*conn_id) {
+                        send!(self, conn, message);
                     }
                 }
             }
@@ -905,7 +931,7 @@ impl<T> QueenInner<T> {
 
             if let Some(ids) = self.sessions.chans.get(&chan) {
                 for conn_id in ids {
-                    if let Some(conn) = self.sessions.conns.get_mut(*conn_id) {
+                    if let Some(conn) = self.sessions.conns.get(*conn_id) {
                         // filter labels
                         if !labels.is_empty() {
                             let conn_labels = conn.chans.get(&chan).expect("It shouldn't be executed here!");
@@ -927,35 +953,19 @@ impl<T> QueenInner<T> {
                 no_consumers = false;
 
                 if array.len() == 1 {
-                    if let Some(conn) = self.sessions.conns.get_mut(array[0]) {
-                        let success = if let Some(send_fn) = &self.callback.send_fn {
-                            send_fn(&conn, &mut message, &mut self.data)
-                        } else {
-                            true
-                        };
-
-                        if success {
-                            conn.stream.send(message.clone());
-                        }
+                    if let Some(conn) = self.sessions.conns.get(array[0]) {
+                        send!(self, conn, message);
                     }
                 } else if let Some(id) = array.choose(&mut self.rand) {
-                    if let Some(conn) = self.sessions.conns.get_mut(*id) {
-                        let success = if let Some(send_fn) = &self.callback.send_fn {
-                            send_fn(&conn, &mut message, &mut self.data)
-                        } else {
-                            true
-                        };
-
-                        if success {
-                            conn.stream.send(message.clone());
-                        }
+                    if let Some(conn) = self.sessions.conns.get(*id) {
+                        send!(self, conn, message);
                     }
                 }
             }
 
         } else if let Some(ids) = self.sessions.chans.get(&chan) {
             for conn_id in ids {
-                if let Some(conn) = self.sessions.conns.get_mut(*conn_id) {
+                if let Some(conn) = self.sessions.conns.get(*conn_id) {
                     // filter labels
                     if !labels.is_empty() {
                         let conn_labels = conn.chans.get(&chan).expect("It shouldn't be executed here!");
@@ -967,15 +977,7 @@ impl<T> QueenInner<T> {
 
                     no_consumers = false;
 
-                    let success = if let Some(send_fn) = &self.callback.send_fn {
-                        send_fn(&conn, &mut message, &mut self.data)
-                    } else {
-                        true
-                    };
-
-                    if success {
-                        conn.stream.send(message.clone());
-                    }
+                    send!(self, conn, message);
                 }
             }
         }
@@ -988,23 +990,36 @@ impl<T> QueenInner<T> {
             return
         }
 
+        // port event
+        // {
+        //     CHAN: PORT_SEND,
+        //     VALUE: $message
+        // }
+        let event_msg = msg!{
+            CHAN: PORT_SEND,
+            VALUE: message
+        };
+
+        self.relay_super_message(token, PORT_SEND, event_msg);
+
+        // send reply message
         if let Some(reply_msg) = reply_msg {
             self.sessions.conns[token].stream.send(reply_msg);
         }
     }
 
-    fn relay_super_message(&mut self, token: usize, chan: &str, message: Message) {
+    fn relay_super_message(&self, token: usize, chan: &str, message: Message) {
         if let Some(tokens) = self.sessions.chans.get(chan) {
             for other_token in tokens {
                 if token == *other_token {
                     continue;
                 }
 
-                if let Some(conn) = self.sessions.conns.get_mut(*other_token) {
+                if let Some(conn) = self.sessions.conns.get(*other_token) {
                     let mut message = message.clone();
 
                     let success = if let Some(send_fn) = &self.callback.send_fn {
-                        send_fn(&conn, &mut message, &mut self.data)
+                        send_fn(&conn, &mut message, &self.data)
                     } else {
                         true
                     };
@@ -1018,6 +1033,7 @@ impl<T> QueenInner<T> {
     }
 }
 
+#[derive(Default)]
 pub struct Sessions {
     pub conns: Slab<Session>,
     pub chans: HashMap<String, HashSet<usize>>,

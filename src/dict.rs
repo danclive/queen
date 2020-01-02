@@ -34,6 +34,8 @@ pub const PORT_BREAK:  &str = "_ptbr";
 pub const PORT_ATTACH: &str = "_ptat";
 pub const PORT_DETACH: &str = "_ptde";
 pub const PORT_KILL:   &str = "_ptki";
+pub const PORT_SEND:   &str = "_ptse";
+pub const PORT_RECV:   &str = "_ptrc";
 
 // query
 pub const QUERY_PORT_NUM: &str = "$port_num";
