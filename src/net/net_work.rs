@@ -1,5 +1,5 @@
 use std::collections::{VecDeque};
-use std::io::{self, Write, Read, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
+use std::io::{self, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::str::FromStr;
@@ -14,7 +14,7 @@ use slab::Slab;
 use crate::Stream;
 use crate::crypto::{Method, Aead};
 use crate::net::{NetStream};
-use crate::util::message::slice_msg;
+use crate::util::message::read_nonblock;
 use crate::dict::*;
 
 pub type AccessFn = Arc<Box<dyn Fn(String) -> Option<String> + Send + Sync>>;
@@ -253,7 +253,7 @@ impl NetConn {
             id,
             stream,
             interest: Ready::readable() | Ready::hup(),
-            r_buffer: Vec::new(),
+            r_buffer: Vec::with_capacity(1024),
             w_buffer: VecDeque::new(),
             handshake: false,
             role: Role::Conn,
@@ -267,86 +267,80 @@ impl NetConn {
             return Ok(())
         }
 
-        let mut buf = [0; 4 * 1024];
-
         loop {
-            match self.stream.read(&mut buf) {
-                Ok(size) => {
-                    if size == 0 {
-                        return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
-                    } else {
-                        let vec = slice_msg(&mut self.r_buffer, &buf[..size])?;
+            let ret = read_nonblock(&mut self.stream, &mut self.r_buffer);
 
-                        for mut data in vec {
-                            if self.handshake {
-                                if let Some(aead) = &mut self.crypto {
-                                    if aead.decrypt(&mut data).is_err() {
-                                        return Err(io::Error::new(InvalidData, "InvalidData"))
-                                    }
+            match ret {
+                Ok(ret) => {
+                    if let Some(mut bytes) = ret {
+                        if self.handshake {
+                            if let Some(aead) = &mut self.crypto {
+                                if aead.decrypt(&mut bytes).is_err() {
+                                    return Err(io::Error::new(InvalidData, "InvalidData"))
                                 }
+                            }
 
-                                match Message::from_slice(&data) {
-                                    Ok(message) => {
-                                        stream_conn.stream.send(message);
-                                    },
-                                    Err(_err) => {
-                                        return Err(io::Error::new(InvalidData, "InvalidData"))
-                                    }
+                            match Message::from_slice(&bytes) {
+                                Ok(message) => {
+                                    stream_conn.stream.send(message);
+                                },
+                                Err(_err) => {
+                                    return Err(io::Error::new(InvalidData, "InvalidData"))
                                 }
-                            } else {
-                                match &self.role {
-                                    Role::Conn => return Err(io::Error::new(InvalidData, "InvalidData")),
-                                    Role::Serv => {
-                                        let message =  match Message::from_slice(&data) {
-                                            Ok(message) => {
-                                                message
-                                            },
-                                            Err(_err) => {
-                                                return Err(io::Error::new(InvalidData, "InvalidData"))
-                                            }
+                            }
+                        } else {
+                            match &self.role {
+                                Role::Conn => return Err(io::Error::new(InvalidData, "InvalidData")),
+                                Role::Serv => {
+                                    let message =  match Message::from_slice(&bytes) {
+                                        Ok(message) => {
+                                            message
+                                        },
+                                        Err(_err) => {
+                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                        }
+                                    };
+
+                                    let handshake = if let Ok(handshake) = message.get_str(HANDSHAKE) {
+                                        handshake
+                                    } else {
+                                        return Err(io::Error::new(InvalidData, "InvalidData"))
+                                    };
+
+                                    if handshake == "" {
+                                        if self.access_fn.is_none() {
+                                            self.handshake = true;
+                                        } else {
+                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                        }
+                                    } else {
+                                        if self.access_fn.is_none() {
+                                            return Err(io::Error::new(InvalidData, "InvalidData"))
                                         };
 
-                                        let handshake = if let Ok(handshake) = message.get_str(HANDSHAKE) {
-                                            handshake
+                                        let method = if let Ok(method) = Method::from_str(handshake) {
+                                            method
                                         } else {
                                             return Err(io::Error::new(InvalidData, "InvalidData"))
                                         };
 
-                                        if handshake == "" {
-                                            if self.access_fn.is_none() {
-                                                self.handshake = true;
-                                            } else {
-                                                return Err(io::Error::new(InvalidData, "InvalidData"))
-                                            }
+                                        let access = if let Ok(access) = message.get_str(ACCESS) {
+                                            access
                                         } else {
-                                            if self.access_fn.is_none() {
-                                                return Err(io::Error::new(InvalidData, "InvalidData"))
-                                            };
+                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                        };
 
-                                            let method = if let Ok(method) = Method::from_str(handshake) {
-                                                method
-                                            } else {
-                                                return Err(io::Error::new(InvalidData, "InvalidData"))
-                                            };
+                                        let secret = if let Some(secret) = self.access_fn.as_ref().unwrap()(access.to_string()) {
+                                            secret
+                                        } else {
+                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                        };
 
-                                            let access = if let Ok(access) = message.get_str(ACCESS) {
-                                                access
-                                            } else {
-                                                return Err(io::Error::new(InvalidData, "InvalidData"))
-                                            };
+                                        let aead = Aead::new(&method, secret.as_bytes());
 
-                                            let secret = if let Some(secret) = self.access_fn.as_ref().unwrap()(access.to_string()) {
-                                                secret
-                                            } else {
-                                                return Err(io::Error::new(InvalidData, "InvalidData"))
-                                            };
+                                        self.crypto = Some(aead);
 
-                                            let aead = Aead::new(&method, secret.as_bytes());
-
-                                            self.crypto = Some(aead);
-
-                                            self.handshake = true;
-                                        }
+                                        self.handshake = true;
                                     }
                                 }
                             }

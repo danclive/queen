@@ -1,10 +1,10 @@
 use std::mem;
-use std::io::{self, Error, ErrorKind::InvalidData};
+use std::io::{self, Read};
+use std::io::ErrorKind::{BrokenPipe, InvalidData};
 
 use crate::MAX_MESSAGE_LEN;
 
-#[inline]
-pub fn get_length(buf: &[u8], start: usize) -> usize {
+pub fn read_i32(buf: &[u8], start: usize) -> usize {
     (
         i32::from(buf[start]) |
         i32::from(buf[start + 1]) << 8 |
@@ -13,229 +13,232 @@ pub fn get_length(buf: &[u8], start: usize) -> usize {
     ) as usize
 }
 
-pub fn slice_msg(buf1: &mut Vec<u8>, buf2: &[u8]) -> io::Result<Vec<Vec<u8>>>{
-    let mut messages = Vec::new();
+pub fn read_nonblock(reader: &mut impl Read, buffer: &mut Vec<u8>) -> io::Result<Option<Vec<u8>>> {
+    if buffer.is_empty() {
+        let mut len_bytes = [0u8; 4];
+        let size = reader.read(&mut len_bytes)?;
 
-    if buf1.is_empty() {
-        if buf2.len() < 4 {
-            buf1.extend_from_slice(buf2);
-        } else {
-            let len = get_length(buf2, 0);
-
-            if len > MAX_MESSAGE_LEN {
-                return Err(Error::new(InvalidData, "InvalidData"))
-            }
-
-            if len > buf2.len() {
-                buf1.extend_from_slice(buf2);
-            } else if len == buf2.len() {
-                messages.push(buf2.to_vec());
-            } else {
-                // len < buf2.len()
-                let mut start = 0;
-                let mut end = len;
-
-                loop {
-                    messages.push(buf2[start..end].to_vec());
-
-                    if buf2.len() - end < 4 {
-                        buf1.extend_from_slice(buf2);
-                        break;
-                    }
-
-                    let len = get_length(buf2, end);
-
-                    if len > MAX_MESSAGE_LEN {
-                        return Err(Error::new(InvalidData, "InvalidData"))
-                    }
-
-                    if len > buf2.len() - end {
-                        buf1.extend_from_slice(&buf2[end..]);
-                        break;
-                    } else if len == buf2.len() - end {
-                        messages.push(buf2[end..].to_vec());
-                        break;
-                    } else {
-                        // len < buf.len() - end
-                        start = end;
-                        end += len;
-                    }
-                }
-            }
+        if size == 0 {
+            return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
+        } else if size < 4 {
+            buffer.extend_from_slice(&len_bytes[..size]);
+            return Ok(None)
         }
+
+        let len = i32::from_le_bytes(len_bytes) as usize;
+
+        if len < 5 || len > MAX_MESSAGE_LEN {
+            return Err(io::Error::new(InvalidData, format!("Invalid length of {}", len)))
+        }
+
+        let mut buf = vec![0u8; len];
+
+        let size = reader.read(&mut buf[4..])?;
+
+        if size == 0 {
+            return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
+        } else if size < len - 4 {
+            buffer.extend_from_slice(&len_bytes);
+            buffer.extend_from_slice(&buf[4..(4 + size)]);
+            return Ok(None)
+        }
+
+        buf[..4].clone_from_slice(&len_bytes);
+
+        Ok(Some(buf))
     } else {
-        buf1.extend_from_slice(buf2);
+        if buffer.len() < 4 {
+            let need = 4 - buffer.len();
+            let mut len_bytes = vec![0u8; need];
 
-        if buf1.len() >= 4 {
-            let len = get_length(buf1, 0);
+            let size = reader.read(&mut len_bytes)?;
 
-            if len > MAX_MESSAGE_LEN {
-                return Err(Error::new(InvalidData, "InvalidData"))
+            if size == 0 {
+                return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
             }
 
-            if len > buf1.len() {
+            buffer.extend_from_slice(&len_bytes[0..size]);
 
-            } else if len == buf1.len() {
-                let data = mem::replace(buf1, Vec::with_capacity(4 * 1024));
-                messages.push(data);
-            } else {
-                // len < buf1.len()
-                let mut start = 0;
-                let mut end = len;
-
-                loop {
-                    messages.push(buf1[start..end].to_vec());
-
-                    if buf1.len() - end < 4 {
-                        *buf1 = buf1[end..].to_vec();
-                        break;
-                    }
-
-                    let len = get_length(buf1, end);
-
-                    if len > MAX_MESSAGE_LEN {
-                        return Err(Error::new(InvalidData, "InvalidData"))
-                    }
-
-                    if len > buf1.len() - end {
-                        *buf1 = buf1[end..].to_vec();
-                        break;
-                    } else if len == buf1.len() - end {
-                        messages.push(buf1[end..].to_vec());
-                        mem::replace(buf1, Vec::with_capacity(4 * 1024));
-                        break;
-                    } else {
-                        // len < buf.len() - end
-                        start = end;
-                        end += len;
-                    }
-                }
-            }
+            return Ok(None)
         }
-    }
 
-    Ok(messages)
+        let len = read_i32(&buffer[..4], 0) as usize;
+
+        if len < 5 || len > MAX_MESSAGE_LEN {
+            return Err(io::Error::new(InvalidData, format!("Invalid length of {}", len)))
+        }
+
+        let mut buf = vec![0u8; len - buffer.len()];
+
+        let size = reader.read(&mut buf)?;
+
+        if size == 0 {
+            return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
+        } else if size < buf.len() {
+            buffer.extend_from_slice(&buf[0..size]);
+            return Ok(None)
+        }
+
+        buffer.extend_from_slice(&buf);
+
+        let mut vec = Vec::with_capacity(1024);
+
+        mem::swap(buffer, &mut vec);
+
+        Ok(Some(vec))
+    }
 }
 
-// pub fn write_socket(writer: &mut impl Write, aead: &mut Aead, mut data: Vec<u8>) -> io::Result<usize> {
-//     if aead.encrypt(&mut data).is_err() {
-//         return Err(Error::new(InvalidData, "InvalidData"))
-//     }
+pub fn read_block(reader: &mut impl Read) -> io::Result<Vec<u8>> {
+    let mut len_bytes = [0u8; 4];
+    reader.read_exact(&mut len_bytes)?;
 
-//     writer.write(&data)
-// }
+    let len = i32::from_le_bytes(len_bytes) as usize;
 
-// pub fn write_socket_no_aead(writer: &mut impl Write, data: Vec<u8>) -> io::Result<usize> {
-//     writer.write(&data)
-// }
+    if len < 5 || len > MAX_MESSAGE_LEN {
+        return Err(io::Error::new(InvalidData, format!("Invalid length of {}", len)))
+    }
 
-// pub fn read_socket(reader: &mut impl Read, aead: &mut Aead) -> io::Result<Vec<u8>> {
-//     let mut len_buf = [0u8; 4];
-//     reader.read_exact(&mut len_buf)?;
+    let mut buf = vec![0u8; len];
 
-//     let len = get_length(&len_buf, 0);
+    reader.read_exact(&mut buf[4..])?;
 
-//     let mut buf = vec![0u8; len - 4];
-//     reader.read_exact(&mut buf)?;
+    buf[..4].clone_from_slice(&len_bytes);
 
-//     let mut data: Vec<u8> = Vec::with_capacity(128);
+    assert!(len == buf.len());
 
-//     data.extend_from_slice(&len_buf);
-//     data.extend_from_slice(&buf);
-
-//     if aead.encrypt(&mut data).is_err() {
-//         return Err(Error::new(InvalidData, "InvalidData"))
-//     }
-
-//     Ok(data)
-// }
-
-// pub fn read_socket_no_aead(reader: &mut impl Read) -> io::Result<Vec<u8>> {
-//     let mut len_buf = [0u8; 4];
-//     reader.read_exact(&mut len_buf)?;
-
-//     let len = get_length(&len_buf, 0);
-
-//     let mut buf = vec![0u8; len - 4];
-//     reader.read_exact(&mut buf)?;
-
-//     let mut data: Vec<u8> = Vec::with_capacity(128);
-
-//     data.extend_from_slice(&len_buf);
-//     data.extend_from_slice(&buf);
-
-//     Ok(data)
-// }
+    Ok(buf)
+}
 
 #[cfg(test)]
 mod test {
-    use nson::msg;
-    use crate::util::message::slice_msg;
+    use std::io::Cursor;
+
+    use crate::nson::msg;
+    use super::{read_nonblock, read_block};
 
     #[test]
-    fn test1() {
-        let msg = msg!{
-            "hello": "world",
-            "foo": "bar"
-        };
+    fn test_empty_message() {
+        let msg = msg!{};
+        let vec = msg.to_vec().unwrap();
+        let mut buffer: Vec<u8> = vec![];
+        let mut reader = Cursor::new(&vec[..]);
 
-        let msg_vec = msg.to_vec().unwrap();
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
 
-        let ret = slice_msg(&mut vec![], &msg_vec).unwrap();
-    
-        assert!(ret.len() == 1);
-        assert!(ret[0] == msg_vec);
+        assert!(ret.unwrap() == vec);
     }
 
     #[test]
-    fn test2() {
+    fn test_nonempty_message() {
         let msg = msg!{
-            "hello": "world",
-            "foo": "bar"
+            "a": 1234,
+            "b": 5678
         };
+        let vec = msg.to_vec().unwrap();
+        let mut buffer: Vec<u8> = vec![];
+        let mut reader = Cursor::new(&vec[..]);
 
-        let msg_vec = msg.to_vec().unwrap();
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
 
-        let mut buf1 = vec![];
-        let ret = slice_msg(&mut buf1, &msg_vec[0..2]).unwrap();
-        assert!(ret.len() == 0);
-        assert!(buf1.len() == 2);
-
-        let ret = slice_msg(&mut buf1, &msg_vec[2..10]).unwrap();
-        assert!(ret.len() == 0);
-        assert!(buf1.len() == 10);
-
-        let ret = slice_msg(&mut buf1, &msg_vec[10..]).unwrap();
-        assert!(ret.len() == 1);
-        assert!(ret[0] == msg_vec);
-        assert!(buf1.len() == 0);
+        assert!(ret.unwrap() == vec);
     }
 
     #[test]
-    fn test3() {
+    fn test_slice_data() {
         let msg = msg!{
-            "hello": "world",
-            "foo": "bar"
+            "a": 1234,
+            "b": 5678
         };
+        let vec = msg.to_vec().unwrap();
+        let mut buffer: Vec<u8> = vec![];
 
-        let mut msg_vec = msg.to_vec().unwrap();
-        msg_vec.extend_from_slice(&msg.to_vec().unwrap());
+        // slice 1
+        let mut reader = Cursor::new(&vec[..6]);
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
+        assert!(ret.is_none());
 
-        let mut buf1 = vec![];
-        let ret = slice_msg(&mut buf1, &msg_vec[0..4]).unwrap();
-        assert!(ret.len() == 0);
-        assert!(buf1.len() == 4);
+        // slice 2
+        let mut reader = Cursor::new(&vec[6..10]);
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
+        assert!(ret.is_none());
 
-        let ret = slice_msg(&mut buf1, &msg_vec[4..10]).unwrap();
-        assert!(ret.len() == 0);
-        assert!(buf1.len() == 10);
+        // slice 3
+        let mut reader = Cursor::new(&vec[10..17]);
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
+        assert!(ret.is_none());
 
-        let ret = slice_msg(&mut buf1, &msg_vec[10..40]).unwrap();
-        assert!(ret.len() == 1);
-        assert!(buf1.len() == 5);
+        // slice 4
+        let mut reader = Cursor::new(&vec[17..]);
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
+        assert!(ret.is_some());
 
-        let ret = slice_msg(&mut buf1, &msg_vec[40..]).unwrap();
-        assert!(ret.len() == 1);
-        assert!(buf1.len() == 0);
+        assert!(ret.unwrap() == vec);
+    }
+
+    #[test]
+    fn test_slice_data2() {
+        let msg = msg!{
+            "a": 1234,
+            "b": 5678
+        };
+        let vec = msg.to_vec().unwrap();
+        let mut buffer: Vec<u8> = vec![];
+
+        // slice 1
+        let mut reader = Cursor::new(&vec[..2]);
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
+        assert!(ret.is_none());
+
+        // slice 2
+        let mut reader = Cursor::new(&vec[2..9]);
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
+        assert!(ret.is_none());
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
+        assert!(ret.is_none());
+
+        // slice 3
+        let mut reader = Cursor::new(&vec[9..15]);
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
+        assert!(ret.is_none());
+
+        // slice 4
+        let mut reader = Cursor::new(&vec[15..]);
+        let ret = read_nonblock(&mut reader, &mut buffer).unwrap();
+        assert!(ret.is_some());
+
+        assert!(ret.unwrap() == vec);
+    }
+
+    #[test]
+    fn test_bad_len() {
+        let msg = msg!{
+            "a": 1234,
+            "b": 5678
+        };
+        let mut vec = msg.to_vec().unwrap();
+        let mut buffer: Vec<u8> = vec![];
+
+        vec[3] = 123;
+        vec[4] = 234;
+
+        let mut reader = Cursor::new(vec);
+
+        let ret = read_nonblock(&mut reader, &mut buffer);
+        assert!(ret.is_err());
+    }
+
+    #[test]
+    fn test_read_block() {
+        let msg = msg!{
+            "a": 1234,
+            "b": 5678
+        };
+        let vec = msg.to_vec().unwrap();
+        let mut reader = Cursor::new(&vec);
+
+        let ret = read_block(&mut reader).unwrap();
+
+        assert!(ret == vec);
     }
 }
