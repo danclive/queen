@@ -5,7 +5,7 @@ use nson::{msg, MessageId};
 
 use queen::{Queen, Port, Connector, Node};
 use queen::crypto::Method;
-use queen::net::Addr;
+use queen::net::{Addr, CryptoOptions};
 use queen::dict::*;
 use queen::error::{Error, ErrorCode};
 
@@ -15,14 +15,14 @@ use super::get_free_addr;
 fn connect_queen() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let port1 = Port::connect(
+    let (port1, _) = Port::connect(
         MessageId::new(),
         Connector::Queen(queen.clone(), msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
 
-    let port2 = Port::connect(
+    let (port2, _) = Port::connect(
         MessageId::new(),
         Connector::Queen(queen, msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -58,14 +58,14 @@ fn connect_node() {
         node.run().unwrap();
     });
 
-    let port1 = Port::connect(
+    let (port1, _) = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(), None),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
 
-     let port2 = Port::connect(
+     let (port2, _) = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(), None),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -89,7 +89,12 @@ fn connect_node() {
 fn connect_node_crypto() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let crypto = (Method::Aes256Gcm, "access_key".to_string(), "secret_key".to_string());
+    let options = CryptoOptions {
+        method: Method::Aes256Gcm,
+        access: "access_key".to_string(),
+        secret: "secret_key".to_string()
+    };
+
     let addr = get_free_addr();
 
     let addr2 = addr.clone();
@@ -108,16 +113,16 @@ fn connect_node_crypto() {
         node.run().unwrap();
     });
 
-    let port1 = Port::connect(
+    let (port1, _) = Port::connect(
         MessageId::new(),
-        Connector::Net(Addr::tcp(&addr).unwrap(), Some(crypto.clone())),
+        Connector::Net(Addr::tcp(&addr).unwrap(), Some(options.clone())),
         msg!{},
         2
     ).unwrap();
 
-    let port2 = Port::connect(
+    let (port2, _) = Port::connect(
         MessageId::new(),
-        Connector::Net(Addr::tcp(&addr).unwrap(), Some(crypto)),
+        Connector::Net(Addr::tcp(&addr).unwrap(), Some(options)),
         msg!{},
         2
     ).unwrap();
@@ -137,7 +142,12 @@ fn connect_node_crypto() {
 fn connect_node_crypto2() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let crypto = (Method::Aes256Gcm, "access_key".to_string(), "secret_key".to_string());
+    let options = CryptoOptions {
+        method: Method::Aes256Gcm,
+        access: "access_key".to_string(),
+        secret: "secret_key".to_string()
+    };
+
     let addr = get_free_addr();
 
     let addr2 = addr.clone();
@@ -157,16 +167,16 @@ fn connect_node_crypto2() {
         node.run().unwrap();
     });
 
-    let port1 = Port::connect(
+    let (port1, _) = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(), None),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
 
-    let port2 = Port::connect(
+    let (port2, _) = Port::connect(
         MessageId::new(),
-        Connector::Net(Addr::tcp(&addr).unwrap(), Some(crypto)),
+        Connector::Net(Addr::tcp(&addr).unwrap(), Some(options)),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
@@ -190,7 +200,12 @@ fn connect_node_crypto2() {
 fn connect_node_crypto3() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let crypto = (Method::Aes256Gcm, "access_key".to_string(), "secret_key".to_string());
+    let options = CryptoOptions {
+        method: Method::Aes256Gcm,
+        access: "access_key".to_string(),
+        secret: "secret_key".to_string()
+    };
+
     let addr = get_free_addr();
 
     let addr2 = addr.clone();
@@ -210,14 +225,14 @@ fn connect_node_crypto3() {
         node.run().unwrap();
     });
 
-    let port1 = Port::connect(
+    let (port1, _) = Port::connect(
         MessageId::new(),
-        Connector::Net(Addr::tcp(&addr).unwrap(), Some(crypto.clone())),
+        Connector::Net(Addr::tcp(&addr).unwrap(), Some(options.clone())),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
 
-    let port2 = Port::connect(
+    let (port2, _) = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr).unwrap(), None),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -269,14 +284,14 @@ fn connect_mulit_node() {
         node.run().unwrap();
     });
 
-    let port1 = Port::connect(
+    let (port1, _) = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr1).unwrap(), None),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
 
-     let port2 = Port::connect(
+     let (port2, _) = Port::connect(
         MessageId::new(),
         Connector::Net(Addr::tcp(&addr2).unwrap(), None),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -300,14 +315,14 @@ fn connect_mulit_node() {
 fn recv() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let port1 = Port::connect(
+    let (port1, _) = Port::connect(
         MessageId::new(),
         Connector::Queen(queen.clone(), msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
 
-    let port2 = Port::connect(
+    let (port2, _) = Port::connect(
         MessageId::new(),
         Connector::Queen(queen, msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -368,14 +383,14 @@ fn recv() {
 fn labels() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let port1 = Port::connect(
+    let (port1, _) = Port::connect(
         MessageId::new(),
         Connector::Queen(queen.clone(), msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
 
-    let port2 = Port::connect(
+    let (port2, _) = Port::connect(
         MessageId::new(),
         Connector::Queen(queen, msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -500,14 +515,14 @@ fn labels() {
 fn unknow_topic() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let port1 = Port::connect(
+    let (port1, _) = Port::connect(
         MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap(),
         Connector::Queen(queen.clone(), msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
         2
     ).unwrap();
 
-    let port2 = Port::connect(
+    let (port2, _) = Port::connect(
         MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap(),
         Connector::Queen(queen, msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},

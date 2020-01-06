@@ -3,6 +3,7 @@ use std::os::unix::io::{AsRawFd};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
+use std::time::Duration;
 
 use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt};
 use queen_io::queue::spsc::Queue;
@@ -50,7 +51,7 @@ impl Node {
             let mut net_work = NetWork::new(queue2, run.clone())?;
 
             thread::Builder::new().name("net".to_string()).spawn(move || {
-                net_work.run().unwrap()
+                net_work.run()
             }).unwrap();
         }
 
@@ -77,8 +78,8 @@ impl Node {
             self.epoll.add(&listen.as_raw_fd(), Token(id), Ready::readable(), EpollOpt::edge())?;
         }
 
-        while self.run.load(Ordering::Relaxed) {
-            let size = self.epoll.wait(&mut self.events, None)?;
+        while self.run.load(Ordering::Relaxed) && self.queen.is_run() {
+            let size = self.epoll.wait(&mut self.events, Some(Duration::from_secs(10)))?;
 
             for i in 0..size {
                 let event = self.events.get(i).unwrap();
@@ -102,7 +103,11 @@ impl Node {
                         match self.queen.connect(attr, None) {
                             Ok(stream) => {
                                 if let Some(queue) = self.queues.choose(&mut self.rand) {
-                                    queue.push(Packet::NewServ(stream, socket, self.access_fn.clone()));
+                                    queue.push(Packet::NewServ{
+                                        stream,
+                                        net_stream: socket,
+                                        access_fn: self.access_fn.clone()
+                                    })
                                 }
                             },
                             Err(err) => {
@@ -115,5 +120,11 @@ impl Node {
         }
 
         Ok(())
+    }
+}
+
+impl Drop for Node {
+    fn drop(&mut self) {
+        self.run.store(false, Ordering::Relaxed);
     }
 }

@@ -119,8 +119,8 @@ mod test {
 
     #[test]
     fn test_empty_message() {
-        let msg = msg!{};
-        let vec = msg.to_vec().unwrap();
+        let message = msg!{};
+        let vec = message.to_vec().unwrap();
         let mut buffer: Vec<u8> = vec![];
         let mut reader = Cursor::new(&vec[..]);
 
@@ -131,11 +131,11 @@ mod test {
 
     #[test]
     fn test_nonempty_message() {
-        let msg = msg!{
+        let message = msg!{
             "a": 1234,
             "b": 5678
         };
-        let vec = msg.to_vec().unwrap();
+        let vec = message.to_vec().unwrap();
         let mut buffer: Vec<u8> = vec![];
         let mut reader = Cursor::new(&vec[..]);
 
@@ -146,11 +146,11 @@ mod test {
 
     #[test]
     fn test_slice_data() {
-        let msg = msg!{
+        let message = msg!{
             "a": 1234,
             "b": 5678
         };
-        let vec = msg.to_vec().unwrap();
+        let vec = message.to_vec().unwrap();
         let mut buffer: Vec<u8> = vec![];
 
         // slice 1
@@ -178,11 +178,11 @@ mod test {
 
     #[test]
     fn test_slice_data2() {
-        let msg = msg!{
+        let message = msg!{
             "a": 1234,
             "b": 5678
         };
-        let vec = msg.to_vec().unwrap();
+        let vec = message.to_vec().unwrap();
         let mut buffer: Vec<u8> = vec![];
 
         // slice 1
@@ -212,11 +212,11 @@ mod test {
 
     #[test]
     fn test_bad_len() {
-        let msg = msg!{
+        let message = msg!{
             "a": 1234,
             "b": 5678
         };
-        let mut vec = msg.to_vec().unwrap();
+        let mut vec = message.to_vec().unwrap();
         let mut buffer: Vec<u8> = vec![];
 
         vec[3] = 123;
@@ -230,11 +230,11 @@ mod test {
 
     #[test]
     fn test_read_block() {
-        let msg = msg!{
+        let message = msg!{
             "a": 1234,
             "b": 5678
         };
-        let vec = msg.to_vec().unwrap();
+        let vec = message.to_vec().unwrap();
         let mut reader = Cursor::new(&vec);
 
         let ret = read_block(&mut reader).unwrap();

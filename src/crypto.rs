@@ -55,14 +55,14 @@ impl Default for Method {
 }
 
 #[derive(Debug)]
-pub struct Aead {
+pub struct Crypto {
     inner: LessSafeKey
 }
 
-impl Aead {
+impl Crypto {
     pub const NONCE_LEN: usize = 96 / 8;
 
-    pub fn new(method: &Method, key: &[u8]) -> Aead {
+    pub fn new(method: &Method, key: &[u8]) -> Self {
         let algorithm = method.algorithm();
 
         let key_len = algorithm.key_len();
@@ -70,12 +70,12 @@ impl Aead {
 
         let key = UnboundKey::new(algorithm, &key[0..key_len]).expect("Fails if key_bytes.len() != algorithm.key_len()`.");
 
-        Aead {
+        Self {
             inner: LessSafeKey::new(key)
         }
     }
 
-    pub fn encrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
+    pub fn encrypt(&self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
         let nonce_bytes = Self::rand_nonce();
         let nonce = Nonce::assume_unique_for_key(nonce_bytes);
 
@@ -90,7 +90,7 @@ impl Aead {
         Ok(())
     }
 
-    pub fn decrypt(&mut self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
+    pub fn decrypt(&self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
         let nonce = Nonce::try_assume_unique_for_key(&in_out[(in_out.len() - Self::NONCE_LEN)..])?;
 
         let end = in_out.len() - Self::NONCE_LEN;

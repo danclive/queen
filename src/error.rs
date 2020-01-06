@@ -119,18 +119,18 @@ impl ErrorCode {
         }
     }
 
-    pub fn insert_message(self, msg: &mut Message) {
+    pub fn insert_message(self, message: &mut Message) {
         let code = self.code();
-        msg.insert(OK, code);
+        message.insert(OK, code);
 
         #[cfg(debug_assertions)]
         {if code > 0 {
-            msg.insert(ERROR, self.to_str());
+            message.insert(ERROR, self.to_str());
         }}
     }
 
-    pub fn has_error(msg: &Message) -> Option<ErrorCode> {
-        if let Ok(ok) = msg.get_i32(OK) {
+    pub fn has_error(message: &Message) -> Option<ErrorCode> {
+        if let Ok(ok) = message.get_i32(OK) {
             if ok < 0 || ok > ErrorCode::UnknownError as i32 {
                 return Some(ErrorCode::UnknownError)
             }

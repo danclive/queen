@@ -1,10 +1,12 @@
+use std::time::Duration;
+
 use queen::{Port, Connector};
 use queen::net::Addr;
 
 use nson::{MessageId, msg};
 
 fn main() {
-    let (port1, _join_handle) = Port::connect(
+    let (port1, join_handle) = Port::connect(
         MessageId::new(),
         Connector::Net(
             Addr::tcp("127.0.0.1:8888").unwrap(),
@@ -14,11 +16,10 @@ fn main() {
         2
     ).unwrap();
 
-    let mut recv = port1.recv("aaa", None, None).unwrap();
+    let res = port1.call("hello", None, msg!{"hello": "world"},
+        Some(<Duration>::from_secs(1)));
 
-    loop {
-        println!("recv: {:?}", recv.next());
-    }
+    println!("{:?}", res);
 
-    // println!("{:?}", join_handle.join().unwrap());
+    println!("{:?}", join_handle.join());
 }

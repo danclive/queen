@@ -74,18 +74,10 @@ impl Queen {
 
         self.queue.push(packet);
 
-        if let Some(timeout) = timeout {
-            let ret = rx.wait_timeout(timeout)?;
+        let ret = rx.wait_timeout(timeout.unwrap_or(Duration::from_secs(60)))?;
 
-            if !ret.unwrap_or_default() {
-                return Err(io::Error::new(ConnectionAborted, "ConnectionAborted"))
-            }
-        } else {
-            let ret = rx.wait();
-
-            if !ret.unwrap_or_default() {
-                return Err(io::Error::new(ConnectionAborted, "ConnectionAborted"))
-            }
+        if !ret.unwrap_or_default() {
+            return Err(io::Error::new(ConnectionAborted, "ConnectionAborted"))
         }
 
         Ok(stream2)
@@ -143,7 +135,7 @@ impl<T> QueenInner<T> {
         self.epoll.add(&self.queue, Self::QUEUE_TOKEN, Ready::readable(), EpollOpt::level())?;
 
         while self.run.load(Ordering::Relaxed) {
-            let size = self.epoll.wait(&mut self.events, None)?;
+            let size = self.epoll.wait(&mut self.events, Some(Duration::from_secs(10)))?;
 
             for i in 0..size {
                 let event = self.events.get(i).unwrap();
@@ -229,16 +221,16 @@ impl<T> QueenInner<T> {
             //     CHAN: PORT_BREAK,
             //     PORT_ID: $port_id
             // }
-            let mut event_msg = msg!{
+            let mut event_message = msg!{
                 CHAN: PORT_BREAK
             };
 
             if let Some(port_id) = conn.id {
                 self.sessions.ports.remove(&port_id);
-                event_msg.insert(PORT_ID, port_id);
+                event_message.insert(PORT_ID, port_id);
             }
 
-            self.relay_super_message(token, PORT_BREAK, event_msg);
+            self.relay_super_message(token, PORT_BREAK, event_message);
         }
 
         Ok(())
@@ -371,18 +363,18 @@ impl<T> QueenInner<T> {
         //     SUPER: $conn.supe,
         //     PORT_ID: $port_id
         // }
-        let mut event_msg = msg!{
+        let mut event_message = msg!{
             CHAN: PORT_READY,
             SUPER: conn.supe
         };
 
         if let Some(port_id) = &conn.id {
-            event_msg.insert(PORT_ID, port_id.clone());
+            event_message.insert(PORT_ID, port_id.clone());
         }
 
         self.sessions.conns[token].stream.send(message);
 
-        self.relay_super_message(token, PORT_READY, event_msg);
+        self.relay_super_message(token, PORT_READY, event_message);
     }
 
     fn attach(&mut self, token: usize, mut message: Message) {
@@ -461,14 +453,14 @@ impl<T> QueenInner<T> {
             //     LABEL: $label, // string or array
             //     PORT_ID: $port_id
             // }
-            let mut event_msg = msg!{
+            let mut event_message = msg!{
                 CHAN: PORT_ATTACH
             };
 
-            event_msg.insert(VALUE, &chan);
+            event_message.insert(VALUE, &chan);
 
             if let Some(label) = message.get(LABEL) {
-                event_msg.insert(LABEL, label.clone());
+                event_message.insert(LABEL, label.clone());
             }
 
             // session_attach
@@ -482,11 +474,11 @@ impl<T> QueenInner<T> {
                 set.extend(labels);
 
                 if let Some(port_id) = &conn.id {
-                    event_msg.insert(PORT_ID, port_id.clone());
+                    event_message.insert(PORT_ID, port_id.clone());
                 }
             }
 
-            self.relay_super_message(token, PORT_ATTACH, event_msg);
+            self.relay_super_message(token, PORT_ATTACH, event_message);
 
             ErrorCode::OK.insert_message(&mut message);
         } else {
@@ -545,13 +537,13 @@ impl<T> QueenInner<T> {
             //     LABEL: $label, // string or array
             //     PORT_ID: $port_id
             // }
-            let mut event_msg = msg!{
+            let mut event_message = msg!{
                 CHAN: PORT_DETACH,
                 VALUE: &chan
             };
 
             if let Some(label) = message.get(LABEL) {
-                event_msg.insert(LABEL, label.clone());
+                event_message.insert(LABEL, label.clone());
             }
 
             // session_detach
@@ -573,11 +565,11 @@ impl<T> QueenInner<T> {
                 }
 
                 if let Some(port_id) = &conn.id {
-                    event_msg.insert(PORT_ID, port_id.clone());
+                    event_message.insert(PORT_ID, port_id.clone());
                 }
             }
 
-            self.relay_super_message(token, PORT_DETACH, event_msg);
+            self.relay_super_message(token, PORT_DETACH, event_message);
         
             ErrorCode::OK.insert_message(&mut message);
         } else {
@@ -789,21 +781,21 @@ impl<T> QueenInner<T> {
         }
 
         // build reply message
-        let reply_msg = if let Some(ack) = message.get(ACK) {
-            let mut reply_msg = msg!{
+        let reply_message = if let Some(ack) = message.get(ACK) {
+            let mut reply_message = msg!{
                 CHAN: &chan,
                 ACK: ack.clone()
             };
 
             if let Ok(message_id) = message.get_message_id(ID) {
-                reply_msg.insert(ID, message_id);
+                reply_message.insert(ID, message_id);
             }
 
-            ErrorCode::OK.insert_message(&mut reply_msg);
+            ErrorCode::OK.insert_message(&mut reply_message);
 
             message.remove(ACK);
 
-            Some(reply_msg)
+            Some(reply_message)
         } else {
             None
         };
@@ -898,18 +890,18 @@ impl<T> QueenInner<T> {
                     //     CHAN: PORT_RECV,
                     //     VALUE: $message
                     // }
-                    let mut event_msg = msg!{
+                    let mut event_message = msg!{
                         CHAN: PORT_RECV,
                         VALUE: $message.clone()
                     };
 
                     if let Some(port_id) = &$conn.id {
-                        event_msg.insert(TO, port_id);
+                        event_message.insert(TO, port_id);
                     }
 
                     let id = $conn.token;
 
-                    $self.relay_super_message(id, PORT_RECV, event_msg);
+                    $self.relay_super_message(id, PORT_RECV, event_message);
                 }
             };
         }
@@ -995,16 +987,16 @@ impl<T> QueenInner<T> {
         //     CHAN: PORT_SEND,
         //     VALUE: $message
         // }
-        let event_msg = msg!{
+        let event_message = msg!{
             CHAN: PORT_SEND,
             VALUE: message
         };
 
-        self.relay_super_message(token, PORT_SEND, event_msg);
+        self.relay_super_message(token, PORT_SEND, event_message);
 
         // send reply message
-        if let Some(reply_msg) = reply_msg {
-            self.sessions.conns[token].stream.send(reply_msg);
+        if let Some(reply_message) = reply_message {
+            self.sessions.conns[token].stream.send(reply_message);
         }
     }
 
@@ -1030,6 +1022,12 @@ impl<T> QueenInner<T> {
                 }
             }
         }
+    }
+}
+
+impl<T> Drop for QueenInner<T> {
+    fn drop(&mut self) {
+        self.run.store(false, Ordering::Relaxed);
     }
 }
 

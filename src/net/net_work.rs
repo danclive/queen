@@ -1,27 +1,44 @@
 use std::collections::{VecDeque};
-use std::io::{self, Write, ErrorKind::{WouldBlock, BrokenPipe, InvalidData}};
+use std::io::{self, Write};
+use std::io::ErrorKind::{WouldBlock, BrokenPipe, InvalidData, PermissionDenied};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::str::FromStr;
+use std::time::Duration;
 
 use queen_io::epoll::{Epoll, Event, Events, Token, Ready, EpollOpt};
 use queen_io::queue::spsc::Queue;
 
-use nson::Message;
+use nson::{Message, msg};
 
 use slab::Slab;
 
 use crate::Stream;
-use crate::crypto::{Method, Aead};
-use crate::net::{NetStream};
+use crate::crypto::{Method, Crypto};
+use crate::net::NetStream;
 use crate::util::message::read_nonblock;
 use crate::dict::*;
 
 pub type AccessFn = Arc<Box<dyn Fn(String) -> Option<String> + Send + Sync>>;
 
+#[derive(Debug, Clone)]
+pub struct CryptoOptions {
+    pub method: Method,
+    pub access: String,
+    pub secret: String
+}
+
 pub enum Packet {
-    NewConn(Stream, NetStream, Option<(Method, String, String)>), // crypto method, access, secret
-    NewServ(Stream, NetStream, Option<AccessFn>)
+    NewConn {
+        stream: Stream,
+        net_stream: NetStream,
+        options: Option<CryptoOptions>
+    },
+    NewServ {
+        stream: Stream,
+        net_stream: NetStream,
+        access_fn: Option<AccessFn>
+    }
 }
 
 pub struct NetWork {
@@ -44,7 +61,6 @@ impl NetWork {
             queue,
             streams: Slab::new(),
             nets: Slab::new(),
-
             run
         })
     }
@@ -53,7 +69,7 @@ impl NetWork {
         self.epoll.add(&self.queue, Token(Self::QUEUE_TOKEN), Ready::readable(), EpollOpt::level())?;
 
         while self.run.load(Ordering::Relaxed) {
-            let size = self.epoll.wait(&mut self.events, None)?;
+            let size = self.epoll.wait(&mut self.events, Some(Duration::from_secs(10)))?;
 
             for i in 0..size {
                 let event = self.events.get(i).unwrap();
@@ -72,7 +88,7 @@ impl NetWork {
     fn dispatch_queue(&mut self) -> io::Result<()> {
         if let Some(packet) = self.queue.pop() {
             match packet {
-                Packet::NewConn(stream, net_stream, crypto) => {
+                Packet::NewConn{ stream, net_stream, options } => {
                     let entry1 = self.streams.vacant_entry();
                     let entry2 = self.nets.vacant_entry();
 
@@ -89,29 +105,31 @@ impl NetWork {
                     let mut conn = NetConn::new(id2, net_stream);
 
                     // handshake message
-                    let mut msg = Message::new();
-                    let mut crypto2 = None;
+                    if let Some(options) = options {
+                        let hand_message = msg!{
+                            HANDSHAKE: options.method.as_str(),
+                            ACCESS: options.access
+                        };
 
-                    if let Some((method, access, secret)) = crypto {
-                        let aead = Aead::new(&method, secret.as_bytes());
+                        conn.push_data(&self.epoll, hand_message)?;
 
-                        crypto2 = Some(aead);
+                        let crypto = Crypto::new(&options.method, options.secret.as_bytes());
+                        conn.crypto = Some(crypto);
 
-                        msg.insert(HANDSHAKE, method.as_str());
-                        msg.insert(ACCESS, access);
                     } else {
-                        msg.insert(HANDSHAKE, "");
+                        let hand_message = msg!{
+                            HANDSHAKE: ""
+                        };
+
+                        conn.push_data(&self.epoll, hand_message)?;
                     }
 
-                    conn.push_data(&self.epoll, msg)?;
-
                     conn.role = Role::Conn;
-                    conn.crypto = crypto2;
                     conn.handshake = true;
 
                     entry2.insert(conn);
                 }
-                Packet::NewServ(stream, net_stream, access_fn) => {
+                Packet::NewServ{stream, net_stream, access_fn} => {
                     let entry1 = self.streams.vacant_entry();
                     let entry2 = self.nets.vacant_entry();
 
@@ -238,7 +256,7 @@ struct NetConn {
     handshake: bool,
     role: Role,
     access_fn: Option<AccessFn>,
-    crypto: Option<Aead>
+    crypto: Option<Crypto>
 }
 
 #[derive(Debug)]
@@ -274,10 +292,10 @@ impl NetConn {
                 Ok(ret) => {
                     if let Some(mut bytes) = ret {
                         if self.handshake {
-                            if let Some(aead) = &mut self.crypto {
-                                if aead.decrypt(&mut bytes).is_err() {
-                                    return Err(io::Error::new(InvalidData, "InvalidData"))
-                                }
+                            if let Some(crypto) = &mut self.crypto {
+                                let _ = crypto.decrypt(&mut bytes).map_err(|err|
+                                    io::Error::new(InvalidData, format!("{}", err)
+                                ));
                             }
 
                             match Message::from_slice(&bytes) {
@@ -333,12 +351,12 @@ impl NetConn {
                                         let secret = if let Some(secret) = self.access_fn.as_ref().unwrap()(access.to_string()) {
                                             secret
                                         } else {
-                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
                                         };
 
-                                        let aead = Aead::new(&method, secret.as_bytes());
+                                        let crypto = Crypto::new(&method, secret.as_bytes());
 
-                                        self.crypto = Some(aead);
+                                        self.crypto = Some(crypto);
 
                                         self.handshake = true;
                                     }
@@ -399,8 +417,10 @@ impl NetConn {
     fn push_data(&mut self, epoll: &Epoll, message: Message) -> io::Result<()> {
         let mut data = message.to_vec().unwrap();
 
-        if let Some(aead) = &mut self.crypto {
-            aead.encrypt(&mut data).expect("encrypt error");
+        if let Some(crypto) = &mut self.crypto {
+            let _ = crypto.encrypt(&mut data).map_err(|err|
+                io::Error::new(InvalidData, format!("{}", err)
+            ));
         }
 
         self.w_buffer.push_back(data);

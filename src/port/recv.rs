@@ -1,4 +1,5 @@
 use std::sync::mpsc::Receiver;
+use std::fmt;
 
 use queen_io::queue::spsc::Queue;
 
@@ -23,7 +24,17 @@ impl Iterator for Recv {
 
 impl Drop for Recv {
     fn drop(&mut self) {
-        self.port.inner.queue.push(Packet::Detach(self.id));
+        self.port.inner.queue.push(Packet::Detach { id: self.id });
+    }
+}
+
+impl fmt::Debug for Recv {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Recv")
+            .field("port", &self.port)
+            .field("id", &self.id)
+            .field("chan", &self.chan)
+            .finish()
     }
 }
 
@@ -42,6 +53,16 @@ impl AsyncRecv {
 
 impl Drop for AsyncRecv {
     fn drop(&mut self) {
-        self.port.inner.queue.push(Packet::Detach(self.id));
+        self.port.inner.queue.push(Packet::Detach { id: self.id });
+    }
+}
+
+impl fmt::Debug for AsyncRecv {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("AsyncRecv")
+            .field("port", &self.port)
+            .field("id", &self.id)
+            .field("chan", &self.chan)
+            .finish()
     }
 }

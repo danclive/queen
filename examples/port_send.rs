@@ -7,7 +7,7 @@ use queen::net::Addr;
 use nson::{MessageId, msg};
 
 fn main() {
-    let port1 = Port::connect(
+    let (port1, _) = Port::connect(
         MessageId::new(),
         Connector::Net(
             Addr::tcp("127.0.0.1:8888").unwrap(),

@@ -13,7 +13,7 @@ fn recv() {
 
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let rpc1 = Port::connect(
+    let (rpc1, _) = Port::connect(
         MessageId::new(),
         Connector::Queen(queen.clone(), msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -27,7 +27,7 @@ fn recv() {
         msg!{"hehehe": "lalala"}
     }, Some(Duration::from_secs(1))).unwrap();
 
-    let rpc2 = Port::connect(
+    let (rpc2, _) = Port::connect(
         MessageId::new(),
         Connector::Queen(queen.clone(), msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},
@@ -44,7 +44,7 @@ fn recv() {
     thread::sleep(Duration::from_secs(1));
 
 
-    let rpc3 = Port::connect(
+    let (rpc3, _) = Port::connect(
         MessageId::new(),
         Connector::Queen(queen, msg!{}),
         msg!{"user": "test-user", "pass": "test-pass"},

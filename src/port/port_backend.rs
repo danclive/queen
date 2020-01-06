@@ -25,32 +25,74 @@ use super::Connector;
 type Handle = dyn Fn(Message) -> Message + Sync + Send + 'static;
 
 pub(crate) enum Packet {
-    Send(Message, OneshotSender<Result<()>>),
-    AttachBlock(u32, String, Option<Vec<String>>, Sender<Message>, OneshotSender<Result<()>>), // id, chan, labels, sender
-    AttachAsync(u32, String, Option<Vec<String>>, Queue<Message>, OneshotSender<Result<()>>),
-    Detach(u32),
-    // sync
-    Call(MessageId, String, Message, OneshotSender<Message>), // id, method, message, sender
-    UnCall(MessageId),
-    Add(u32, String, Box<Handle>, Option<Vec<String>>, OneshotSender<Result<()>>), // id, method, hendle, labels
-    Remove(u32),
-    Response(Message)
+    Send {
+        message: Message,
+        ack_tx: OneshotSender<Result<()>>
+    },
+    AttachBlock {
+        id: u32,
+        chan: String,
+        labels: Option<Vec<String>>,
+        tx: Sender<Message>,
+        ack_tx: OneshotSender<Result<()>>
+    },
+    AttachAsync {
+        id: u32, 
+        chan: String,
+        labels: Option<Vec<String>>,
+        tx: Queue<Message>,
+        ack_tx: OneshotSender<Result<()>>
+    },
+    Detach {
+        id: u32
+    },
+    Call {
+        id: MessageId,
+        method: String,
+        message: Message,
+        ack_tx: OneshotSender<Result<Message>>
+    },
+    UnCall {
+        id: MessageId
+    },
+    Add {
+        id: u32,
+        method: String,
+        handle: Box<Handle>,
+        labels: Option<Vec<String>>,
+        ack_tx: OneshotSender<Result<()>>
+    },
+    Remove {
+        id: u32
+    },
+    Response {
+        message: Message
+    }
 }
 
-pub(crate) type WorkerQueue = BlockQueue<Option<(MessageId, MessageId, Message, Arc<Box<Handle>>)>>;
+pub(crate) type WorkerQueue = BlockQueue<Option<WorkerQueueMessage>>;
+
+#[derive(Clone)]
+pub(crate) struct WorkerQueueMessage {
+    pub(crate) from_id: MessageId,
+    pub(crate) req_id: MessageId,
+    pub(crate) req_message: Message,
+    pub(crate) handle: Arc<Box<Handle>>
+}
 
 pub(crate) struct PortBackend {
     id: MessageId,
     connector: Connector,
-    auth_msg: Message,
+    auth_message: Message,
     queue: mpsc::Queue<Packet>,
     epoll: Epoll,
     events: Events,
     session: Session,
     attaching: HashMap<u32, OneshotSender<Result<()>>>,
     sending: HashMap<MessageId, OneshotSender<Result<()>>>,
-    calling: HashMap<MessageId, OneshotSender<Message>>,
+    calling: HashMap<MessageId, OneshotSender<Result<Message>>>,
     handles: HashMap<u32, Arc<Box<Handle>>>,
+    works: usize,
     worker_queue: WorkerQueue,
     run: Arc<AtomicBool>
 }
@@ -62,15 +104,16 @@ impl PortBackend {
     pub(crate) fn new(
         id: MessageId,
         connector: Connector,
-        auth_msg: Message,
+        auth_message: Message,
         queue: mpsc::Queue<Packet>,
+        works: usize,
         worker_queue: WorkerQueue,
         run: Arc<AtomicBool>
     ) -> io::Result<PortBackend> {
         Ok(PortBackend {
             id,
             connector,
-            auth_msg,
+            auth_message,
             queue,
             epoll: Epoll::new()?,
             events: Events::with_capacity(64),
@@ -79,6 +122,7 @@ impl PortBackend {
             sending: HashMap::new(),
             calling: HashMap::new(),
             handles: HashMap::new(),
+            works,
             worker_queue,
             run
         })
@@ -126,7 +170,7 @@ impl PortBackend {
                         let mut net_work = NetWork::new(queue, self.run.clone())?;
 
                         thread::Builder::new().name("port_net".to_string()).spawn(move || {
-                            net_work.run().unwrap()
+                            net_work.run()
                         }).unwrap();
 
                         self.session.net_work = Some(queue2);
@@ -137,7 +181,11 @@ impl PortBackend {
                             let (stream1, stream2) = Stream::pipe(64, msg!{})?;
 
                             self.session.net_work.as_ref().unwrap()
-                                .push(NetPacket::NewConn(stream1, net_stream, crypto.clone()));
+                                .push(NetPacket::NewConn{
+                                    stream: stream1,
+                                    net_stream,
+                                    options: crypto.clone()
+                                });
                             self.session.stream = Some(stream2);
                             self.session.state = State::UnAuth;
 
@@ -186,7 +234,7 @@ impl PortBackend {
                 PORT_ID: self.id.clone()
             };
 
-            message.extend(self.auth_msg.clone());
+            message.extend(self.auth_message.clone());
 
             let stream = self.session.stream.as_ref().unwrap();
             stream.send(message);
@@ -344,19 +392,19 @@ impl PortBackend {
         if self.session.state == State::Authed {
             if let Some(packet) = self.queue.pop() {
                 match packet {
-                    Packet::Send(message, tx) => {
+                    Packet::Send { message, ack_tx } => {
                         let message_id = message.get_message_id(ID).expect("InvalidData");
 
-                        self.sending.insert(message_id.to_owned(), tx);
+                        self.sending.insert(message_id.to_owned(), ack_tx);
 
                         let stream = self.session.stream.as_ref().unwrap();
                         stream.send(message);
                     }
-                    Packet::AttachBlock(id, chan, labels, tx, tx2) => {
+                    Packet::AttachBlock { id, chan, labels, tx, ack_tx } => {
                         let mut labels_set = HashSet::new();
 
                         if chan == UNKNOWN {
-                            tx2.send(Ok(()));
+                            ack_tx.send(Ok(()));
                         } else {
                             if let Some(labels) = labels {
                                 for label in labels {
@@ -364,7 +412,7 @@ impl PortBackend {
                                 }
                             }
 
-                            self.attach(id, &chan, &mut labels_set, tx2);
+                            self.attach(id, &chan, &mut labels_set, ack_tx);
                         }
 
                         // chan2
@@ -374,11 +422,11 @@ impl PortBackend {
                         // recvs
                         self.session.recvs.insert(id, (chan, SenderType::Block(tx), labels_set));
                     }
-                    Packet::AttachAsync(id, chan, labels, tx, tx2) => {
+                    Packet::AttachAsync { id, chan, labels, tx, ack_tx } => {
                         let mut labels_set = HashSet::new();
 
                         if chan == UNKNOWN {
-                            tx2.send(Ok(()));
+                            ack_tx.send(Ok(()));
                         } else {
                             if let Some(labels) = labels {
                                 for label in labels {
@@ -386,7 +434,7 @@ impl PortBackend {
                                 }
                             }
 
-                            self.attach(id, &chan, &mut labels_set, tx2);
+                            self.attach(id, &chan, &mut labels_set, ack_tx);
                         }
 
                         // chans 2
@@ -396,12 +444,12 @@ impl PortBackend {
                         // recvs
                         self.session.recvs.insert(id, (chan, SenderType::Async(tx), labels_set));
                     }
-                    Packet::Detach(id) => {
+                    Packet::Detach { id } => {
                         if let Some(recv) = self.session.recvs.remove(&id) {
                             self.detach(id, recv.0, recv.2);
                         }
                     },
-                    Packet::Call(id, method, mut message, tx) => {
+                    Packet::Call { id, method, mut message, ack_tx } => {
                         let req_chan = format!("RPC/REQ/{}", method);
                         message.insert(CHAN, req_chan);
                         message.insert(SHARE, true);
@@ -409,12 +457,12 @@ impl PortBackend {
                         let stream = self.session.stream.as_ref().unwrap();
                         stream.send(message);
 
-                        self.calling.insert(id, tx);
+                        self.calling.insert(id, ack_tx);
                     },
-                    Packet::UnCall(id) => {
+                    Packet::UnCall { id } => {
                         self.calling.remove(&id);
                     },
-                    Packet::Add(id, method, handle, labels, tx) => {
+                    Packet::Add { id, method, handle, labels, ack_tx } => {
                         let req_chan = format!("RPC/REQ/{}", method);
 
                         let mut labels_set = HashSet::new();
@@ -425,7 +473,7 @@ impl PortBackend {
                             }
                         }
 
-                        self.attach(id, &req_chan, &mut labels_set, tx);
+                        self.attach(id, &req_chan, &mut labels_set, ack_tx);
 
                         // chans 2
                         let set = self.session.chans2.entry(req_chan.clone()).or_insert_with(HashSet::new);
@@ -435,12 +483,12 @@ impl PortBackend {
 
                         self.handles.insert(id, Arc::new(handle));
                     },
-                    Packet::Remove(id) => {
+                    Packet::Remove { id } => {
                         if let Some(recv) = self.session.recvs2.remove(&id) {
                             self.detach(id, recv.0, recv.1);
                         }
                     },
-                    Packet::Response(message) => {
+                    Packet::Response { message } => {
                         let stream = self.session.stream.as_ref().unwrap();
                         stream.send(message);
                     }
@@ -535,6 +583,10 @@ impl PortBackend {
                         sending_tx.send(Err(ErrorCode::from_i32(ok).into()));
                     }
                 }
+            } else if let Ok(request_id) = message.get_message_id(REQUEST_ID) {
+                if let Some(sending_tx) = self.calling.remove(request_id) {
+                    sending_tx.send(Err(ErrorCode::from_i32(ok).into()));
+                }
             } else {
                 return Err(io::Error::new(InvalidData, "InvalidData"));
             }
@@ -546,7 +598,7 @@ impl PortBackend {
             if let Ok(request_id) = message.get_message_id(REQUEST_ID) {
                 if let Some(tx) = self.calling.remove(request_id) {
                     if tx.is_needed() {
-                        tx.send(message.clone());
+                        tx.send(Ok(message));
                     }
                 }
             }
@@ -572,8 +624,8 @@ impl PortBackend {
             for id in ids {
                 if let Some((_, tx, label2)) = self.session.recvs.get(id) {
                     if !labels.is_empty() && (&labels & label2).is_empty() {
-    continue;
-}
+                        continue;
+                    }
 
                     match tx {
                         SenderType::Block(tx) => {
@@ -593,7 +645,12 @@ impl PortBackend {
                     if let Ok(from_id) = message.get_message_id(FROM) {
                         if let Ok(request_id) = message.get_message_id(REQUEST_ID) {
                             if let Some(handle) = self.handles.get(id) {
-                                self.worker_queue.push(Some((from_id.clone(), request_id.clone(), message.clone(), handle.clone())))
+                                self.worker_queue.push(Some(WorkerQueueMessage {
+                                    from_id: from_id.clone(),
+                                    req_id: request_id.clone(),
+                                    req_message: message.clone(),
+                                    handle: handle.clone()
+                                }))
                             }       
                         }
                     }
@@ -625,6 +682,16 @@ impl PortBackend {
 impl Drop for PortBackend {
     fn drop(&mut self) {
         self.run.store(false, Ordering::Relaxed);
+
+        loop {
+            if self.queue.pop().is_none() {
+                break;
+            }
+        }
+
+        for _ in 0..self.works {
+            self.worker_queue.push(None);
+        }
     }
 }
 

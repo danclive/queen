@@ -11,15 +11,6 @@ pub enum NetStream {
     Uds(UnixStream)
 }
 
-impl NetStream {
-    // pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-    //     // match self {
-    //     //     NetStream::Tcp(tcp) => tcp.peer_addr(),
-    //     //     NetStream::Uds(unix) => unix.peer_addr()
-    //     // }
-    // }
-}
-
 impl Read for NetStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self {
