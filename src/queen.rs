@@ -1,6 +1,6 @@
 use std::time::Duration;
 use std::collections::{HashMap, HashSet};
-use std::io::{self, ErrorKind::{ConnectionAborted}};
+use std::io::{self, ErrorKind::ConnectionRefused};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -76,8 +76,8 @@ impl Queen {
 
         let ret = rx.wait_timeout(timeout.unwrap_or(Duration::from_secs(60)))?;
 
-        if !ret.unwrap_or_default() {
-            return Err(io::Error::new(ConnectionAborted, "ConnectionAborted"))
+        if !ret {
+            return Err(io::Error::new(ConnectionRefused, "Queen::connect"))
         }
 
         Ok(stream2)
@@ -218,19 +218,19 @@ impl<T> QueenInner<T> {
 
             // port event
             // {
-            //     CHAN: PORT_BREAK,
-            //     PORT_ID: $port_id
+            //     CHAN: CLIENT_BREAK,
+            //     CLIENT_ID: $client_id
             // }
             let mut event_message = msg!{
-                CHAN: PORT_BREAK
+                CHAN: CLIENT_BREAK
             };
 
-            if let Some(port_id) = conn.id {
-                self.sessions.ports.remove(&port_id);
-                event_message.insert(PORT_ID, port_id);
+            if let Some(client_id) = conn.id {
+                self.sessions.ports.remove(&client_id);
+                event_message.insert(CLIENT_ID, client_id);
             }
 
-            self.relay_super_message(token, PORT_BREAK, event_message);
+            self.relay_super_message(token, CLIENT_BREAK, event_message);
         }
 
         Ok(())
@@ -270,7 +270,7 @@ impl<T> QueenInner<T> {
                 PING => self.ping(token, message),
                 QUERY => self.query(token, message),
                 CUSTOM => self.custom(token, message),
-                PORT_KILL => self.kill(token, message)?,
+                CLIENT_KILL => self.kill(token, message)?,
                 _ => {
                     ErrorCode::UnsupportedChan.insert_message(&mut message);
 
@@ -313,9 +313,9 @@ impl<T> QueenInner<T> {
             }
         }
 
-        if let Some(port_id) = message.get(PORT_ID) {
-            if let Some(port_id) = port_id.as_message_id() {
-                if let Some(other_token) = self.sessions.ports.get(port_id) {
+        if let Some(client_id) = message.get(CLIENT_ID) {
+            if let Some(client_id) = client_id.as_message_id() {
+                if let Some(other_token) = self.sessions.ports.get(client_id) {
                         if *other_token != token {
                             ErrorCode::DuplicatePortId.insert_message(&mut message);
 
@@ -325,13 +325,13 @@ impl<T> QueenInner<T> {
                         }
                     }
 
-                    if let Some(port_id) = &conn.id {
-                        self.sessions.ports.remove(port_id);
+                    if let Some(client_id) = &conn.id {
+                        self.sessions.ports.remove(client_id);
                     }
 
-                    self.sessions.ports.insert(port_id.clone(), token);
+                    self.sessions.ports.insert(client_id.clone(), token);
 
-                    conn.id = Some(port_id.clone());
+                    conn.id = Some(client_id.clone());
             } else {
                 ErrorCode::InvalidPortIdFieldType.insert_message(&mut message);
 
@@ -339,16 +339,16 @@ impl<T> QueenInner<T> {
 
                 return
             }
-        } else if let Some(port_id) = &conn.id {
-            message.insert(PORT_ID, port_id.clone());
+        } else if let Some(client_id) = &conn.id {
+            message.insert(CLIENT_ID, client_id.clone());
         } else {
-            let port_id = MessageId::new();
+            let client_id = MessageId::new();
 
-            self.sessions.ports.insert(port_id.clone(), token);
+            self.sessions.ports.insert(client_id.clone(), token);
 
-            conn.id = Some(port_id.clone());
+            conn.id = Some(client_id.clone());
 
-            message.insert(PORT_ID, port_id);
+            message.insert(CLIENT_ID, client_id);
         }
 
         conn.auth = true;
@@ -359,22 +359,22 @@ impl<T> QueenInner<T> {
         
         // port event
         // {
-        //     CHAN: PORT_READY,
+        //     CHAN: CLIENT_READY,
         //     SUPER: $conn.supe,
-        //     PORT_ID: $port_id
+        //     CLIENT_ID: $client_id
         // }
         let mut event_message = msg!{
-            CHAN: PORT_READY,
+            CHAN: CLIENT_READY,
             SUPER: conn.supe
         };
 
-        if let Some(port_id) = &conn.id {
-            event_message.insert(PORT_ID, port_id.clone());
+        if let Some(client_id) = &conn.id {
+            event_message.insert(CLIENT_ID, client_id.clone());
         }
 
         self.sessions.conns[token].stream.send(message);
 
-        self.relay_super_message(token, PORT_READY, event_message);
+        self.relay_super_message(token, CLIENT_READY, event_message);
     }
 
     fn attach(&mut self, token: usize, mut message: Message) {
@@ -390,7 +390,7 @@ impl<T> QueenInner<T> {
         if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
             // check super
             match chan.as_str() {
-                PORT_READY | PORT_BREAK | PORT_ATTACH | PORT_DETACH | PORT_SEND | PORT_RECV => {
+                CLIENT_READY | CLIENT_BREAK | CLIENT_ATTACH | CLIENT_DETACH | CLIENT_SEND | CLIENT_RECV => {
 
                     if !self.sessions.conns[token].supe {
                         ErrorCode::Unauthorized.insert_message(&mut message);
@@ -448,13 +448,13 @@ impl<T> QueenInner<T> {
 
             // port event
             // {
-            //     CHAN: PORT_ATTACH,
+            //     CHAN: CLIENT_ATTACH,
             //     VALUE: $chan,
             //     LABEL: $label, // string or array
-            //     PORT_ID: $port_id
+            //     client_id: $client_id
             // }
             let mut event_message = msg!{
-                CHAN: PORT_ATTACH
+                CHAN: CLIENT_ATTACH
             };
 
             event_message.insert(VALUE, &chan);
@@ -473,12 +473,12 @@ impl<T> QueenInner<T> {
                 let set = conn.chans.entry(chan).or_insert_with(HashSet::new);
                 set.extend(labels);
 
-                if let Some(port_id) = &conn.id {
-                    event_message.insert(PORT_ID, port_id.clone());
+                if let Some(client_id) = &conn.id {
+                    event_message.insert(CLIENT_ID, client_id.clone());
                 }
             }
 
-            self.relay_super_message(token, PORT_ATTACH, event_message);
+            self.relay_super_message(token, CLIENT_ATTACH, event_message);
 
             ErrorCode::OK.insert_message(&mut message);
         } else {
@@ -532,13 +532,13 @@ impl<T> QueenInner<T> {
 
             // port event
             // {
-            //     CHAN: PORT_DETACH,
+            //     CHAN: CLIENT_DETACH,
             //     VALUE: $chan,
             //     LABEL: $label, // string or array
-            //     PORT_ID: $port_id
+            //     client_id: $client_id
             // }
             let mut event_message = msg!{
-                CHAN: PORT_DETACH,
+                CHAN: CLIENT_DETACH,
                 VALUE: &chan
             };
 
@@ -564,12 +564,12 @@ impl<T> QueenInner<T> {
                     *set = set.iter().filter(|label| !labels.contains(*label)).map(|s| s.to_string()).collect();
                 }
 
-                if let Some(port_id) = &conn.id {
-                    event_message.insert(PORT_ID, port_id.clone());
+                if let Some(client_id) = &conn.id {
+                    event_message.insert(CLIENT_ID, client_id.clone());
                 }
             }
 
-            self.relay_super_message(token, PORT_DETACH, event_message);
+            self.relay_super_message(token, CLIENT_DETACH, event_message);
         
             ErrorCode::OK.insert_message(&mut message);
         } else {
@@ -615,7 +615,7 @@ impl<T> QueenInner<T> {
                         chans.insert(chan, labels);
                     }
 
-                    let port_id: Value = if let Some(id) = &conn.id {
+                    let client_id: Value = if let Some(id) = &conn.id {
                         id.clone().into()
                     } else {
                         Value::Null
@@ -625,15 +625,15 @@ impl<T> QueenInner<T> {
                         AUTH: conn.auth,
                         SUPER: conn.supe,
                         CHANS: chans,
-                        PORT_ID: port_id,
+                        CLIENT_ID: client_id,
                         ATTR: conn.stream.attr.clone()
                     });
                 }
 
                 message.insert(key, array);
             } else if value == Value::String(QUERY_PORT.to_string()) {
-                if let Ok(port_id) = message.get_message_id(PORT_ID) {
-                    if let Some(id) = self.sessions.ports.get(port_id) {
+                if let Ok(client_id) = message.get_message_id(CLIENT_ID) {
+                    if let Some(id) = self.sessions.ports.get(client_id) {
                         if let Some(conn) = self.sessions.conns.get(*id) {
                             let mut chans = Message::new();
 
@@ -643,7 +643,7 @@ impl<T> QueenInner<T> {
                                 chans.insert(chan, labels);
                             }
 
-                            let port_id: Value = if let Some(id) = &conn.id {
+                            let client_id: Value = if let Some(id) = &conn.id {
                                 id.clone().into()
                             } else {
                                 Value::Null
@@ -653,12 +653,12 @@ impl<T> QueenInner<T> {
                                 AUTH: conn.auth,
                                 SUPER: conn.supe,
                                 CHANS: chans,
-                                PORT_ID: port_id,
+                                CLIENT_ID: client_id,
                                 ATTR: conn.stream.attr.clone()
                             };
 
                             message.insert(key, port);
-                            message.remove(PORT_ID);
+                            message.remove(CLIENT_ID);
                         } else {
                             unreachable!()
                         }
@@ -731,9 +731,9 @@ impl<T> QueenInner<T> {
 
         let mut remove_id = None;
 
-        if let Some(port_id) = message.get(PORT_ID) {
-            if let Some(port_id) = port_id.as_message_id() {
-                if let Some(other_id) = self.sessions.ports.get(port_id).cloned() {
+        if let Some(client_id) = message.get(CLIENT_ID) {
+            if let Some(client_id) = client_id.as_message_id() {
+                if let Some(other_id) = self.sessions.ports.get(client_id).cloned() {
                     remove_id = Some(other_id);
                 }
             } else {
@@ -843,8 +843,8 @@ impl<T> QueenInner<T> {
             }
         }
 
-        if let Some(port_id) = &self.sessions.conns[token].id {
-            message.insert(FROM, port_id.clone());
+        if let Some(client_id) = &self.sessions.conns[token].id {
+            message.insert(FROM, client_id.clone());
         }
 
         // labels
@@ -887,21 +887,21 @@ impl<T> QueenInner<T> {
 
                     // port event
                     // {
-                    //     CHAN: PORT_RECV,
+                    //     CHAN: CLIENT_RECV,
                     //     VALUE: $message
                     // }
                     let mut event_message = msg!{
-                        CHAN: PORT_RECV,
+                        CHAN: CLIENT_RECV,
                         VALUE: $message.clone()
                     };
 
-                    if let Some(port_id) = &$conn.id {
-                        event_message.insert(TO, port_id);
+                    if let Some(client_id) = &$conn.id {
+                        event_message.insert(TO, client_id);
                     }
 
                     let id = $conn.token;
 
-                    $self.relay_super_message(id, PORT_RECV, event_message);
+                    $self.relay_super_message(id, CLIENT_RECV, event_message);
                 }
             };
         }
@@ -984,15 +984,15 @@ impl<T> QueenInner<T> {
 
         // port event
         // {
-        //     CHAN: PORT_SEND,
+        //     CHAN: CLIENT_SEND,
         //     VALUE: $message
         // }
         let event_message = msg!{
-            CHAN: PORT_SEND,
+            CHAN: CLIENT_SEND,
             VALUE: message
         };
 
-        self.relay_super_message(token, PORT_SEND, event_message);
+        self.relay_super_message(token, CLIENT_SEND, event_message);
 
         // send reply message
         if let Some(reply_message) = reply_message {

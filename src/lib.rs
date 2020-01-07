@@ -1,6 +1,6 @@
 pub mod queen;
 pub mod node;
-pub mod port;
+pub mod client;
 pub mod stream;
 pub mod net;
 pub mod crypto;
@@ -16,4 +16,3 @@ pub const MAX_MESSAGE_LEN: usize = 32 * 1024 * 1024; // 32 MB
 pub use crate::queen::{Queen, Session, Callback};
 pub use crate::stream::Stream;
 pub use crate::node::Node;
-pub use crate::port::{Port, Connector, Recv, AsyncRecv};

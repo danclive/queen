@@ -4,22 +4,27 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
+use std::net::SocketAddr;
 
 use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt};
 use queen_io::queue::spsc::Queue;
+use queen_io::tcp::TcpListener;
 
 use rand::{self, thread_rng, rngs::ThreadRng};
 use rand::seq::SliceRandom;
 
+use nson::msg;
+
 use crate::Queen;
-use crate::net::{Listen, Addr, NetWork, Packet, AccessFn};
+use crate::net::{NetWork, Packet, AccessFn};
+use crate::dict::*;
 
 pub struct Node {
     queen: Queen,
     epoll: Epoll,
     events: Events,
     queues: Vec<Queue<Packet>>,
-    listens: Vec<Listen>,
+    listens: Vec<TcpListener>,
     rand: ThreadRng,
     access_fn: Option<AccessFn>,
     pub run: Arc<AtomicBool>
@@ -29,14 +34,14 @@ impl Node {
     pub fn new(
         queen: Queen,
         works: usize,
-        addrs: Vec<Addr>
+        addrs: Vec<SocketAddr>
     ) -> io::Result<Node> {
         let run = Arc::new(AtomicBool::new(true));
 
         let mut listens = Vec::new();
 
         for addr in addrs {
-            listens.push(addr.bind()?);
+            listens.push(TcpListener::bind(addr)?);
         }
 
         let mut queues = Vec::new();
@@ -98,7 +103,9 @@ impl Node {
                             }
                         };
 
-                        let attr = addr.to_message();
+                        let attr = msg!{
+                            ADDR: addr.to_string()
+                        };
 
                         match self.queen.connect(attr, None) {
                             Ok(stream) => {

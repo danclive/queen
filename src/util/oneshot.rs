@@ -1,7 +1,7 @@
 use std::fmt::{self, Debug};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
-use std::io::{self, ErrorKind::TimedOut};
+use std::io::{self, ErrorKind::{TimedOut, BrokenPipe}};
 
 pub fn oneshot<T>() -> (Sender<T>, Receiver<T>) {
     let inner = Arc::new(Inner::new());
@@ -55,7 +55,7 @@ impl<T> Inner<T> {
         let (mut lock, result) = self.cond.wait_timeout(lock, timeout).unwrap();
 
         if result.timed_out() {
-            return Err(io::Error::new(TimedOut, "TimedOut"))
+            return Err(io::Error::new(TimedOut, "wait_timeout"))
         }
 
         Ok(lock.take().unwrap())
@@ -63,7 +63,7 @@ impl<T> Inner<T> {
 }
 
 pub struct Receiver<T> {
-    inner: Arc<Inner<Option<T>>>
+    inner: Arc<Inner<io::Result<T>>>
 }
 
 impl<T> Receiver<T> {
@@ -72,15 +72,15 @@ impl<T> Receiver<T> {
         Arc::strong_count(&self.inner) == 1
     }
 
-    pub fn wait(self) -> Option<T> {
+    pub fn wait(self) -> io::Result<T> {
         self.inner.wait()
     }
 
-    pub fn wait_timeout(self, timeout: Duration) -> io::Result<Option<T>> {
-        self.inner.wait_timeout(timeout)
+    pub fn wait_timeout(self, timeout: Duration) -> io::Result<T> {
+        self.inner.wait_timeout(timeout)?
     }
 
-    pub fn try_recv(self) -> Result<Option<T>, Receiver<T>> {
+    pub fn try_recv(self) -> Result<io::Result<T>, Receiver<T>> {
         match Arc::try_unwrap(self.inner) {
             Ok(inner) => Ok(inner.wait()),
             Err(inner) => Err(Receiver { inner }),
@@ -94,7 +94,7 @@ impl<T> Debug for Receiver<T> {
 }
 
 pub struct Sender<T> {
-    inner: Arc<Inner<Option<T>>>,
+    inner: Arc<Inner<io::Result<T>>>,
     send: bool
 }
 
@@ -105,7 +105,7 @@ impl<T> Sender<T> {
     }
 
     pub fn send(mut self, t: T) {
-        self.inner.send(Some(t));
+        self.inner.send(Ok(t));
         self.send = true;
     }
 }
@@ -119,11 +119,11 @@ impl<T> Debug for Sender<T> {
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if !self.send {
-            self.inner.send(None);
+            self.inner.send(Err(io::Error::new(BrokenPipe, "Drop for Sender")));
         }
     }
 }
-
+/*
 #[cfg(test)]
 mod tests {
     use super::oneshot;
@@ -220,3 +220,4 @@ mod tests {
         assert_eq!(tx.is_needed(), false);
     }
 }
+*/

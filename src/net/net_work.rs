@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use queen_io::epoll::{Epoll, Event, Events, Token, Ready, EpollOpt};
 use queen_io::queue::spsc::Queue;
+use queen_io::tcp::TcpStream;
 
 use nson::{Message, msg};
 
@@ -15,7 +16,6 @@ use slab::Slab;
 
 use crate::Stream;
 use crate::crypto::{Method, Crypto};
-use crate::net::NetStream;
 use crate::util::message::read_nonblock;
 use crate::dict::*;
 
@@ -31,12 +31,12 @@ pub struct CryptoOptions {
 pub enum Packet {
     NewConn {
         stream: Stream,
-        net_stream: NetStream,
+        net_stream: TcpStream,
         options: Option<CryptoOptions>
     },
     NewServ {
         stream: Stream,
-        net_stream: NetStream,
+        net_stream: TcpStream,
         access_fn: Option<AccessFn>
     }
 }
@@ -249,7 +249,7 @@ impl StreamConn {
 
 struct NetConn {
     id: usize,
-    stream: NetStream,
+    stream: TcpStream,
     interest: Ready,
     r_buffer: Vec<u8>,
     w_buffer: VecDeque<Vec<u8>>,
@@ -266,7 +266,7 @@ enum Role {
 }
 
 impl NetConn {
-    fn new(id: usize, stream: NetStream) -> Self {
+    fn new(id: usize, stream: TcpStream) -> Self {
         Self {
             id,
             stream,
@@ -302,50 +302,50 @@ impl NetConn {
                                 Ok(message) => {
                                     stream_conn.stream.send(message);
                                 },
-                                Err(_err) => {
-                                    return Err(io::Error::new(InvalidData, "InvalidData"))
+                                Err(err) => {
+                                    return Err(io::Error::new(InvalidData, format!("Message::from_slice: {}", err)))
                                 }
                             }
                         } else {
                             match &self.role {
-                                Role::Conn => return Err(io::Error::new(InvalidData, "InvalidData")),
+                                Role::Conn => return Err(io::Error::new(InvalidData, "Role::Conn")),
                                 Role::Serv => {
                                     let message =  match Message::from_slice(&bytes) {
                                         Ok(message) => {
                                             message
                                         },
-                                        Err(_err) => {
-                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                        Err(err) => {
+                                            return Err(io::Error::new(InvalidData, format!("Message::from_slice: {}", err)))
                                         }
                                     };
 
                                     let handshake = if let Ok(handshake) = message.get_str(HANDSHAKE) {
                                         handshake
                                     } else {
-                                        return Err(io::Error::new(InvalidData, "InvalidData"))
+                                        return Err(io::Error::new(InvalidData, "message.get_str(HANDSHAKE)"))
                                     };
 
                                     if handshake == "" {
                                         if self.access_fn.is_none() {
                                             self.handshake = true;
                                         } else {
-                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            return Err(io::Error::new(InvalidData, "!self.access_fn.is_none()"))
                                         }
                                     } else {
                                         if self.access_fn.is_none() {
-                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            return Err(io::Error::new(InvalidData, "self.access_fn.is_none()"))
                                         };
 
                                         let method = if let Ok(method) = Method::from_str(handshake) {
                                             method
                                         } else {
-                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            return Err(io::Error::new(InvalidData, "Method::from_str(handshake)"))
                                         };
 
                                         let access = if let Ok(access) = message.get_str(ACCESS) {
                                             access
                                         } else {
-                                            return Err(io::Error::new(InvalidData, "InvalidData"))
+                                            return Err(io::Error::new(InvalidData, "message.get_str(ACCESS)"))
                                         };
 
                                         let secret = if let Some(secret) = self.access_fn.as_ref().unwrap()(access.to_string()) {

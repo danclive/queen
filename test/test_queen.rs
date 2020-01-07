@@ -868,7 +868,7 @@ fn share() {
 }
 
 #[test]
-fn port_id() {
+fn client_id() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
     let stream1 = queen.connect(msg!{}, None).unwrap();
@@ -878,18 +878,18 @@ fn port_id() {
     // auth
     stream1.send(msg!{
         CHAN: AUTH,
-        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
+        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
     });
 
     stream2.send(msg!{
         CHAN: AUTH,
-        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
+        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
     });
 
     // duplicate
     stream3.send(msg!{
         CHAN: AUTH,
-        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
+        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -903,7 +903,7 @@ fn port_id() {
 
     stream3.send(msg!{
         CHAN: AUTH,
-        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap()
+        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -915,7 +915,7 @@ fn port_id() {
 
     stream4.send(msg!{
         CHAN: AUTH,
-        PORT_ID: 123
+        CLIENT_ID: 123
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1005,7 +1005,7 @@ fn port_id() {
 
     let recv = stream4.recv().unwrap();
 
-    assert!(recv.get_message_id(PORT_ID).is_ok());
+    assert!(recv.get_message_id(CLIENT_ID).is_ok());
 }
 
 #[test]
@@ -1037,22 +1037,22 @@ fn port_event() {
     // supe attach
     stream1.send(msg!{
         CHAN: ATTACH,
-        VALUE: PORT_READY
+        VALUE: CLIENT_READY
     });
 
     stream1.send(msg!{
         CHAN: ATTACH,
-        VALUE: PORT_BREAK
+        VALUE: CLIENT_BREAK
     });
 
     stream1.send(msg!{
         CHAN: ATTACH,
-        VALUE: PORT_ATTACH
+        VALUE: CLIENT_ATTACH
     });
 
     stream1.send(msg!{
         CHAN: ATTACH,
-        VALUE: PORT_DETACH
+        VALUE: CLIENT_DETACH
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1076,9 +1076,9 @@ fn port_event() {
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == PORT_READY);
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_READY);
     assert!(recv.get_bool(SUPER).unwrap() == true);
-    assert!(recv.get_message_id(PORT_ID).is_ok());
+    assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
     // attach
     stream2.send(msg!{
@@ -1092,9 +1092,9 @@ fn port_event() {
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == PORT_ATTACH);
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_ATTACH);
     assert!(recv.get_str(VALUE).unwrap() == "aaa");
-    assert!(recv.get_message_id(PORT_ID).is_ok());
+    assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
     stream2.send(msg!{
         CHAN: ATTACH,
@@ -1108,10 +1108,10 @@ fn port_event() {
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == PORT_ATTACH);
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_ATTACH);
     assert!(recv.get_str(VALUE).unwrap() == "aaa");
     assert!(recv.get_str(LABEL).unwrap() == "label1");
-    assert!(recv.get_message_id(PORT_ID).is_ok());
+    assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
     // detach
     stream2.send(msg!{
@@ -1126,10 +1126,10 @@ fn port_event() {
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == PORT_DETACH);
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_DETACH);
     assert!(recv.get_str(VALUE).unwrap() == "aaa");
     assert!(recv.get_str(LABEL).unwrap() == "label1");
-    assert!(recv.get_message_id(PORT_ID).is_ok());
+    assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
     stream2.send(msg!{
         CHAN: DETACH,
@@ -1142,9 +1142,9 @@ fn port_event() {
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == PORT_DETACH);
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_DETACH);
     assert!(recv.get_str(VALUE).unwrap() == "aaa");
-    assert!(recv.get_message_id(PORT_ID).is_ok());
+    assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
     drop(stream2);
 
@@ -1152,15 +1152,15 @@ fn port_event() {
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == PORT_BREAK);
-    assert!(recv.get_message_id(PORT_ID).is_ok());
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_BREAK);
+    assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
     // auth
     let stream2 = queen.connect(msg!{}, None).unwrap();
 
     stream2.send(msg!{
         CHAN: AUTH,
-        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap()
+        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1168,28 +1168,28 @@ fn port_event() {
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     stream1.send(msg!{
-        CHAN: PORT_KILL,
-        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap()
+        CHAN: CLIENT_KILL,
+        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == PORT_READY);
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_READY);
     assert!(recv.get_bool(SUPER).unwrap() == false);
-    assert!(recv.get_message_id(PORT_ID).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == PORT_KILL);
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_KILL);
     assert!(recv.get_i32(OK).unwrap() == 0);
-    assert!(recv.get_message_id(PORT_ID).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
    
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == PORT_BREAK);
-    assert!(recv.get_message_id(PORT_ID).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_BREAK);
+    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
 
     println!("{:?}", stream2.is_close());
     println!("{:?}", stream2.recv());
@@ -1215,7 +1215,7 @@ fn query() {
 
     stream1.send(msg!{
         CHAN: AUTH,
-        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
+        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1373,7 +1373,7 @@ fn query() {
     stream1.send(msg!{
         CHAN: QUERY,
         "port": QUERY_PORT,
-        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
+        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1385,14 +1385,14 @@ fn query() {
     stream1.send(msg!{
         CHAN: QUERY,
         "port": QUERY_PORT,
-        PORT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
+        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_message("port").unwrap().get_message_id(PORT_ID).unwrap()
+    assert!(recv.get_message("port").unwrap().get_message_id(CLIENT_ID).unwrap()
         == &MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap());
 }
 
@@ -1427,12 +1427,12 @@ fn port_event_send_recv() {
     // attach port event
     stream3.send(msg!{
         CHAN: ATTACH,
-        VALUE: PORT_SEND,
+        VALUE: CLIENT_SEND,
     });
 
     stream3.send(msg!{
         CHAN: ATTACH,
-        VALUE: PORT_RECV,
+        VALUE: CLIENT_RECV,
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1484,8 +1484,8 @@ fn port_event_send_recv() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     let recv = stream3.recv().unwrap();
-    assert!(recv.get_str(CHAN).unwrap() == PORT_RECV);
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_RECV);
 
     let recv = stream3.recv().unwrap();
-    assert!(recv.get_str(CHAN).unwrap() == PORT_SEND);
+    assert!(recv.get_str(CHAN).unwrap() == CLIENT_SEND);
 }

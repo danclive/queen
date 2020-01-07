@@ -11,11 +11,29 @@ pub enum NetStream {
     Uds(UnixStream)
 }
 
+impl NetStream {
+    pub fn try_clone(&self) -> io::Result<Self> {
+        match self {
+            NetStream::Tcp(tcp) => Ok(NetStream::Tcp(tcp.try_clone()?)),
+            NetStream::Uds(unix) => Ok(NetStream::Uds(unix.try_clone()?))
+        }
+    }
+}
+
 impl Read for NetStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self {
             NetStream::Tcp(tcp) => tcp.read(buf),
             NetStream::Uds(unix) => unix.read(buf)
+        }
+    }
+}
+
+impl<'a> Read for &'a NetStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            NetStream::Tcp(tcp) => (&*tcp).read(buf),
+            NetStream::Uds(unix) => (&*unix).read(buf)
         }
     }
 }
@@ -32,6 +50,22 @@ impl Write for NetStream {
         match self {
             NetStream::Tcp(tcp) => tcp.flush(),
             NetStream::Uds(unix) => unix.flush()
+        }
+    }
+}
+
+impl<'a> Write for &'a NetStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            NetStream::Tcp(tcp) => (&*tcp).write(buf),
+            NetStream::Uds(unix) => (&*unix).write(buf)
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            NetStream::Tcp(tcp) => (&*tcp).flush(),
+            NetStream::Uds(unix) => (&*unix).flush()
         }
     }
 }
