@@ -19,14 +19,9 @@ use crate::crypto::{Method, Crypto};
 use crate::util::message::read_nonblock;
 use crate::dict::*;
 
-pub type AccessFn = Arc<Box<dyn Fn(String) -> Option<String> + Send + Sync>>;
+use super::CryptoOptions;
 
-#[derive(Debug, Clone)]
-pub struct CryptoOptions {
-    pub method: Method,
-    pub access: String,
-    pub secret: String
-}
+pub type AccessFn = Arc<Box<dyn Fn(String) -> Option<String> + Send + Sync>>;
 
 pub enum Packet {
     NewConn {
