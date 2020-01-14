@@ -1,20 +1,26 @@
 use std::time::Duration;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, ErrorKind::ConnectionRefused};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering}
+};
 
-use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt};
-use queen_io::queue::mpsc;
+use queen_io::{
+    epoll::{Epoll, Events, Token, Ready, EpollOpt},
+    queue::mpsc
+};
 
-use nson::{Message, Value, Array, msg};
-use nson::message_id::MessageId;
+use nson::{
+    Message, Value, Array, msg,
+    message_id::MessageId
+
+};
 
 use slab::Slab;
 
-use rand::{self, thread_rng, rngs::ThreadRng};
-use rand::seq::SliceRandom;
+use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
 use crate::stream::Stream;
 use crate::util::oneshot;
@@ -48,10 +54,21 @@ impl Queen {
             run: run.clone()
         };
 
-        thread::Builder::new().name("relay".to_string()).spawn(move || {
-            let mut inner = QueenInner::new(id, queue, data, callback.unwrap_or_default(), run)?;
+        let mut inner = QueenInner::new(
+            id,
+            queue,
+            data,
+            callback.unwrap_or_default(),
+            run
+        )?;
 
-            inner.run()
+        thread::Builder::new().name("relay".to_string()).spawn(move || {
+            let ret = inner.run();
+            if ret.is_err() {
+                log::error!("relay thread exit: {:?}", ret);
+            } else {
+                log::trace!("relay thread exit");
+            }
         }).unwrap();
 
         Ok(queen)
@@ -98,7 +115,7 @@ struct QueenInner<T> {
     events: Events,
     queue: mpsc::Queue<Packet>,
     sessions: Sessions,
-    rand: ThreadRng,
+    rand: SmallRng,
     data: T,
     callback: Callback<T>,
     run: Arc<AtomicBool>
@@ -124,7 +141,7 @@ impl<T> QueenInner<T> {
             events: Events::with_capacity(1024),
             queue,
             sessions: Sessions::new(),
-            rand: thread_rng(),
+            rand: SmallRng::from_entropy(),
             callback,
             data,
             run
@@ -246,7 +263,7 @@ impl<T> QueenInner<T> {
         if !success {
             ErrorCode::RefuseReceiveMessage.insert_message(&mut message);
             
-            self.sessions.conns[token].stream.send(message);
+            self.send_message(&self.sessions.conns[token], message);
         
             return Ok(())
         }
@@ -256,7 +273,7 @@ impl<T> QueenInner<T> {
             Err(_) => {
                 ErrorCode::CannotGetChanField.insert_message(&mut message);
 
-                self.sessions.conns[token].stream.send(message);
+                self.send_message(&self.sessions.conns[token], message);
 
                 return Ok(())
             }
@@ -274,7 +291,7 @@ impl<T> QueenInner<T> {
                 _ => {
                     ErrorCode::UnsupportedChan.insert_message(&mut message);
 
-                    self.sessions.conns[token].stream.send(message);
+                    self.send_message(&self.sessions.conns[token], message);
                 }
             }
         } else {
@@ -282,6 +299,18 @@ impl<T> QueenInner<T> {
         }
 
         Ok(())
+    }
+
+    fn send_message(&self, conn: &Session, mut message: Message) {
+        let success = if let Some(send_fn) = &self.callback.send_fn {
+            send_fn(&conn, &mut message, &self.data)
+        } else {
+            true
+        };
+
+        if success {
+            conn.stream.send(message);
+        }
     }
 
     fn auth(&mut self, token: usize, mut message: Message) {
@@ -294,7 +323,7 @@ impl<T> QueenInner<T> {
         if !success {
             ErrorCode::AuthenticationFailed.insert_message(&mut message);
 
-            self.sessions.conns[token].stream.send(message);
+            self.send_message(&self.sessions.conns[token], message);
 
             return
         }
@@ -307,7 +336,7 @@ impl<T> QueenInner<T> {
             } else {
                 ErrorCode::InvalidSuperFieldType.insert_message(&mut message);
 
-                self.sessions.conns[token].stream.send(message);
+                self.send_message(&self.sessions.conns[token], message);
 
                 return
             }
@@ -319,7 +348,7 @@ impl<T> QueenInner<T> {
                         if *other_token != token {
                             ErrorCode::DuplicatePortId.insert_message(&mut message);
 
-                            self.sessions.conns[token].stream.send(message);
+                            self.send_message(&self.sessions.conns[token], message);
 
                             return
                         }
@@ -335,7 +364,7 @@ impl<T> QueenInner<T> {
             } else {
                 ErrorCode::InvalidPortIdFieldType.insert_message(&mut message);
 
-                self.sessions.conns[token].stream.send(message);
+                self.send_message(&self.sessions.conns[token], message);
 
                 return
             }
@@ -372,7 +401,7 @@ impl<T> QueenInner<T> {
             event_message.insert(CLIENT_ID, client_id.clone());
         }
 
-        self.sessions.conns[token].stream.send(message);
+        self.send_message(&self.sessions.conns[token], message);
 
         self.relay_super_message(token, CLIENT_READY, event_message);
     }
@@ -382,7 +411,7 @@ impl<T> QueenInner<T> {
         if !self.sessions.conns[token].auth {
             ErrorCode::Unauthorized.insert_message(&mut message);
 
-            self.sessions.conns[token].stream.send(message);
+            self.send_message(&self.sessions.conns[token], message);
 
             return
         }
@@ -395,7 +424,7 @@ impl<T> QueenInner<T> {
                     if !self.sessions.conns[token].supe {
                         ErrorCode::Unauthorized.insert_message(&mut message);
 
-                        self.sessions.conns[token].stream.send(message);
+                        self.send_message(&self.sessions.conns[token], message);
 
                         return
                     }
@@ -414,7 +443,7 @@ impl<T> QueenInner<T> {
             if !success {
                 ErrorCode::Unauthorized.insert_message(&mut message);
 
-                self.sessions.conns[token].stream.send(message);
+                self.send_message(&self.sessions.conns[token], message);
 
                 return
             }
@@ -432,7 +461,7 @@ impl<T> QueenInner<T> {
                         } else {
                             ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
-                            self.sessions.conns[token].stream.send(message);
+                            self.send_message(&self.sessions.conns[token], message);
 
                             return
                         }
@@ -440,7 +469,7 @@ impl<T> QueenInner<T> {
                 } else {
                     ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
-                    self.sessions.conns[token].stream.send(message);
+                    self.send_message(&self.sessions.conns[token], message);
 
                     return
                 }
@@ -485,7 +514,7 @@ impl<T> QueenInner<T> {
             ErrorCode::CannotGetValueField.insert_message(&mut message);
         }
 
-        self.sessions.conns[token].stream.send(message);
+        self.send_message(&self.sessions.conns[token], message);
     }
 
     fn detach(&mut self, token: usize, mut message: Message) {
@@ -493,7 +522,7 @@ impl<T> QueenInner<T> {
         if !self.sessions.conns[token].auth {
             ErrorCode::Unauthorized.insert_message(&mut message);
 
-            self.sessions.conns[token].stream.send(message);
+            self.send_message(&self.sessions.conns[token], message);
 
             return
         }
@@ -516,7 +545,7 @@ impl<T> QueenInner<T> {
                         } else {
                             ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
-                            self.sessions.conns[token].stream.send(message);
+                            self.send_message(&self.sessions.conns[token], message);
 
                             return
                         }
@@ -524,7 +553,7 @@ impl<T> QueenInner<T> {
                 } else {
                     ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
-                    self.sessions.conns[token].stream.send(message);
+                    self.send_message(&self.sessions.conns[token], message);
 
                     return
                 }
@@ -576,13 +605,13 @@ impl<T> QueenInner<T> {
             ErrorCode::CannotGetValueField.insert_message(&mut message);
         }
 
-        self.sessions.conns[token].stream.send(message);
+        self.send_message(&self.sessions.conns[token], message);
     }
 
     fn ping(&self, token: usize, mut message: Message) {
         ErrorCode::OK.insert_message(&mut message);
 
-        self.sessions.conns[token].stream.send(message);
+        self.send_message(&self.sessions.conns[token], message);
     }
 
     fn query(&self, token: usize, mut message: Message) {
@@ -592,7 +621,7 @@ impl<T> QueenInner<T> {
             if !conn.auth || !conn.supe {
                 ErrorCode::Unauthorized.insert_message(&mut message);
 
-                conn.stream.send(message);
+                self.send_message(conn, message);
 
                 return
             }
@@ -665,14 +694,14 @@ impl<T> QueenInner<T> {
                     } else {
                         ErrorCode::NotFound.insert_message(&mut message);
 
-                        self.sessions.conns[token].stream.send(message);
+                        self.send_message(&self.sessions.conns[token], message);
 
                         return
                     }
                 } else {
                     ErrorCode::InvalidPortIdFieldType.insert_message(&mut message);
 
-                    self.sessions.conns[token].stream.send(message);
+                    self.send_message(&self.sessions.conns[token], message);
 
                     return
                 }
@@ -681,7 +710,7 @@ impl<T> QueenInner<T> {
 
         ErrorCode::OK.insert_message(&mut message);
 
-        self.sessions.conns[token].stream.send(message);
+        self.send_message(&self.sessions.conns[token], message);
     }
 
     fn custom(&self, token: usize, mut message: Message) {
@@ -691,7 +720,7 @@ impl<T> QueenInner<T> {
             if !conn.auth {
                 ErrorCode::Unauthorized.insert_message(&mut message);
 
-                conn.stream.send(message);
+                self.send_message(conn, message);
 
                 return
             }
@@ -709,7 +738,7 @@ impl<T> QueenInner<T> {
             if !conn.auth || !conn.supe {
                 ErrorCode::Unauthorized.insert_message(&mut message);
 
-                conn.stream.send(message);
+                self.send_message(conn, message);
 
                 return Ok(())
             }
@@ -724,7 +753,7 @@ impl<T> QueenInner<T> {
         if !success {
             ErrorCode::Unauthorized.insert_message(&mut message);
 
-            self.sessions.conns[token].stream.send(message);
+            self.send_message(&self.sessions.conns[token], message);
 
             return Ok(())
         }
@@ -739,7 +768,7 @@ impl<T> QueenInner<T> {
             } else {
                 ErrorCode::InvalidPortIdFieldType.insert_message(&mut message);
 
-                self.sessions.conns[token].stream.send(message);
+                self.send_message(&self.sessions.conns[token], message);
 
                 return Ok(())
             }
@@ -747,7 +776,7 @@ impl<T> QueenInner<T> {
 
         ErrorCode::OK.insert_message(&mut message);
 
-        self.sessions.conns[token].stream.send(message);
+        self.send_message(&self.sessions.conns[token], message);
 
         if let Some(remove_id) = remove_id {
             self.remove_conn(remove_id)?;
@@ -761,7 +790,7 @@ impl<T> QueenInner<T> {
         if !self.sessions.conns[token].auth {
             ErrorCode::Unauthorized.insert_message(&mut message);
 
-            self.sessions.conns[token].stream.send(message);
+            self.send_message(&self.sessions.conns[token], message);
 
             return
         }
@@ -775,7 +804,7 @@ impl<T> QueenInner<T> {
         if !success {
             ErrorCode::Unauthorized.insert_message(&mut message);
 
-            self.sessions.conns[token].stream.send(message);
+            self.send_message(&self.sessions.conns[token], message);
 
             return
         }
@@ -808,7 +837,7 @@ impl<T> QueenInner<T> {
                 if !self.sessions.ports.contains_key(to_id) {
                     ErrorCode::TargetPortIdNotExist.insert_message(&mut message);
 
-                    self.sessions.conns[token].stream.send(message);
+                    self.send_message(&self.sessions.conns[token], message);
 
                     return
                 }
@@ -820,7 +849,7 @@ impl<T> QueenInner<T> {
                         if !self.sessions.ports.contains_key(to_id) {
                             ErrorCode::TargetPortIdNotExist.insert_message(&mut message);
 
-                            self.sessions.conns[token].stream.send(message);
+                            self.send_message(&self.sessions.conns[token], message);
 
                             return
                         }
@@ -829,7 +858,7 @@ impl<T> QueenInner<T> {
                     } else {
                         ErrorCode::InvalidToFieldType.insert_message(&mut message);
 
-                        self.sessions.conns[token].stream.send(message);
+                        self.send_message(&self.sessions.conns[token], message);
 
                         return
                     }
@@ -837,7 +866,7 @@ impl<T> QueenInner<T> {
             } else {
                 ErrorCode::InvalidToFieldType.insert_message(&mut message);
 
-                self.sessions.conns[token].stream.send(message);
+                self.send_message(&self.sessions.conns[token], message);
 
                 return
             }
@@ -860,7 +889,7 @@ impl<T> QueenInner<T> {
                     } else {
                         ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
-                        self.sessions.conns[token].stream.send(message);
+                        self.send_message(&self.sessions.conns[token], message);
 
                         return
                     }
@@ -868,7 +897,7 @@ impl<T> QueenInner<T> {
             } else {
                 ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
 
-                self.sessions.conns[token].stream.send(message);
+                self.send_message(&self.sessions.conns[token], message);
 
                 return
             }
@@ -876,14 +905,14 @@ impl<T> QueenInner<T> {
 
         macro_rules! send {
             ($self: ident, $conn: ident, $message: ident) => {
-                let success = if let Some(send_fn) = &$self.callback.send_fn {
-                    send_fn(&$conn, &mut $message, &$self.data)
+                let success = if let Some(push_fn) = &$self.callback.push_fn {
+                    push_fn(&$conn, &mut $message, &$self.data)
                 } else {
                     true
                 };
 
                 if success {
-                    $conn.stream.send($message.clone());
+                    self.send_message($conn, $message.clone());
 
                     // port event
                     // {
@@ -977,7 +1006,7 @@ impl<T> QueenInner<T> {
         if no_consumers {
             ErrorCode::NoConsumers.insert_message(&mut message);
 
-            self.sessions.conns[token].stream.send(message);
+            self.send_message(&self.sessions.conns[token], message);
 
             return
         }
@@ -996,7 +1025,7 @@ impl<T> QueenInner<T> {
 
         // send reply message
         if let Some(reply_message) = reply_message {
-            self.sessions.conns[token].stream.send(reply_message);
+            self.send_message(&self.sessions.conns[token], reply_message);
         }
     }
 
@@ -1017,7 +1046,7 @@ impl<T> QueenInner<T> {
                     };
 
                     if success {
-                        conn.stream.send(message);
+                        self.send_message(conn, message);
                     }
                 }
             }

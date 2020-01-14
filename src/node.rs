@@ -1,14 +1,18 @@
 use std::io::{self, ErrorKind::{WouldBlock}};
-use std::os::unix::io::{AsRawFd};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::os::unix::io::AsRawFd;
 use std::thread;
 use std::time::Duration;
 use std::net::SocketAddr;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering}
+};
 
-use queen_io::epoll::{Epoll, Events, Token, Ready, EpollOpt};
-use queen_io::queue::spsc::Queue;
-use queen_io::tcp::TcpListener;
+use queen_io::{
+    epoll::{Epoll, Events, Token, Ready, EpollOpt},
+    queue::spsc::Queue,
+    tcp::TcpListener
+};
 
 use rand::{self, thread_rng, rngs::ThreadRng};
 use rand::seq::SliceRandom;
@@ -56,7 +60,12 @@ impl Node {
             let mut net_work = NetWork::new(queue2, run.clone())?;
 
             thread::Builder::new().name("net".to_string()).spawn(move || {
-                net_work.run()
+                let ret = net_work.run();
+                if ret.is_err() {
+                    log::error!("net thread exit: {:?}", ret);
+                } else {
+                    log::trace!("net thread exit");
+                }
             }).unwrap();
         }
 
@@ -118,7 +127,7 @@ impl Node {
                                 }
                             },
                             Err(err) => {
-                                println!("connect: {:?}", err);
+                                log::error!("queen.connect: {:?}", err);
                             }
                         }
                     }

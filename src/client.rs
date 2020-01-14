@@ -1,22 +1,28 @@
 use std::collections::{HashMap, HashSet};
 use std::net::{TcpStream, SocketAddr};
-use std::io::{self, Write};
-use std::io::ErrorKind::{InvalidData, NotConnected, TimedOut, WouldBlock};
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread;
 use std::time::Duration;
-use std::sync::mpsc::{channel, Receiver, Sender};
 use std::fmt;
+use std::io::{
+    self, Write,
+    ErrorKind::{InvalidData, NotConnected, TimedOut, WouldBlock}
+};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, AtomicU32, Ordering},
+    mpsc::{channel, Receiver, Sender}
+};
 
-use crate::nson::{msg, Message, MessageId};
 use crate::dict::*;
-use crate::util::message::read_block;
+use crate::nson::{msg, Message, MessageId};
 use crate::crypto::Crypto;
 use crate::net::CryptoOptions;
 use crate::error::{Result, ErrorCode};
-use crate::util::oneshot::{oneshot, Sender as OneshotSender};
-use crate::util::block_queue::BlockQueue;
+use crate::util::{
+    message::read_block,
+    oneshot::{oneshot, Sender as OneshotSender},
+    block_queue::BlockQueue,
+};
 
 use nson::Value;
 
@@ -479,7 +485,7 @@ impl Client {
                         let tcp_stream = TcpStream::connect_timeout(&client.inner.options.addr, Duration::from_secs(10));
                         let tcp_stream = match tcp_stream {
                             Err(err) => {
-                                println!("{:?}", err);
+                                log::error!("TcpStream::connect_timeout: {:?}", err);
                                 sleep!();
                                 continue
                             }
@@ -488,7 +494,7 @@ impl Client {
 
                         let tcp_stream2 = match tcp_stream.try_clone() {
                             Err(err) => {
-                                println!("{:?}", err);
+                                log::error!("tcp_stream.try_clone: {:?}", err);
                                 sleep!();
                                 return
                             }
@@ -499,14 +505,14 @@ impl Client {
 
                         // handshake
                         if let Err(err) = net_stream.handshake(&client.inner.options.crypto_options) {
-                            println!("{:?}", err);
+                            log::error!("net_stream.handshake: {:?}", err);
                             sleep!();
                             continue
                         }
 
                         // ping
                         if let Err(err) = net_stream.ping(&client.inner.crypto) {
-                            println!("{:?}", err);
+                            log::error!("net_stream.ping: {:?}", err);
                             sleep!();
                             continue
                         }
@@ -514,19 +520,19 @@ impl Client {
                         // auth
                         match net_stream.auth(&client.inner.crypto, client.inner.options.auth_message.clone()) {
                             Err(err) => {
-                                println!("{:?}", err);
+                                log::error!("net_stream.auth: {:?}", err);
                                 sleep!();
                                 continue
                             }
                             Ok(message) => {
                                 if let Some(code) = ErrorCode::has_error(&message) {
                                     if code != ErrorCode::OK {
-                                        println!("{}", code);
+                                        log::error!("auth: {:?}", code);
                                         sleep!();
                                         continue
                                     }
                                 } else {
-                                    println!("{:?}", "UnsupportedFormat");
+                                    log::error!("ErrorCode::has_error: UnsupportedFormat");
                                     sleep!();
                                     continue
                                 }
@@ -551,14 +557,14 @@ impl Client {
 
                                 match data {
                                     Err(err) => {
-                                        println!("{:?}", err);
+                                        log::error!("client.encrypt: {:?}", err);
                                         sleep!();
                                         continue
                                     }
                                     Ok(data) => {
                                         if let Err(err) = session.stream.as_ref().unwrap()
                                             .write(&data) {
-                                            println!("{:?}", err);
+                                            log::error!("write(&data): {:?}", err);
                                             sleep!();
                                             continue
                                         }
@@ -579,6 +585,8 @@ impl Client {
             run();
 
             client.stop();
+
+            log::trace!("net read thread exit");
         }).unwrap()
     }
 
@@ -593,14 +601,14 @@ impl Client {
                         Ok(data) => {
                             let message = match client.decrypt(data) {
                                 Err(err) => {
-                                    println!("{:?}", err);
+                                    log::error!("client.decrypt: {:?}", err);
                                     return
                                 }
                                 Ok(message) => message
                             };
 
                             if let Err(err) = client.dispatch_message(message) {
-                                println!("{:?}", err);
+                                log::error!("client.dispatch_message: {:?}", err);
                                 return
                             }
                         }
@@ -608,7 +616,7 @@ impl Client {
                             if let TimedOut | WouldBlock = err.kind() {
                                 continue;
                             } else {
-                                println!("{:?}", err);
+                                log::error!("net_stream.read: {:?}", err);
                                 return
                             }
                         }
@@ -620,6 +628,8 @@ impl Client {
 
             let mut session = client.inner.session.lock().unwrap();
             session.stream = None;
+
+            log::trace!("net read thread exit");
 
         }).unwrap();
     }
@@ -1144,14 +1154,14 @@ impl Worker {
                             }
 
                             if let Err(err) = session.stream.as_ref().unwrap().write(&data) {
-                                println!("Worker::write(&data) {:?}", err);
+                                log::error!("write(&data): {:?}", err);
                             }
                         }
                     }));
                 }
             }
 
-            println!("{:?} exit", name);
+            log::trace!("{:?} exit", name);
         }).unwrap();
     }
 }

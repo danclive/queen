@@ -1,9 +1,13 @@
 use std::io;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering}
+};
 
-use queen_io::epoll::{Epoll, Token, Ready, EpollOpt, Evented};
-use queen_io::queue::spsc::Queue;
+use queen_io::{
+    epoll::{Epoll, Token, Ready, EpollOpt, Evented},
+    queue::spsc::Queue
+};
 
 use nson::{Message, msg};
 
@@ -41,10 +45,13 @@ impl Stream {
         Ok((stream1, stream2))
     }
 
-    pub fn send(&self, message: Message) {
+    pub fn send(&self, message: Message) -> Option<Message> {
         if !self.is_close() {
             self.tx.push(message);
+            return None
         }
+
+        Some(message)
     }
 
     pub fn recv(&self) -> Option<Message> {

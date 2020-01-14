@@ -878,18 +878,18 @@ fn client_id() {
     // auth
     stream1.send(msg!{
         CHAN: AUTH,
-        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
+        CLIENT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
     });
 
     stream2.send(msg!{
         CHAN: AUTH,
-        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
+        CLIENT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
     });
 
     // duplicate
     stream3.send(msg!{
         CHAN: AUTH,
-        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
+        CLIENT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -903,7 +903,7 @@ fn client_id() {
 
     stream3.send(msg!{
         CHAN: AUTH,
-        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap()
+        CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -929,7 +929,7 @@ fn client_id() {
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
-        TO: MessageId::with_string("5932a005b4b4b4ac168cd9e7").unwrap()
+        TO: MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -942,7 +942,7 @@ fn client_id() {
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
-        TO: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
+        TO: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -954,14 +954,14 @@ fn client_id() {
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
-    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
     // port to ports
     stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
-        TO: [MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap(), MessageId::with_string("5932a005b4b4b4ac168cd9e7").unwrap()]
+        TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap()]
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -974,7 +974,7 @@ fn client_id() {
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
-        TO: [MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap(), MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()]
+        TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()]
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -986,13 +986,13 @@ fn client_id() {
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
-    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
     let recv = stream2.recv().unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
-    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
     // generate message id
     let stream4 = queen.connect(msg!{}, None).unwrap();
@@ -1160,7 +1160,7 @@ fn port_event() {
 
     stream2.send(msg!{
         CHAN: AUTH,
-        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap()
+        CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1169,7 +1169,7 @@ fn port_event() {
 
     stream1.send(msg!{
         CHAN: CLIENT_KILL,
-        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap()
+        CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1178,18 +1178,18 @@ fn port_event() {
 
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_READY);
     assert!(recv.get_bool(SUPER).unwrap() == false);
-    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
     let recv = stream1.recv().unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_KILL);
     assert!(recv.get_i32(OK).unwrap() == 0);
-    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
    
     let recv = stream1.recv().unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_BREAK);
-    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("5932a005b4b4b4ac168cd9e6").unwrap());
+    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
     println!("{:?}", stream2.is_close());
     println!("{:?}", stream2.recv());
@@ -1215,7 +1215,7 @@ fn query() {
 
     stream1.send(msg!{
         CHAN: AUTH,
-        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
+        CLIENT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1373,7 +1373,7 @@ fn query() {
     stream1.send(msg!{
         CHAN: QUERY,
         "port": QUERY_PORT,
-        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e5").unwrap()
+        CLIENT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1385,7 +1385,7 @@ fn query() {
     stream1.send(msg!{
         CHAN: QUERY,
         "port": QUERY_PORT,
-        CLIENT_ID: MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap()
+        CLIENT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
     });
 
     thread::sleep(Duration::from_secs(1));
@@ -1393,7 +1393,7 @@ fn query() {
     let recv = stream1.recv().unwrap();
 
     assert!(recv.get_message("port").unwrap().get_message_id(CLIENT_ID).unwrap()
-        == &MessageId::with_string("5932a005b4b4b4ac168cd9e4").unwrap());
+        == &MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap());
 }
 
 #[test]

@@ -22,5 +22,5 @@ fn main() {
 
     println!("{:?}", client.send("hello", msg!{"hahaha": "lalala"}, None));
 
-    thread::sleep(Duration::from_secs(10));
+    // thread::sleep(Duration::from_secs(10));
 }

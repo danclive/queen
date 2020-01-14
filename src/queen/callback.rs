@@ -3,28 +3,24 @@ use nson::Message;
 use crate::queen::{Sessions, Session};
 
 pub struct Callback<T> {
-    pub accept_fn: Option<AcceptFn<T>>,
-    pub remove_fn: Option<RemoveFn<T>>,
-    pub recv_fn: Option<RecvFn<T>>,
-    pub send_fn: Option<SendFn<T>>,
-    pub auth_fn: Option<AuthFn<T>>,
-    pub attach_fn: Option<AttachFn<T>>,
-    pub detach_fn: Option<DetachFn<T>>,
-    pub emit_fn: Option<EmitFn<T>>,
-    pub kill_fn: Option<KillFn<T>>,
-    pub custom_fn: Option<CustomFn<T>>
+    pub accept_fn: Option<Fn1<T>>,
+    pub remove_fn: Option<Fn2<T>>,
+    pub recv_fn: Option<Fn3<T>>,
+    pub send_fn: Option<Fn3<T>>,
+    pub auth_fn: Option<Fn3<T>>,
+    pub attach_fn: Option<Fn3<T>>,
+    pub detach_fn: Option<Fn4<T>>,
+    pub emit_fn: Option<Fn3<T>>,
+    pub push_fn: Option<Fn3<T>>,
+    pub kill_fn: Option<Fn3<T>>,
+    pub custom_fn: Option<Fn5<T>>
 }
 
-type AcceptFn<T> = Box<dyn Fn(&Session, &T) -> bool + Send>;
-type RemoveFn<T> = Box<dyn Fn(&Session, &T) + Send>;
-type RecvFn<T> = Box<dyn Fn(&Session, &mut Message, &T) -> bool + Send>;
-type SendFn<T> = Box<dyn Fn(&Session, &mut Message, &T) -> bool + Send>;
-type AuthFn<T> = Box<dyn Fn(&Session, &mut Message, &T) -> bool + Send>;
-type AttachFn<T> = Box<dyn Fn(&Session, &mut Message, &T) -> bool + Send>;
-type DetachFn<T> = Box<dyn Fn(&Session, &mut Message, &T) + Send>;
-type EmitFn<T> = Box<dyn Fn(&Session, &mut Message, &T) -> bool + Send>;
-type KillFn<T> = Box<dyn Fn(&Session, &mut Message, &T) -> bool + Send>;
-type CustomFn<T> = Box<dyn Fn(&Sessions, usize, &mut Message, &T) + Send>;
+type Fn1<T> = Box<dyn Fn(&Session, &T) -> bool + Send>;
+type Fn2<T> = Box<dyn Fn(&Session, &T) + Send>;
+type Fn3<T> = Box<dyn Fn(&Session, &mut Message, &T) -> bool + Send>;
+type Fn4<T> = Box<dyn Fn(&Session, &mut Message, &T) + Send>;
+type Fn5<T> = Box<dyn Fn(&Sessions, usize, &mut Message, &T) + Send>;
 
 impl<T> Callback<T> {
     pub fn new() -> Callback<T> {
@@ -37,6 +33,7 @@ impl<T> Callback<T> {
             attach_fn: None,
             detach_fn: None,
             emit_fn: None,
+            push_fn: None,
             kill_fn: None,
             custom_fn: None
         }
@@ -72,6 +69,10 @@ impl<T> Callback<T> {
 
     pub fn emit<F>(&mut self, f: F) where F: Fn(&Session, &mut Message, &T) -> bool + Send + 'static {
         self.emit_fn = Some(Box::new(f))
+    }
+
+    pub fn push<F>(&mut self, f: F) where F: Fn(&Session, &mut Message, &T) -> bool + Send + 'static {
+        self.push_fn = Some(Box::new(f))
     }
 
     pub fn kill<F>(&mut self, f: F) where F: Fn(&Session, &mut Message, &T) -> bool + Send + 'static {

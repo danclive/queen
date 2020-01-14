@@ -1,14 +1,20 @@
-use std::collections::{VecDeque};
-use std::io::{self, Write};
-use std::io::ErrorKind::{WouldBlock, BrokenPipe, InvalidData, PermissionDenied};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::VecDeque;
 use std::str::FromStr;
 use std::time::Duration;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering}
+};
+use std::io::{
+    self, Write,
+    ErrorKind::{WouldBlock, BrokenPipe, InvalidData, PermissionDenied}
+};
 
-use queen_io::epoll::{Epoll, Event, Events, Token, Ready, EpollOpt};
-use queen_io::queue::spsc::Queue;
-use queen_io::tcp::TcpStream;
+use queen_io::{
+    epoll::{Epoll, Event, Events, Token, Ready, EpollOpt},
+    queue::spsc::Queue,
+    tcp::TcpStream
+};
 
 use nson::{Message, msg};
 
@@ -92,8 +98,19 @@ impl NetWork {
                     let id = Self::START_TOKEN + entry1.key() * 2;
                     let id2 = Self::START_TOKEN + entry2.key() * 2 + 1;
 
-                    self.epoll.add(&stream, Token(id), Ready::readable(), EpollOpt::level())?;
-                    self.epoll.add(&net_stream, Token(id2), Ready::readable() | Ready::hup(), EpollOpt::edge())?;
+                    self.epoll.add(
+                        &stream,
+                        Token(id),
+                        Ready::readable(),
+                        EpollOpt::level()
+                    )?;
+
+                    self.epoll.add(
+                        &net_stream,
+                        Token(id2),
+                        Ready::readable() | Ready::hup(),
+                        EpollOpt::edge()
+                    )?;
                 
                     entry1.insert(StreamConn::new(id, stream));
 
@@ -133,9 +150,20 @@ impl NetWork {
                     let id = Self::START_TOKEN + entry1.key() * 2;
                     let id2 = Self::START_TOKEN + entry2.key() * 2 + 1;
 
-                    self.epoll.add(&stream, Token(id), Ready::readable(), EpollOpt::level())?;
-                    self.epoll.add(&net_stream, Token(id2), Ready::readable() | Ready::hup(), EpollOpt::edge())?;
-                
+                    self.epoll.add(
+                        &stream,
+                        Token(id),
+                        Ready::readable(),
+                        EpollOpt::level()
+                    )?;
+
+                    self.epoll.add(
+                        &net_stream,
+                        Token(id2),
+                        Ready::readable() | Ready::hup(),
+                        EpollOpt::edge()
+                    )?;
+
                     entry1.insert(StreamConn::new(id, stream));
 
                     let mut conn = NetConn::new(id2, net_stream);
@@ -195,16 +223,28 @@ impl NetWork {
         if ready.is_readable() {
             if let Some(net_conn) = self.nets.get_mut(index) {
                 let ret = net_conn.read(&self.streams[index]);
-                remove = ret.is_err();
+                if ret.is_err() {
+                    log::debug!("net_conn.read: {:?}", ret);
+                    remove = true;
+                }
             }
         }
 
         if ready.is_writable() {
             if let Some(net_conn) = self.nets.get_mut(index) {
-                remove = net_conn.write().is_err();
+                let ret = net_conn.write();
+                if ret.is_err() {
+                    log::debug!("net_conn.write: {:?}", ret);
+                    remove = true;
+                }
 
                 if !remove {
-                    self.epoll.modify(&net_conn.stream, Token(net_conn.id), net_conn.interest, EpollOpt::edge())?;
+                    self.epoll.modify(
+                        &net_conn.stream,
+                        Token(net_conn.id),
+                        net_conn.interest,
+                        EpollOpt::edge()
+                    )?;
                 }
             }
         }
@@ -423,7 +463,12 @@ impl NetConn {
         if !self.interest.contains(Ready::writable()) {
             self.interest.insert(Ready::writable());
 
-            epoll.modify(&self.stream, Token(self.id), self.interest, EpollOpt::edge())?;
+            epoll.modify(
+                &self.stream,
+                Token(self.id),
+                self.interest,
+                EpollOpt::edge()
+            )?;
         }
 
         Ok(())
