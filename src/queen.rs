@@ -832,7 +832,7 @@ impl<T> QueenInner<T> {
         // to
         let mut to_ids = vec![];
 
-        if let Some(to) = message.get(TO) {
+        if let Some(to) = message.remove(TO) {
             if let Some(to_id) = to.as_message_id() {
                 if !self.sessions.ports.contains_key(to_id) {
                     ErrorCode::TargetPortIdNotExist.insert_message(&mut message);

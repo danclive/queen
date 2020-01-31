@@ -113,6 +113,8 @@ fn attach_detach() {
         VALUE: "aaa"
     });
 
+    thread::sleep(Duration::from_secs(1));
+
     // send
     stream1.send(msg!{
         CHAN: "aaa",

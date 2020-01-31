@@ -14,8 +14,7 @@ use queen_io::{
     tcp::TcpListener
 };
 
-use rand::{self, thread_rng, rngs::ThreadRng};
-use rand::seq::SliceRandom;
+use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
 use nson::msg;
 
@@ -29,7 +28,7 @@ pub struct Node {
     events: Events,
     queues: Vec<Queue<Packet>>,
     listens: Vec<TcpListener>,
-    rand: ThreadRng,
+    rand: SmallRng,
     access_fn: Option<AccessFn>,
     pub run: Arc<AtomicBool>
 }
@@ -75,7 +74,7 @@ impl Node {
             events: Events::with_capacity(16),
             queues,
             listens,
-            rand: thread_rng(),
+            rand: SmallRng::from_entropy(),
             access_fn: None,
             run
         })

@@ -21,7 +21,7 @@ use crate::error::{Result, ErrorCode};
 use crate::util::{
     message::read_block,
     oneshot::{oneshot, Sender as OneshotSender},
-    block_queue::BlockQueue,
+    block_queue::BlockQueue
 };
 
 use nson::Value;
