@@ -4,12 +4,12 @@ use std::io::ErrorKind::{BrokenPipe, InvalidData};
 
 use crate::MAX_MESSAGE_LEN;
 
-pub fn read_i32(buf: &[u8], start: usize) -> usize {
+pub fn read_u32(buf: &[u8], start: usize) -> usize {
     (
-        i32::from(buf[start]) |
-        i32::from(buf[start + 1]) << 8 |
-        i32::from(buf[start + 2]) << 16 |
-        i32::from(buf[start + 3]) << 24
+        u32::from(buf[start]) |
+        u32::from(buf[start + 1]) << 8 |
+        u32::from(buf[start + 2]) << 16 |
+        u32::from(buf[start + 3]) << 24
     ) as usize
 }
 
@@ -25,7 +25,7 @@ pub fn read_nonblock(reader: &mut impl Read, buffer: &mut Vec<u8>) -> io::Result
             return Ok(None)
         }
 
-        let len = i32::from_le_bytes(len_bytes) as usize;
+        let len = u32::from_le_bytes(len_bytes) as usize;
 
         if len < 5 || len > MAX_MESSAGE_LEN {
             return Err(io::Error::new(InvalidData, format!("Invalid length of {}", len)))
@@ -62,7 +62,7 @@ pub fn read_nonblock(reader: &mut impl Read, buffer: &mut Vec<u8>) -> io::Result
             return Ok(None)
         }
 
-        let len = read_i32(&buffer[..4], 0) as usize;
+        let len = read_u32(&buffer[..4], 0) as usize;
 
         if len < 5 || len > MAX_MESSAGE_LEN {
             return Err(io::Error::new(InvalidData, format!("Invalid length of {}", len)))
@@ -93,7 +93,7 @@ pub fn read_block(reader: &mut impl Read) -> io::Result<Vec<u8>> {
     let mut len_bytes = [0u8; 4];
     reader.read_exact(&mut len_bytes)?;
 
-    let len = i32::from_le_bytes(len_bytes) as usize;
+    let len = u32::from_le_bytes(len_bytes) as usize;
 
     if len < 5 || len > MAX_MESSAGE_LEN {
         return Err(io::Error::new(InvalidData, format!("Invalid length of {}", len)))

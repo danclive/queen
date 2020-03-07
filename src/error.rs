@@ -36,13 +36,7 @@ impl fmt::Display for Error {
 }
 
 impl error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::IoError(ref inner) => inner.description(),
-            Error::ErrorCode(ref inner) => inner.to_str()
-        }
-    }
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             Error::IoError(ref inner) => Some(inner),
             _ => None,

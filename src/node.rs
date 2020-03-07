@@ -20,6 +20,7 @@ use nson::msg;
 
 use crate::Queen;
 use crate::net::{NetWork, Packet, AccessFn};
+use crate::net::tcp_ext::TcpExt;
 use crate::dict::*;
 
 pub struct Node {
@@ -114,6 +115,11 @@ impl Node {
                         let attr = msg!{
                             ADDR: addr.to_string()
                         };
+
+                        socket.set_keep_alive(true)?; // 开启keepalive属性
+                        socket.set_keep_idle(60)?; // 如该连接在60秒内没有任何数据往来,则进行探测
+                        socket.set_keep_intvl(5)?; // 探测时发包的时间间隔为5秒
+                        socket.set_keep_cnt(3)?; // 探测尝试的次数.如果第1次探测包就收到响应了,则后2次的不再发
 
                         match self.queen.connect(attr, None) {
                             Ok(stream) => {

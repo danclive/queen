@@ -1,5 +1,3 @@
-use std::sync::atomic::AtomicIsize;
-use std::sync::atomic::Ordering::SeqCst;
 use std::sync::{Arc, RwLock, Mutex};
 use std::collections::{HashMap, BinaryHeap};
 use std::thread;
@@ -18,18 +16,21 @@ pub struct EventBus {
 
 struct InnerEventBus {
     queue: BlockQueue<(String, Message)>,
-    handles: Handles,
-    // index
-    next_id: AtomicIsize,
+    handles: RwLock<Handles>,
     timer: Timer
 }
 
-type Handles = RwLock<HashMap<String, Vec<(i32, Arc<HandleFn>)>>>;
+struct Handles {
+    next_id: usize,
+    callbacks: HashMap<String, Vec<(usize, Arc<HandleFn>)>>,
+    index: HashMap<usize, String>
+}
+
 type HandleFn = dyn Fn(Context) + Send + Sync + 'static;
 
 pub struct Context<'a> {
     pub queen: &'a EventBus,
-    pub id: i32,
+    pub id: usize,
     pub event: String,
     pub message: Message
 }
@@ -38,9 +39,12 @@ impl EventBus {
     pub fn new() -> io::Result<EventBus> {
         let event_bus = EventBus {
             inner: Arc::new(InnerEventBus {
-                queue: BlockQueue::with_capacity(4 * 1000),
-                handles: RwLock::new(HashMap::new()),
-                next_id: AtomicIsize::new(0),
+                queue: BlockQueue::with_capacity(1024),
+                handles: RwLock::new(Handles {
+                    next_id: 0,
+                    callbacks: HashMap::new(),
+                    index: HashMap::new()
+                }),
                 timer: Timer::new()
             })
         };
@@ -52,23 +56,30 @@ impl EventBus {
         Ok(event_bus)
     }
 
-    pub fn on(&self, event: &str, handle: impl Fn(Context) + Send + Sync + 'static) -> i32 {
+    pub fn on(&self, event: &str, handle: impl Fn(Context) + Send + Sync + 'static) -> usize {
         let mut handles = self.inner.handles.write().unwrap();
-        let id = self.inner.next_id.fetch_add(1, SeqCst) as i32;
+        let id = handles.next_id;
+        handles.next_id += 1;
 
-        let vector = handles.entry(event.to_owned()).or_insert_with(|| vec![]);
+        let vector = handles.callbacks.entry(event.to_owned()).or_insert_with(|| vec![]);
         vector.push((id, Arc::new(handle)));
+
+        handles.index.insert(id, event.to_string());
 
         id
     }
 
-    pub fn off(&self, id: i32) -> bool {
+    pub fn off(&self, id: usize) -> bool {
         let mut handles = self.inner.handles.write().unwrap();
-        for (_, vector) in handles.iter_mut() {
-            if let Some(position) = vector.iter().position(|(x, _)| x == &id) {
-                vector.remove(position);
 
-                return true
+        if let Some(event) = handles.index.get(&id).map(|e| e.clone()) {
+            if let Some(vector) = handles.callbacks.get_mut(&event) {
+                if let Some(position) = vector.iter().position(|(x, _)| x == &id) {
+                    vector.remove(position);
+                    handles.index.remove(&id);
+
+                    return true
+                }
             }
         }
 
@@ -99,7 +110,7 @@ impl EventBus {
                     let (event, message) = that.inner.queue.pop();
                     let handles2 = {
                         let handles = that.inner.handles.read().unwrap();
-                        if let Some(vector) = handles.get(&event) {
+                        if let Some(vector) = handles.callbacks.get(&event) {
                             vector.clone()
                         } else {
                             continue;
@@ -177,7 +188,6 @@ pub struct Timer {
 
 impl Timer {
     pub fn new() -> Timer {
-        
         let tasks: Arc<Mutex<BinaryHeap<Task>>> = Arc::new(Mutex::new(BinaryHeap::new()));
 
         Timer {

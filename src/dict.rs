@@ -48,6 +48,7 @@ pub const CHACHA20_POLY1305: &str = "CHACHA20_POLY1305";
 
 // network
 pub const HANDSHAKE: &str = "_hand";
+pub const METHOD:    &str = "_meth";
 pub const ACCESS:    &str = "_acce";
 
 // client

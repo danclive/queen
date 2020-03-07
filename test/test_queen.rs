@@ -1491,3 +1491,42 @@ fn port_event_send_recv() {
     let recv = stream3.recv().unwrap();
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_SEND);
 }
+
+#[test]
+fn self_send_recv() {
+    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+
+    let stream1 = queen.connect(msg!{}, None).unwrap();
+
+    // auth
+    stream1.send(msg!{
+        CHAN: AUTH
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // attach
+    stream1.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa"
+    });
+
+    // send
+    stream1.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        ACK: "123"
+    });
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+    assert!(recv.get_i32(OK).unwrap() == 0);
+
+    let recv = stream1.recv().unwrap();
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
+
+    assert!(stream1.recv().is_none());
+}

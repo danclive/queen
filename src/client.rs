@@ -10,7 +10,7 @@ use std::io::{
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicU32, Ordering},
-    mpsc::{channel, Receiver, Sender}
+    mpsc::{channel, Receiver, Sender, RecvTimeoutError}
 };
 
 use crate::dict::*;
@@ -152,14 +152,6 @@ impl Default for AddOptions {
             timeout: Duration::from_secs(10)
         }
     }
-}
-
-#[derive(Debug)]
-pub struct Recv {
-    pub client: Client,
-    pub id: u32,
-    pub chan: String,
-    pub recv: Receiver<Message>
 }
 
 impl Client {
@@ -1032,25 +1024,29 @@ impl Stream {
         Ok(data)
     }
 
-    fn handshake(&self, options: &Option<CryptoOptions>) -> io::Result<()> {
+    fn handshake(&self, options: &Option<CryptoOptions>) -> io::Result<Message> {
         if let Some(options) = options {
-            let hand_msg = msg!{
-                HANDSHAKE: options.method.as_str(),
+            let message = msg!{
+                CHAN: HANDSHAKE,
+                METHOD: options.method.as_str(),
                 ACCESS: options.access.clone()
             };
 
-            let data = self.encrypt(&None, &hand_msg)?;
+            let data = message.to_vec().expect("InvalidData");
             self.write(&data)?;
         } else {
-            let hand_msg = msg!{
-                HANDSHAKE: ""
+            let message = msg!{
+                CHAN: HANDSHAKE
             };
 
-            let data = self.encrypt(&None, &hand_msg)?;
+            let data = message.to_vec().expect("InvalidData");
             self.write(&data)?;
         }
 
-        Ok(())
+        let data = self.read()?;
+        let recv = Message::from_slice(&data);
+
+        recv.map_err(|err| io::Error::new(InvalidData, format!("{}", err)))
     }
 
     fn ping(&self, crypto: &Option<Crypto>) -> io::Result<Message> {
@@ -1083,6 +1079,24 @@ impl Stream {
         let ret = self.decrypt(crypto, data2)?;
 
         Ok(ret)
+    }
+}
+
+#[derive(Debug)]
+pub struct Recv {
+    pub client: Client,
+    pub id: u32,
+    pub chan: String,
+    pub recv: Receiver<Message>
+}
+
+impl Recv {
+    pub fn recv(&self) -> Option<Message> {
+        self.recv.recv().ok()
+    }
+
+    pub fn recv_timeout(&self, timeout: Duration) -> std::result::Result<Message, RecvTimeoutError> {
+        self.recv.recv_timeout(timeout)
     }
 }
 

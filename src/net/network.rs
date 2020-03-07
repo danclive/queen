@@ -24,6 +24,7 @@ use crate::Stream;
 use crate::crypto::{Method, Crypto};
 use crate::util::message::read_nonblock;
 use crate::dict::*;
+use crate::error::ErrorCode;
 
 use super::CryptoOptions;
 
@@ -119,7 +120,8 @@ impl NetWork {
                     // handshake message
                     if let Some(options) = options {
                         let hand_message = msg!{
-                            HANDSHAKE: options.method.as_str(),
+                            CHAN: HANDSHAKE,
+                            METHOD: options.method.as_str(),
                             ACCESS: options.access
                         };
 
@@ -130,14 +132,14 @@ impl NetWork {
 
                     } else {
                         let hand_message = msg!{
-                            HANDSHAKE: ""
+                            CHAN: HANDSHAKE
                         };
 
                         conn.push_data(&self.epoll, hand_message)?;
                     }
 
-                    conn.role = Role::Conn;
-                    conn.handshake = true;
+                    // conn.is_server = false;
+                    // conn.handshake = false;
 
                     entry2.insert(conn);
                 }
@@ -168,7 +170,7 @@ impl NetWork {
 
                     let mut conn = NetConn::new(id2, net_stream);
 
-                    conn.role = Role::Serv;
+                    conn.is_server = true;
                     conn.access_fn = access_fn;
 
                     entry2.insert(conn);
@@ -222,7 +224,7 @@ impl NetWork {
 
         if ready.is_readable() {
             if let Some(net_conn) = self.nets.get_mut(index) {
-                let ret = net_conn.read(&self.streams[index]);
+                let ret = net_conn.read(&self.epoll, &self.streams[index]);
                 if ret.is_err() {
                     log::debug!("net_conn.read: {:?}", ret);
                     remove = true;
@@ -289,15 +291,9 @@ struct NetConn {
     r_buffer: Vec<u8>,
     w_buffer: VecDeque<Vec<u8>>,
     handshake: bool,
-    role: Role,
+    is_server: bool,
     access_fn: Option<AccessFn>,
     crypto: Option<Crypto>
-}
-
-#[derive(Debug)]
-enum Role {
-    Conn,
-    Serv
 }
 
 impl NetConn {
@@ -309,13 +305,13 @@ impl NetConn {
             r_buffer: Vec::with_capacity(1024),
             w_buffer: VecDeque::new(),
             handshake: false,
-            role: Role::Conn,
+            is_server: false,
             access_fn: None,
             crypto: None
         }
     }
 
-    fn read(&mut self, stream_conn: &StreamConn) -> io::Result<()> {
+    fn read(&mut self, epoll: &Epoll, stream_conn: &StreamConn) -> io::Result<()> {
         if stream_conn.stream.is_full() {
             return Ok(())
         }
@@ -342,59 +338,64 @@ impl NetConn {
                                 }
                             }
                         } else {
-                            match &self.role {
-                                Role::Conn => return Err(io::Error::new(InvalidData, "Role::Conn")),
-                                Role::Serv => {
-                                    let message =  match Message::from_slice(&bytes) {
-                                        Ok(message) => {
-                                            message
-                                        },
-                                        Err(err) => {
-                                            return Err(io::Error::new(InvalidData, format!("Message::from_slice: {}", err)))
+                            match Message::from_slice(&bytes) {
+                                Ok(mut message) => {
+                                    let chan = match message.get_str(CHAN) {
+                                        Ok(chan) => chan,
+                                        Err(_) => {
+                                            return Err(io::Error::new(InvalidData, "message.get_str(CHAN)"))
                                         }
                                     };
 
-                                    let handshake = if let Ok(handshake) = message.get_str(HANDSHAKE) {
-                                        handshake
-                                    } else {
-                                        return Err(io::Error::new(InvalidData, "message.get_str(HANDSHAKE)"))
-                                    };
+                                    if chan != HANDSHAKE {
+                                        return Err(io::Error::new(InvalidData, "chan != HANDSHAKE"))
+                                    }
 
-                                    if handshake == "" {
-                                        if self.access_fn.is_none() {
+                                    if self.is_server {
+                                        if let Ok(method) = message.get_str(METHOD) {
+                                            let method = if let Ok(method) = Method::from_str(method) {
+                                                method
+                                            } else {
+                                                return Err(io::Error::new(InvalidData, "Method::from_str(handshake)"))
+                                            };
+
+                                            let access = if let Ok(access) = message.get_str(ACCESS) {
+                                                access
+                                            } else {
+                                                return Err(io::Error::new(InvalidData, "message.get_str(ACCESS)"))
+                                            };
+
+                                            let secret = if let Some(secret) = self.access_fn.as_ref().unwrap()(access.to_string()) {
+                                                secret
+                                            } else {
+                                                return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
+                                            };
+
+                                            self.handshake = true;
+
+                                            ErrorCode::OK.insert_message(&mut message);
+
+                                            self.push_data(epoll, message)?;
+
+                                            let crypto = Crypto::new(&method, secret.as_bytes());
+                                            self.crypto = Some(crypto);
+                                        } else {
+                                            self.handshake = true;
+
+                                            ErrorCode::OK.insert_message(&mut message);
+
+                                            self.push_data(epoll, message)?;
+                                        }
+                                    } else {
+                                        if message.get_i32(OK) == Ok(0) {
                                             self.handshake = true;
                                         } else {
-                                            return Err(io::Error::new(InvalidData, "!self.access_fn.is_none()"))
+                                            return Err(io::Error::new(InvalidData, "message.get_i32(OK) == Ok(0)"))
                                         }
-                                    } else {
-                                        if self.access_fn.is_none() {
-                                            return Err(io::Error::new(InvalidData, "self.access_fn.is_none()"))
-                                        };
-
-                                        let method = if let Ok(method) = Method::from_str(handshake) {
-                                            method
-                                        } else {
-                                            return Err(io::Error::new(InvalidData, "Method::from_str(handshake)"))
-                                        };
-
-                                        let access = if let Ok(access) = message.get_str(ACCESS) {
-                                            access
-                                        } else {
-                                            return Err(io::Error::new(InvalidData, "message.get_str(ACCESS)"))
-                                        };
-
-                                        let secret = if let Some(secret) = self.access_fn.as_ref().unwrap()(access.to_string()) {
-                                            secret
-                                        } else {
-                                            return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
-                                        };
-
-                                        let crypto = Crypto::new(&method, secret.as_bytes());
-
-                                        self.crypto = Some(crypto);
-
-                                        self.handshake = true;
                                     }
+                                },
+                                Err(err) => {
+                                    return Err(io::Error::new(InvalidData, format!("Message::from_slice: {}", err)))
                                 }
                             }
                         }

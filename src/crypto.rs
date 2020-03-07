@@ -84,7 +84,7 @@ impl Crypto {
         in_out.extend_from_slice(tag.as_ref());
         in_out.extend_from_slice(&nonce_bytes);
 
-        let len = (in_out.len() as i32).to_le_bytes();
+        let len = (in_out.len() as u32).to_le_bytes();
         in_out[..4].clone_from_slice(&len);
 
         Ok(())
@@ -99,7 +99,7 @@ impl Crypto {
 
         in_out.truncate(in_out.len() - self.inner.algorithm().tag_len() - Self::NONCE_LEN);
 
-        let len = (in_out.len() as i32).to_le_bytes();
+        let len = (in_out.len() as u32).to_le_bytes();
         in_out[..4].clone_from_slice(&len);
 
         Ok(())

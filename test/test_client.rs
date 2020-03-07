@@ -47,7 +47,7 @@ fn client() {
 
     let client = Client::new(options).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_secs(2));
 
     // stream recv
     let recv = stream1.recv().unwrap();

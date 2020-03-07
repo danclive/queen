@@ -15,7 +15,6 @@ use queen_io::{
 use nson::{
     Message, Value, Array, msg,
     message_id::MessageId
-
 };
 
 use slab::Slab;
@@ -951,7 +950,7 @@ impl<T> QueenInner<T> {
             let mut array: Vec<usize> = Vec::new();
 
             if let Some(ids) = self.sessions.chans.get(&chan) {
-                for conn_id in ids {
+                for conn_id in ids.iter().filter(|id| **id != token ) {
                     if let Some(conn) = self.sessions.conns.get(*conn_id) {
                         // filter labels
                         if !labels.is_empty() {
@@ -985,7 +984,7 @@ impl<T> QueenInner<T> {
             }
 
         } else if let Some(ids) = self.sessions.chans.get(&chan) {
-            for conn_id in ids {
+            for conn_id in ids.iter().filter(|id| **id != token ) {
                 if let Some(conn) = self.sessions.conns.get(*conn_id) {
                     // filter labels
                     if !labels.is_empty() {
