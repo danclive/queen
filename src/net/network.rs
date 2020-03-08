@@ -365,8 +365,12 @@ impl NetConn {
                                                 return Err(io::Error::new(InvalidData, "message.get_str(ACCESS)"))
                                             };
 
-                                            let secret = if let Some(secret) = self.access_fn.as_ref().unwrap()(access.to_string()) {
-                                                secret
+                                            let secret = if let Some(access_fn) = &self.access_fn {
+                                                if let Some(secret) = access_fn(access.to_string()) {
+                                                    secret
+                                                } else {
+                                                    return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
+                                                }
                                             } else {
                                                 return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
                                             };

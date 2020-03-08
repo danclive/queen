@@ -64,7 +64,7 @@ impl Node {
                 if ret.is_err() {
                     log::error!("net thread exit: {:?}", ret);
                 } else {
-                    log::trace!("net thread exit");
+                    log::debug!("net thread exit");
                 }
             }).unwrap();
         }
