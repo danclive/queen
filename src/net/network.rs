@@ -90,7 +90,7 @@ impl NetWork {
     fn dispatch_queue(&mut self) -> io::Result<()> {
         if let Some(packet) = self.queue.pop() {
             match packet {
-                Packet::NewConn{ stream, net_stream, options } => {
+                Packet::NewConn { stream, net_stream, options } => {
                     let entry1 = self.streams.vacant_entry();
                     let entry2 = self.nets.vacant_entry();
 
@@ -125,7 +125,10 @@ impl NetWork {
                             ACCESS: options.access
                         };
 
-                        conn.push_data(&self.epoll, hand_message)?;
+                        let ret = conn.push_data(hand_message);
+                        if ret.is_err() {
+                            log::debug!("Packet::NewConn: {:?}", ret);
+                        }
 
                         let crypto = Crypto::new(&options.method, options.secret.as_bytes());
                         conn.crypto = Some(crypto);
@@ -135,7 +138,10 @@ impl NetWork {
                             CHAN: HANDSHAKE
                         };
 
-                        conn.push_data(&self.epoll, hand_message)?;
+                        let ret = conn.push_data(hand_message);
+                        if ret.is_err() {
+                            log::debug!("Packet::NewConn: {:?}", ret);
+                        }
                     }
 
                     // conn.is_server = false;
@@ -143,7 +149,7 @@ impl NetWork {
 
                     entry2.insert(conn);
                 }
-                Packet::NewServ{stream, net_stream, access_fn} => {
+                Packet::NewServ {stream, net_stream, access_fn} => {
                     let entry1 = self.streams.vacant_entry();
                     let entry2 = self.nets.vacant_entry();
 
@@ -162,7 +168,7 @@ impl NetWork {
                     self.epoll.add(
                         &net_stream,
                         Token(id2),
-                        Ready::readable() | Ready::hup(),
+                        Ready::readable() | Ready::writable() | Ready::hup(),
                         EpollOpt::edge()
                     )?;
 
@@ -200,7 +206,13 @@ impl NetWork {
             remove = stream.stream.is_close();
 
             if let Some(message) = stream.stream.recv() {
-                self.push_data(index, message)?;
+                if let Some(net_conn) = self.nets.get_mut(index) {
+                    let ret = net_conn.push_data(message);
+                    if ret.is_err() {
+                        log::debug!("Packet::NewConn: {:?}", ret);
+                        remove = true;
+                    }
+                }
             }
         }
 
@@ -211,20 +223,12 @@ impl NetWork {
         Ok(())
     }
 
-    fn push_data(&mut self, index: usize, message: Message) -> io::Result<()> {
-        if let Some(net_conn) = self.nets.get_mut(index) {
-            net_conn.push_data(&self.epoll, message)?;
-        }
-
-        Ok(())
-    }
-
     fn dispatch_net_stream(&mut self, index: usize, ready: Ready) -> io::Result<()> {
         let mut remove = ready.is_hup() || ready.is_error();
 
         if ready.is_readable() {
             if let Some(net_conn) = self.nets.get_mut(index) {
-                let ret = net_conn.read(&self.epoll, &self.streams[index]);
+                let ret = net_conn.read(&self.streams[index]);
                 if ret.is_err() {
                     log::debug!("net_conn.read: {:?}", ret);
                     remove = true;
@@ -238,15 +242,6 @@ impl NetWork {
                 if ret.is_err() {
                     log::debug!("net_conn.write: {:?}", ret);
                     remove = true;
-                }
-
-                if !remove {
-                    self.epoll.modify(
-                        &net_conn.stream,
-                        Token(net_conn.id),
-                        net_conn.interest,
-                        EpollOpt::edge()
-                    )?;
                 }
             }
         }
@@ -285,9 +280,8 @@ impl StreamConn {
 }
 
 struct NetConn {
-    id: usize,
+    #[allow(dead_code)] id: usize,
     stream: TcpStream,
-    interest: Ready,
     r_buffer: Vec<u8>,
     w_buffer: VecDeque<Vec<u8>>,
     handshake: bool,
@@ -301,7 +295,6 @@ impl NetConn {
         Self {
             id,
             stream,
-            interest: Ready::readable() | Ready::hup(),
             r_buffer: Vec::with_capacity(1024),
             w_buffer: VecDeque::new(),
             handshake: false,
@@ -311,7 +304,7 @@ impl NetConn {
         }
     }
 
-    fn read(&mut self, epoll: &Epoll, stream_conn: &StreamConn) -> io::Result<()> {
+    fn read(&mut self, stream_conn: &StreamConn) -> io::Result<()> {
         if stream_conn.stream.is_full() {
             return Ok(())
         }
@@ -379,7 +372,7 @@ impl NetConn {
 
                                             ErrorCode::OK.insert_message(&mut message);
 
-                                            self.push_data(epoll, message)?;
+                                            self.push_data(message)?;
 
                                             let crypto = Crypto::new(&method, secret.as_bytes());
                                             self.crypto = Some(crypto);
@@ -388,7 +381,7 @@ impl NetConn {
 
                                             ErrorCode::OK.insert_message(&mut message);
 
-                                            self.push_data(epoll, message)?;
+                                            self.push_data(message)?;
                                         }
                                     } else {
                                         if message.get_i32(OK) == Ok(0) {
@@ -442,19 +435,15 @@ impl NetConn {
         }
 
         if self.w_buffer.is_empty() {
-            self.interest.remove(Ready::writable());
-
             if self.w_buffer.capacity() > 64 {
                 self.w_buffer.shrink_to_fit();
             }
-        } else {
-            self.interest.insert(Ready::writable());
         }
 
         Ok(())
     }
 
-    fn push_data(&mut self, epoll: &Epoll, message: Message) -> io::Result<()> {
+    fn push_data(&mut self, message: Message) -> io::Result<()> {
         let mut data = message.to_vec().unwrap();
 
         if let Some(crypto) = &mut self.crypto {
@@ -463,17 +452,22 @@ impl NetConn {
             ));
         }
 
-        self.w_buffer.push_back(data);
-
-        if !self.interest.contains(Ready::writable()) {
-            self.interest.insert(Ready::writable());
-
-            epoll.modify(
-                &self.stream,
-                Token(self.id),
-                self.interest,
-                EpollOpt::edge()
-            )?;
+        match self.stream.write(&data) {
+            Ok(size) => {
+                if size == 0 {
+                    return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
+                } else if size < data.len() {
+                    // assert!(size > front.len());
+                    self.w_buffer.push_back(data[size..].to_vec());
+                }
+            }
+            Err(err) => {
+                if let WouldBlock = err.kind() {
+                    return Ok(())
+                } else {
+                    return Err(err)
+                }
+            }
         }
 
         Ok(())
