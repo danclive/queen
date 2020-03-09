@@ -126,7 +126,7 @@ fn client_secure() {
 
     let client = Client::new(options).unwrap();
 
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(Duration::from_secs(1));
 
     // stream recv
     let recv = stream1.recv().unwrap();
