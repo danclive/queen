@@ -6,6 +6,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering}
 };
+use std::cell::Cell;
 
 use queen_io::{
     epoll::{Epoll, Events, Token, Ready, EpollOpt},
@@ -200,7 +201,7 @@ impl<T> QueenInner<T> {
 
     fn dispatch_conn(&mut self, token: usize) -> io::Result<()> {
         if let Some(conn) = self.sessions.conns.get(token) {
-            if let Some(message) = conn.stream.recv() {
+            if let Some(message) = conn.recv() {
                 if message.is_empty() && conn.stream.is_close() {
                     self.remove_conn(token)?;
                 } else {
@@ -308,7 +309,7 @@ impl<T> QueenInner<T> {
         };
 
         if success {
-            conn.stream.send(message);
+            conn.send(message);
         }
     }
 
@@ -654,7 +655,9 @@ impl<T> QueenInner<T> {
                         SUPER: conn.supe,
                         CHANS: chans,
                         CLIENT_ID: client_id,
-                        ATTR: conn.stream.attr.clone()
+                        ATTR: conn.stream.attr.clone(),
+                        SEND_MESSAGES: conn.send_messages.get() as u64,
+                        RECV_MESSAGES: conn.recv_messages.get() as u64
                     });
                 }
 
@@ -682,7 +685,9 @@ impl<T> QueenInner<T> {
                                 SUPER: conn.supe,
                                 CHANS: chans,
                                 CLIENT_ID: client_id,
-                                ATTR: conn.stream.attr.clone()
+                                ATTR: conn.stream.attr.clone(),
+                                SEND_MESSAGES: conn.send_messages.get() as u64,
+                                RECV_MESSAGES: conn.recv_messages.get() as u64
                             };
 
                             message.insert(key, port);
@@ -1082,7 +1087,9 @@ pub struct Session {
     pub supe: bool,
     pub chans: HashMap<String, HashSet<String>>,
     pub stream: Stream,
-    pub id: Option<MessageId>
+    pub id: Option<MessageId>,
+    pub send_messages: Cell<usize>,
+    pub recv_messages: Cell<usize>
 }
 
 impl Session {
@@ -1093,7 +1100,23 @@ impl Session {
             supe: false,
             chans: HashMap::new(),
             stream,
-            id: None
+            id: None,
+            send_messages: Cell::new(0),
+            recv_messages: Cell::new(0)
         }
+    }
+
+    pub fn send(&self, message: Message) -> Option<Message> {
+        self.stream.send(message).map(|m| {
+            self.send_messages.set(self.send_messages.get() + 1);
+            m
+        })
+    }
+
+    pub fn recv(&self) -> Option<Message> {
+        self.stream.recv().map(|m| {
+            self.recv_messages.set(self.recv_messages.get() + 1);
+            m
+        })
     }
 }

@@ -40,6 +40,8 @@ pub const QUERY_PORT_NUM: &str = "$port_num";
 pub const QUERY_CHAN_NUM: &str = "$chan_num";
 pub const QUERY_PORTS:    &str = "$ports";
 pub const QUERY_PORT:     &str = "$port";
+pub const SEND_MESSAGES:  &str = "send_msgs";
+pub const RECV_MESSAGES:  &str = "recv_msgs";
 
 // crypto
 pub const AES_128_GCM:       &str = "AES_128_GCM";

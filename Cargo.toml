@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.7.0-alpha.3"
+version       = "0.7.0-alpha.4"
 license       = "MIT"
 authors       = ["danclive <dangcheng@hotmail.com>"]
 description   = "message queue"
@@ -19,7 +19,7 @@ edition       = "2018"
 autobins      = false
 
 [dependencies]
-nson = "0.5"
+nson = "0.6"
 serde = "1.0"
 serde_derive = "1.0"
 libc = "0.2"
