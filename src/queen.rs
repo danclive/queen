@@ -1,6 +1,6 @@
 use std::time::Duration;
 use std::collections::{HashMap, HashSet};
-use std::io::{self, ErrorKind::ConnectionRefused};
+use std::io::{self, ErrorKind::{ConnectionRefused, WouldBlock}};
 use std::thread;
 use std::sync::{
     Arc,
@@ -82,7 +82,7 @@ impl Queen {
         self.run.load(Ordering::Relaxed)
     }
 
-    pub fn connect(&self, attr: Message, timeout: Option<Duration>) -> io::Result<Stream> {
+    pub fn connect(&self, attr: Message, timeout: Option<Duration>) -> io::Result<Stream<Message>> {
         let (stream1, stream2) = Stream::pipe(64, attr)?;
 
         let (tx, rx) = oneshot::oneshot::<bool>();
@@ -122,7 +122,7 @@ struct QueenInner<T> {
 }
 
 enum Packet {
-    NewConn(Stream, oneshot::Sender<bool>)
+    NewConn(Stream<Message>, oneshot::Sender<bool>)
 }
 
 impl<T> QueenInner<T> {
@@ -201,12 +201,15 @@ impl<T> QueenInner<T> {
 
     fn dispatch_conn(&mut self, token: usize) -> io::Result<()> {
         if let Some(conn) = self.sessions.conns.get(token) {
-            if let Some(message) = conn.recv() {
-                if message.is_empty() && conn.stream.is_close() {
-                    self.remove_conn(token)?;
-                } else {
+            match conn.recv() {
+                Ok(message) => {
                     self.handle_message(token, message)?;
                 }
+                Err(err) => {
+                    if err.kind() != WouldBlock {
+                        self.remove_conn(token)?;
+                    }
+                } 
             }
         }
 
@@ -309,7 +312,7 @@ impl<T> QueenInner<T> {
         };
 
         if success {
-            conn.send(message);
+            let _ = conn.send(Some(message));
         }
     }
 
@@ -1086,14 +1089,14 @@ pub struct Session {
     pub auth: bool,
     pub supe: bool,
     pub chans: HashMap<String, HashSet<String>>,
-    pub stream: Stream,
+    pub stream: Stream<Message>,
     pub id: Option<MessageId>,
     pub send_messages: Cell<usize>,
     pub recv_messages: Cell<usize>
 }
 
 impl Session {
-    pub fn new(token: usize, stream: Stream) -> Session {
+    pub fn new(token: usize, stream: Stream<Message>) -> Session {
         Session {
             token,
             auth: false,
@@ -1106,14 +1109,14 @@ impl Session {
         }
     }
 
-    pub fn send(&self, message: Message) -> Option<Message> {
+    pub fn send(&self, message: Option<Message>) -> io::Result<()> {
         self.stream.send(message).map(|m| {
             self.send_messages.set(self.send_messages.get() + 1);
             m
         })
     }
 
-    pub fn recv(&self) -> Option<Message> {
+    pub fn recv(&self) -> io::Result<Message> {
         self.stream.recv().map(|m| {
             self.recv_messages.set(self.recv_messages.get() + 1);
             m

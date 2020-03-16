@@ -32,12 +32,12 @@ pub type AccessFn = Arc<Box<dyn Fn(String) -> Option<String> + Send + Sync>>;
 
 pub enum Packet {
     NewConn {
-        stream: Stream,
+        stream: Stream<Message>,
         net_stream: TcpStream,
         options: Option<CryptoOptions>
     },
     NewServ {
-        stream: Stream,
+        stream: Stream<Message>,
         net_stream: TcpStream,
         access_fn: Option<AccessFn>
     }
@@ -199,7 +199,7 @@ impl NetWork {
         if let Some(stream) = self.streams.get(index) {
             remove = stream.stream.is_close();
 
-            if let Some(message) = stream.stream.recv() {
+            if let Ok(message) = stream.stream.recv() {
                 if let Some(net_conn) = self.nets.get_mut(index) {
                     net_conn.push_data(&self.epoll, message)?;
                 }
@@ -257,11 +257,11 @@ impl NetWork {
 struct StreamConn {
     #[allow(dead_code)]
     id: usize,
-    stream: Stream
+    stream: Stream<Message>
 }
 
 impl StreamConn {
-    fn new(id: usize, stream: Stream) -> StreamConn{
+    fn new(id: usize, stream: Stream<Message>) -> StreamConn{
         StreamConn {
             id,
             stream
@@ -316,7 +316,7 @@ impl NetConn {
 
                             match Message::from_slice(&bytes) {
                                 Ok(message) => {
-                                    stream_conn.stream.send(message);
+                                    let _ = stream_conn.stream.send(Some(message));
                                 },
                                 Err(err) => {
                                     return Err(io::Error::new(InvalidData, format!("Message::from_slice: {}", err)))

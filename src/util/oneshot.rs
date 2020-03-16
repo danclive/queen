@@ -123,7 +123,7 @@ impl<T> Drop for Sender<T> {
         }
     }
 }
-/*
+
 #[cfg(test)]
 mod tests {
     use super::oneshot;
@@ -140,7 +140,7 @@ mod tests {
             tx.send(5);
         });
 
-        assert_eq!(rx.wait(), Some(5));
+        assert_eq!(rx.wait().unwrap(), 5);
 
         h.join().unwrap();
     }
@@ -155,7 +155,7 @@ mod tests {
 
         thread::sleep(Duration::from_millis(500));
 
-        assert_eq!(rx.wait(), Some(3));
+        assert_eq!(rx.wait().unwrap(), 3);
 
         h.join().unwrap();
     }
@@ -170,7 +170,7 @@ mod tests {
 
         thread::sleep(Duration::from_millis(500));
 
-        assert_eq!(rx.wait(), None);
+        assert!(rx.wait().is_err());
 
         h.join().unwrap();
     }
@@ -204,7 +204,7 @@ mod tests {
         let ret = rx.wait_timeout(Duration::from_millis(500));
 
         assert!(ret.is_ok());
-        assert!(ret.unwrap() == Some(123));
+        assert!(ret.unwrap() == 123);
 
         h.join().unwrap();
     }
@@ -220,4 +220,3 @@ mod tests {
         assert_eq!(tx.is_needed(), false);
     }
 }
-*/

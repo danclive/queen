@@ -31,9 +31,9 @@ fn client() {
     // start stream
     let stream1 = queen.connect(msg!{}, None).unwrap();
 
-    stream1.send(msg!{
+    let _ = stream1.send(Some(msg!{
         CHAN: AUTH
-    });
+    }));
 
     // start client
     let options = ClientOptions {
@@ -65,10 +65,10 @@ fn client() {
     }
 
     // stream attach
-    stream1.send(msg!{
+    let _ = stream1.send(Some(msg!{
         CHAN: ATTACH,
         VALUE: "hello"
-    });
+    }));
 
     thread::sleep(Duration::from_millis(500));
 
@@ -108,9 +108,9 @@ fn client_secure() {
     // start stream
     let stream1 = queen.connect(msg!{}, None).unwrap();
 
-    stream1.send(msg!{
+    let _ = stream1.send(Some(msg!{
         CHAN: AUTH
-    });
+    }));
 
     // start client
     let options = ClientOptions {
@@ -126,7 +126,7 @@ fn client_secure() {
 
     let client = Client::new(options).unwrap();
 
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_secs(2));
 
     // stream recv
     let recv = stream1.recv().unwrap();
@@ -144,10 +144,10 @@ fn client_secure() {
     }
 
     // stream attach
-    stream1.send(msg!{
+    let _ = stream1.send(Some(msg!{
         CHAN: ATTACH,
         VALUE: "hello"
-    });
+    }));
 
     thread::sleep(Duration::from_millis(500));
 
