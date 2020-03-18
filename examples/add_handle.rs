@@ -26,6 +26,5 @@ fn main() {
 
     println!("{:?}", ret);
 
-
-    client.wait();
+    thread::sleep(Duration::from_secs(100));
 }

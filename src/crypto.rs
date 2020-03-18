@@ -1,5 +1,6 @@
 use std::cmp;
 use std::str::FromStr;
+use std::io::{self, ErrorKind::InvalidData};
 
 use ring::aead::{Algorithm, LessSafeKey, Nonce, UnboundKey, Aad};
 use ring::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305};
@@ -7,6 +8,8 @@ use ring::digest;
 use ring::error;
 
 use rand::{self, thread_rng, Rng};
+
+use nson::Message;
 
 use crate::dict;
 
@@ -90,6 +93,18 @@ impl Crypto {
         Ok(())
     }
 
+    pub fn encrypt_message(crypto: &Option<Crypto>, message: &Message) -> io::Result<Vec<u8>> {
+        let mut data = message.to_vec().expect("InvalidData");
+
+        if let Some(crypto) = &crypto {
+            let _ = crypto.encrypt(&mut data).map_err(|err|
+                io::Error::new(InvalidData, format!("{}", err)
+            ));
+        }
+
+        Ok(data)
+    }
+
     pub fn decrypt(&self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
         let nonce = Nonce::try_assume_unique_for_key(&in_out[(in_out.len() - Self::NONCE_LEN)..])?;
 
@@ -103,6 +118,18 @@ impl Crypto {
         in_out[..4].clone_from_slice(&len);
 
         Ok(())
+    }
+
+    pub fn decrypt_message(crypto: &Option<Crypto>, mut data: Vec<u8>) -> io::Result<Message> {
+        if let Some(crypto) = &crypto {
+            let _ = crypto.decrypt(&mut data).map_err(|err|
+                io::Error::new(InvalidData, format!("{}", err)
+            ));
+        }
+
+        let recv = Message::from_slice(&data);
+
+        recv.map_err(|err| io::Error::new(InvalidData, format!("{}", err)))
     }
 
     pub fn init_nonce() -> [u8; Self::NONCE_LEN] {

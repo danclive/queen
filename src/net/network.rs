@@ -47,7 +47,7 @@ pub struct NetWork {
     epoll: Epoll,
     events: Events,
     pub queue: Queue<Packet>,
-    streams: Slab<StreamConn>,
+    streams: Slab<Stream<Message>>,
     nets: Slab<NetConn>,
     pub run: Arc<AtomicBool>
 }
@@ -113,7 +113,7 @@ impl NetWork {
                         EpollOpt::edge()
                     )?;
                 
-                    entry1.insert(StreamConn::new(id, stream));
+                    entry1.insert(stream);
 
                     let mut conn = NetConn::new(id2, net_stream);
 
@@ -166,7 +166,7 @@ impl NetWork {
                         EpollOpt::edge()
                     )?;
 
-                    entry1.insert(StreamConn::new(id, stream));
+                    entry1.insert(stream);
 
                     let mut conn = NetConn::new(id2, net_stream);
 
@@ -197,9 +197,9 @@ impl NetWork {
         let mut remove = false;
 
         if let Some(stream) = self.streams.get(index) {
-            remove = stream.stream.is_close();
+            remove = stream.is_close();
 
-            if let Ok(message) = stream.stream.recv() {
+            if let Ok(message) = stream.recv() {
                 if let Some(net_conn) = self.nets.get_mut(index) {
                     net_conn.push_data(&self.epoll, message)?;
                 }
@@ -245,27 +245,12 @@ impl NetWork {
 
     fn remove_conn(&mut self, index: usize) -> io::Result<()> {
         let stream = self.streams.remove(index);
-        self.epoll.delete(&stream.stream)?;
+        self.epoll.delete(&stream)?;
 
         let net = self.nets.remove(index);
         self.epoll.delete(&net.stream)?;
 
         Ok(())
-    }
-}
-
-struct StreamConn {
-    #[allow(dead_code)]
-    id: usize,
-    stream: Stream<Message>
-}
-
-impl StreamConn {
-    fn new(id: usize, stream: Stream<Message>) -> StreamConn{
-        StreamConn {
-            id,
-            stream
-        }
     }
 }
 
@@ -296,8 +281,8 @@ impl NetConn {
         }
     }
 
-    fn read(&mut self, epoll: &Epoll, stream_conn: &StreamConn) -> io::Result<()> {
-        if stream_conn.stream.is_full() {
+    fn read(&mut self, epoll: &Epoll, stream: &Stream<Message>) -> io::Result<()> {
+        if stream.is_full() {
             return Ok(())
         }
 
@@ -306,22 +291,10 @@ impl NetConn {
 
             match ret {
                 Ok(ret) => {
-                    if let Some(mut bytes) = ret {
+                    if let Some(bytes) = ret {
                         if self.handshake {
-                            if let Some(crypto) = &mut self.crypto {
-                                let _ = crypto.decrypt(&mut bytes).map_err(|err|
-                                    io::Error::new(InvalidData, format!("{}", err)
-                                ));
-                            }
-
-                            match Message::from_slice(&bytes) {
-                                Ok(message) => {
-                                    let _ = stream_conn.stream.send(Some(message));
-                                },
-                                Err(err) => {
-                                    return Err(io::Error::new(InvalidData, format!("Message::from_slice: {}", err)))
-                                }
-                            }
+                            let message = Crypto::decrypt_message(&self.crypto, bytes)?;
+                            let _ = stream.send(Some(message));
                         } else {
                             match Message::from_slice(&bytes) {
                                 Ok(mut message) => {
@@ -438,13 +411,7 @@ impl NetConn {
     }
 
     fn push_data(&mut self, epoll: &Epoll, message: Message) -> io::Result<()> {
-        let mut data = message.to_vec().unwrap();
-
-        if let Some(crypto) = &mut self.crypto {
-            let _ = crypto.encrypt(&mut data).map_err(|err|
-                io::Error::new(InvalidData, format!("{}", err)
-            ));
-        }
+        let data = Crypto::encrypt_message(&self.crypto, &message)?;
 
         self.w_buffer.push_back(data);
 
