@@ -23,7 +23,7 @@ impl Default for ClientOptions {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SendOptions {
     pub label: Option<Vec<String>>,
     pub ack: bool,
@@ -42,6 +42,7 @@ impl Default for SendOptions {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct RecvOptions {
     pub label: Option<Vec<String>>,
     pub timeout: Duration
@@ -56,6 +57,7 @@ impl Default for RecvOptions {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CallOptions {
     pub label: Option<Vec<String>>,
     pub to: Option<MessageId>,
@@ -72,6 +74,7 @@ impl Default for CallOptions {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct AddOptions {
     pub label: Option<Vec<String>>,
     pub timeout: Duration
