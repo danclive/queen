@@ -12,7 +12,7 @@ use std::io::{
 
 use queen_io::{
     epoll::{Epoll, Event, Events, Token, Ready, EpollOpt},
-    queue::spsc::Queue,
+    queue::mpsc::Queue,
     tcp::TcpStream
 };
 

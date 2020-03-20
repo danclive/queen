@@ -10,7 +10,7 @@ use std::sync::{
 
 use queen_io::{
     epoll::{Epoll, Events, Token, Ready, EpollOpt},
-    queue::spsc::Queue,
+    queue::mpsc::Queue,
     tcp::TcpListener
 };
 
@@ -51,13 +51,11 @@ impl Node {
         let mut queues = Vec::new();
 
         for _ in 0..works {
-            let queue: Queue<Packet> = Queue::with_cache(64)?;
-        
-            let queue2 = queue.clone();
+            let queue: Queue<Packet> = Queue::new()?;
 
-            queues.push(queue);
+            queues.push(queue.clone());
 
-            let mut net_work = NetWork::new(queue2, run.clone())?;
+            let mut net_work = NetWork::new(queue, run.clone())?;
 
             thread::Builder::new().name("net".to_string()).spawn(move || {
                 let ret = net_work.run();
@@ -124,7 +122,7 @@ impl Node {
                         match self.queen.connect(attr, None) {
                             Ok(stream) => {
                                 if let Some(queue) = self.queues.choose(&mut self.rand) {
-                                    queue.push(Packet::NewServ{
+                                    queue.push(Packet::NewServ {
                                         stream,
                                         net_stream: socket,
                                         access_fn: self.access_fn.clone()

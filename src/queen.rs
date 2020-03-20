@@ -10,7 +10,7 @@ use std::cell::Cell;
 
 use queen_io::{
     epoll::{Epoll, Events, Token, Ready, EpollOpt},
-    queue::mpsc
+    queue::mpsc::Queue
 };
 
 use nson::{
@@ -33,12 +33,9 @@ mod callback;
 
 #[derive(Clone)]
 pub struct Queen {
-    queue: mpsc::Queue<Packet>,
+    queue: Queue<Packet>,
     run: Arc<AtomicBool>
 }
-
-#[derive(Debug)]
-struct A;
 
 impl Queen {
     pub fn new<T: Send + 'static>(
@@ -46,7 +43,7 @@ impl Queen {
         data: T,
         callback: Option<Callback<T>>
     ) -> io::Result<Queen> {
-        let queue = mpsc::Queue::new()?;
+        let queue = Queue::new()?;
         let run = Arc::new(AtomicBool::new(true));
 
         let queen = Queen {
@@ -113,7 +110,7 @@ struct QueenInner<T> {
     id: MessageId,
     epoll: Epoll,
     events: Events,
-    queue: mpsc::Queue<Packet>,
+    queue: Queue<Packet>,
     sessions: Sessions,
     rand: SmallRng,
     data: T,
@@ -130,7 +127,7 @@ impl<T> QueenInner<T> {
 
     fn new(
         id: MessageId,
-        queue: mpsc::Queue<Packet>,
+        queue: Queue<Packet>,
         data: T,
         callback: Callback<T>,
         run: Arc<AtomicBool>
