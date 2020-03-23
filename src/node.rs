@@ -57,7 +57,7 @@ impl Node {
 
             let mut net_work = NetWork::new(queue, run.clone())?;
 
-            thread::Builder::new().name("net".to_string()).spawn(move || {
+            thread::Builder::new().name("node_net".to_string()).spawn(move || {
                 let ret = net_work.run();
                 if ret.is_err() {
                     log::error!("net thread exit: {:?}", ret);

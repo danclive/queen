@@ -97,9 +97,9 @@ impl Crypto {
         let mut data = message.to_vec().expect("InvalidData");
 
         if let Some(crypto) = &crypto {
-            let _ = crypto.encrypt(&mut data).map_err(|err|
+            crypto.encrypt(&mut data).map_err(|err|
                 io::Error::new(InvalidData, format!("{}", err)
-            ));
+            ))?;
         }
 
         Ok(data)
@@ -122,9 +122,9 @@ impl Crypto {
 
     pub fn decrypt_message(crypto: &Option<Crypto>, mut data: Vec<u8>) -> io::Result<Message> {
         if let Some(crypto) = &crypto {
-            let _ = crypto.decrypt(&mut data).map_err(|err|
+            crypto.decrypt(&mut data).map_err(|err|
                 io::Error::new(InvalidData, format!("{}", err)
-            ));
+            ))?;
         }
 
         let recv = Message::from_slice(&data);

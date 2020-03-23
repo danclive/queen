@@ -1,11 +1,40 @@
 use std::time::Duration;
 use std::thread;
+use std::io::ErrorKind::ConnectionRefused;
 
 use nson::{msg, MessageId};
 
-use queen::Queen;
+use queen::{Queen, Callback};
 use queen::dict::*;
 use queen::error::ErrorCode;
+
+#[test]
+fn conn() {
+    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+
+    for _ in 0..10000 {
+        let _stream = queen.connect(msg!{}, None).unwrap();
+    }
+
+    // init queen callback
+    let mut callback = Callback::<()>::new();
+
+    callback.accept(move |_, _| {
+        return false
+    });
+
+    let queen = Queen::new(MessageId::new(), (), Some(callback)).unwrap();
+
+    let ret = queen.connect(msg!{}, None);
+    assert!(ret.is_err());
+
+    match ret {
+        Ok(_) => unreachable!(),
+        Err(err) => {
+            assert!(err.kind() == ConnectionRefused);
+        }
+    }
+}
 
 #[test]
 fn connect() {
@@ -14,11 +43,11 @@ fn connect() {
     let stream1 = queen.connect(msg!{}, None).unwrap();
     let stream2 = queen.connect(msg!{}, None).unwrap();
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: PING
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: PING
     }));
 
@@ -27,11 +56,11 @@ fn connect() {
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         "aaa": "bbb"
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: 123
     }));
 
@@ -52,7 +81,7 @@ fn auth() {
 
     let stream1 = queen.connect(msg!{}, None).unwrap();
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH
     }));
 
@@ -62,7 +91,7 @@ fn auth() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
@@ -81,11 +110,11 @@ fn attach_detach() {
     let stream2 = queen.connect(msg!{}, None).unwrap();
 
     // auth
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
@@ -95,7 +124,7 @@ fn attach_detach() {
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // try send
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
@@ -108,7 +137,7 @@ fn attach_detach() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // attach
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
     }));
@@ -116,7 +145,7 @@ fn attach_detach() {
     thread::sleep(Duration::from_secs(1));
 
     // send
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
@@ -139,13 +168,13 @@ fn attach_detach() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: DETACH,
         VALUE: "aaa"
     }));
 
     // send
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
@@ -171,15 +200,15 @@ fn label() {
     let stream3 = queen.connect(msg!{}, None).unwrap();
 
     // auth
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
@@ -190,19 +219,19 @@ fn label() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attach
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: "label1"
     }));
 
     // send
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
@@ -226,7 +255,7 @@ fn label() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
@@ -246,7 +275,7 @@ fn label() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: "label1"
@@ -257,7 +286,7 @@ fn label() {
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
@@ -271,7 +300,7 @@ fn label() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // send
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
@@ -295,18 +324,18 @@ fn label() {
     let stream4 = queen.connect(msg!{}, None).unwrap();
 
     // auth
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
     // attach
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: "label1"
     }));
 
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: "label2"
@@ -319,7 +348,7 @@ fn label() {
     assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
@@ -337,7 +366,7 @@ fn label() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: "label1"
@@ -348,7 +377,7 @@ fn label() {
     assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label2",
@@ -375,15 +404,15 @@ fn labels() {
     let stream3 = queen.connect(msg!{}, None).unwrap();
 
     // auth
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
@@ -394,20 +423,20 @@ fn labels() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attach
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: ["label1", "label2", "label3", "label1"]
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: ["label2", "label3", "label4"]
     }));
 
     // send
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
@@ -431,7 +460,7 @@ fn labels() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label5",
@@ -445,7 +474,7 @@ fn labels() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label5", "label6"],
@@ -459,7 +488,7 @@ fn labels() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
@@ -479,7 +508,7 @@ fn labels() {
     assert!(stream2.recv().is_err());
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label1"],
@@ -499,7 +528,7 @@ fn labels() {
     assert!(stream2.recv().is_err());
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label1", "label5"],
@@ -519,7 +548,7 @@ fn labels() {
     assert!(stream2.recv().is_err());
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label1", "label4"],
@@ -542,7 +571,7 @@ fn labels() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: "label1"
@@ -553,7 +582,7 @@ fn labels() {
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label1", "label4"],
@@ -573,7 +602,7 @@ fn labels() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: ["label2", "label3"]
@@ -584,7 +613,7 @@ fn labels() {
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label2",
@@ -604,7 +633,7 @@ fn labels() {
     assert!(stream2.recv().is_err());
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label2", "label3"],
@@ -626,18 +655,18 @@ fn labels() {
     let stream4 = queen.connect(msg!{}, None).unwrap();
 
     // auth
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
     // attach
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: ["label1", "label2"]
     }));
 
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: ["label3", "label4"]
@@ -650,7 +679,7 @@ fn labels() {
     assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
@@ -668,7 +697,7 @@ fn labels() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: ["label2", "label3"]
@@ -679,7 +708,7 @@ fn labels() {
     assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
@@ -707,19 +736,19 @@ fn share() {
     let stream4 = queen.connect(msg!{}, None).unwrap();
 
     // auth
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
@@ -731,12 +760,12 @@ fn share() {
     assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attatch
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
     }));
@@ -747,7 +776,7 @@ fn share() {
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
@@ -768,7 +797,7 @@ fn share() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // send with share
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         SHARE: true,
@@ -794,19 +823,19 @@ fn share() {
     // with label
 
     // attatch
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "bbb",
         LABEL: "label1"
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "bbb",
         LABEL: "label1"
     }));
 
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "bbb"
     }));
@@ -818,7 +847,7 @@ fn share() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with share
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: "bbb",
         "hello": "world",
         LABEL: "label1",
@@ -842,7 +871,7 @@ fn share() {
     assert!(stream3.recv().is_err());
 
     // send with share
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: "bbb",
         "hello": "world",
         LABEL: "label1",
@@ -878,18 +907,18 @@ fn client_id() {
     let stream3 = queen.connect(msg!{}, None).unwrap();
 
     // auth
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
     }));
 
     // duplicate
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
     }));
@@ -903,7 +932,7 @@ fn client_id() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::DuplicatePortId));
 
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
     }));
@@ -915,7 +944,7 @@ fn client_id() {
     // type
     let stream4 = queen.connect(msg!{}, None).unwrap();
 
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: AUTH,
         CLIENT_ID: 123
     }));
@@ -927,7 +956,7 @@ fn client_id() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::InvalidPortIdFieldType));
 
     // port to port
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
@@ -940,7 +969,7 @@ fn client_id() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetPortIdNotExist));
 
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
@@ -959,7 +988,7 @@ fn client_id() {
     assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
     // port to ports
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
@@ -972,7 +1001,7 @@ fn client_id() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetPortIdNotExist));
 
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
@@ -999,7 +1028,7 @@ fn client_id() {
     // generate message id
     let stream4 = queen.connect(msg!{}, None).unwrap();
 
-    let _ = stream4.send(Some(msg!{
+    let _ = stream4.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
@@ -1016,7 +1045,7 @@ fn port_event() {
 
     let stream1 = queen.connect(msg!{}, None).unwrap();
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH,
         SUPER: 123
     }));
@@ -1027,7 +1056,7 @@ fn port_event() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::InvalidSuperFieldType));
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH,
         SUPER: true
     }));
@@ -1037,22 +1066,22 @@ fn port_event() {
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // supe attach
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_READY
     }));
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_BREAK
     }));
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_ATTACH
     }));
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_DETACH
     }));
@@ -1067,7 +1096,7 @@ fn port_event() {
     // auth
     let stream2 = queen.connect(msg!{}, None).unwrap();
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH,
         SUPER: true
     }));
@@ -1083,7 +1112,7 @@ fn port_event() {
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
     // attach
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
     }));
@@ -1098,7 +1127,7 @@ fn port_event() {
     assert!(recv.get_str(VALUE).unwrap() == "aaa");
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: "label1"
@@ -1116,7 +1145,7 @@ fn port_event() {
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
     // detach
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: "label1"
@@ -1133,7 +1162,7 @@ fn port_event() {
     assert!(recv.get_str(LABEL).unwrap() == "label1");
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: DETACH,
         VALUE: "aaa"
     }));
@@ -1160,7 +1189,7 @@ fn port_event() {
     // auth
     let stream2 = queen.connect(msg!{}, None).unwrap();
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
     }));
@@ -1169,7 +1198,7 @@ fn port_event() {
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: CLIENT_KILL,
         CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
     }));
@@ -1204,7 +1233,7 @@ fn query() {
     let stream1 = queen.connect(msg!{}, None).unwrap();
 
     // auth
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "port_num": QUERY_PORT_NUM
     }));
@@ -1215,7 +1244,7 @@ fn query() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
     }));
@@ -1224,7 +1253,7 @@ fn query() {
 
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "port_num": QUERY_PORT_NUM
     }));
@@ -1235,7 +1264,7 @@ fn query() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
@@ -1243,7 +1272,7 @@ fn query() {
 
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "port_num": QUERY_PORT_NUM
     }));
@@ -1255,7 +1284,7 @@ fn query() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // port num
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH,
         SUPER: true
     }));
@@ -1264,7 +1293,7 @@ fn query() {
 
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "port_num": QUERY_PORT_NUM
     }));
@@ -1277,7 +1306,7 @@ fn query() {
 
     let stream2 = queen.connect(msg!{}, None).unwrap();
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "port_num": QUERY_PORT_NUM
     }));
@@ -1288,7 +1317,7 @@ fn query() {
 
     assert!(recv.get_u32("port_num").unwrap() == 1);
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
@@ -1296,7 +1325,7 @@ fn query() {
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "port_num": QUERY_PORT_NUM
     }));
@@ -1308,7 +1337,7 @@ fn query() {
     assert!(recv.get_u32("port_num").unwrap() == 2);
 
     // chan num
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "chan_num": QUERY_CHAN_NUM
     }));
@@ -1319,7 +1348,7 @@ fn query() {
 
     assert!(recv.get_u32("chan_num").unwrap() == 0);
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
     }));
@@ -1328,7 +1357,7 @@ fn query() {
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "chan_num": QUERY_CHAN_NUM
     }));
@@ -1339,7 +1368,7 @@ fn query() {
 
     assert!(recv.get_u32("chan_num").unwrap() == 1);
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: DETACH,
         VALUE: "aaa"
     }));
@@ -1348,7 +1377,7 @@ fn query() {
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "chan_num": QUERY_CHAN_NUM
     }));
@@ -1360,7 +1389,7 @@ fn query() {
     assert!(recv.get_u32("chan_num").unwrap() == 0);
 
     // ports
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "ports": QUERY_PORTS
     }));
@@ -1372,7 +1401,7 @@ fn query() {
     assert!(recv.get_array("ports").unwrap().len() == 2);
 
     // port
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "port": QUERY_PORT,
         CLIENT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
@@ -1384,7 +1413,7 @@ fn query() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NotFound));
 
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
         "port": QUERY_PORT,
         CLIENT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
@@ -1399,6 +1428,70 @@ fn query() {
 }
 
 #[test]
+fn mine() {
+    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+
+    let stream1 = queen.connect(msg!{}, None).unwrap();
+
+    // mine
+    let _ = stream1.send(&mut Some(msg!{
+        CHAN: MINE,
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+
+    let value = recv.get_message(VALUE).unwrap();
+
+    assert!(value.get_bool(AUTH).unwrap() == false);
+    assert!(value.get_bool(SUPER).unwrap() == false);
+    assert!(value.get_message(CHANS).unwrap().is_empty());
+    assert!(value.is_null(CLIENT_ID) == true);
+    assert!(value.get_u64(SEND_MESSAGES).unwrap() == 0);
+    assert!(value.get_u64(RECV_MESSAGES).unwrap() == 1);
+
+    // auth
+    let _ = stream1.send(&mut Some(msg!{
+        CHAN: AUTH,
+        SUPER: true
+    }));
+
+    // attach
+    let _ = stream1.send(&mut Some(msg!{
+        CHAN: ATTACH,
+        VALUE: "hello",
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
+    assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // mine
+    let _ = stream1.send(&mut Some(msg!{
+        CHAN: MINE,
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+
+    let value = recv.get_message(VALUE).unwrap();
+
+    assert!(value.get_bool(AUTH).unwrap() == true);
+    assert!(value.get_bool(SUPER).unwrap() == true);
+    assert!(value.get_message(CHANS).unwrap().get_array("hello").is_ok());
+    assert!(value.get_message_id(CLIENT_ID).is_ok());
+    assert!(value.get_u64(SEND_MESSAGES).unwrap() == 3);
+    assert!(value.get_u64(RECV_MESSAGES).unwrap() == 4);
+}
+
+#[test]
 fn port_event_send_recv() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
@@ -1407,15 +1500,15 @@ fn port_event_send_recv() {
     let stream3 = queen.connect(msg!{}, None).unwrap();
 
     // auth
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: AUTH,
         SUPER: true
     }));
@@ -1427,12 +1520,12 @@ fn port_event_send_recv() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attach port event
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_SEND,
     }));
 
-    let _ = stream3.send(Some(msg!{
+    let _ = stream3.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_RECV,
     }));
@@ -1443,7 +1536,7 @@ fn port_event_send_recv() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // try send
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
@@ -1457,13 +1550,13 @@ fn port_event_send_recv() {
     assert!(stream3.recv().is_err());
 
     // attach
-    let _ = stream2.send(Some(msg!{
+    let _ = stream2.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
     }));
 
     // send
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
@@ -1499,7 +1592,7 @@ fn self_send_recv() {
     let stream1 = queen.connect(msg!{}, None).unwrap();
 
     // auth
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH
     }));
 
@@ -1508,13 +1601,13 @@ fn self_send_recv() {
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attach
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
     }));
 
     // send
-    let _ = stream1.send(Some(msg!{
+    let _ = stream1.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
@@ -1527,6 +1620,43 @@ fn self_send_recv() {
 
     let recv = stream1.recv().unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
+
+    assert!(stream1.recv().is_err());
+
+    // stream2
+    let stream2 = queen.connect(msg!{}, None).unwrap();
+
+    // auth
+    let _ = stream2.send(&mut Some(msg!{
+        CHAN: AUTH
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // attach
+    let _ = stream2.send(&mut Some(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa"
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
+
+    // send
+    let _ = stream1.send(&mut Some(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        ACK: "123"
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_str(ACK).unwrap() == "123");
 
     assert!(stream1.recv().is_err());
 }

@@ -36,7 +36,7 @@ impl<T> Inner<T> {
 
         *lock = Some(t);
 
-        self.cond.notify_one();
+        self.cond.notify_all();
     }
 
     fn wait(&self) -> T {

@@ -282,7 +282,7 @@ impl NetConn {
     }
 
     fn read(&mut self, epoll: &Epoll, stream: &Stream<Message>) -> io::Result<()> {
-        if stream.is_full() {
+        if stream.tx.is_full() {
             return Ok(())
         }
 
@@ -294,7 +294,7 @@ impl NetConn {
                     if let Some(bytes) = ret {
                         if self.handshake {
                             let message = Crypto::decrypt_message(&self.crypto, bytes)?;
-                            let _ = stream.send(Some(message));
+                            let _ = stream.send(&mut Some(message));
                         } else {
                             match Message::from_slice(&bytes) {
                                 Ok(mut message) => {

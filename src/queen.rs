@@ -23,7 +23,6 @@ use slab::Slab;
 use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
 use crate::stream::Stream;
-use crate::util::oneshot;
 use crate::dict::*;
 use crate::error::ErrorCode;
 
@@ -82,15 +81,14 @@ impl Queen {
     pub fn connect(&self, attr: Message, timeout: Option<Duration>) -> io::Result<Stream<Message>> {
         let (stream1, stream2) = Stream::pipe(64, attr)?;
 
-        let (tx, rx) = oneshot::oneshot::<bool>();
-
-        let packet = Packet::NewConn(stream1, tx);
+        let packet = Packet::NewConn(stream1);
 
         self.queue.push(packet);
 
-        let ret = rx.wait_timeout(timeout.unwrap_or(Duration::from_secs(60)))?;
+        let ret = stream2.wait(Some(timeout.unwrap_or(Duration::from_secs(60))));
+        log::debug!("Queen::connect: {:?}", ret);
 
-        if !ret {
+        if ret.is_err() {
             return Err(io::Error::new(ConnectionRefused, "Queen::connect"))
         }
 
@@ -119,7 +117,7 @@ struct QueenInner<T> {
 }
 
 enum Packet {
-    NewConn(Stream<Message>, oneshot::Sender<bool>)
+    NewConn(Stream<Message>)
 }
 
 impl<T> QueenInner<T> {
@@ -168,7 +166,7 @@ impl<T> QueenInner<T> {
     fn dispatch_queue(&mut self) -> io::Result<()> {
         if let Some(packet) = self.queue.pop() {
             match packet {
-                Packet::NewConn(stream, sender) => {
+                Packet::NewConn(stream) => {
                     let entry = self.sessions.conns.vacant_entry();
 
                     let session = Session::new(entry.key(), stream);
@@ -179,15 +177,11 @@ impl<T> QueenInner<T> {
                        true
                     };
 
-                    if success {
+                    if success && matches!(session.stream.send(&mut Some(msg!{OK: 0i32})), Ok(_)) {
                         self.epoll.add(&session.stream, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
-                        
                         entry.insert(session);
-
-                        sender.send(true);
                     } else {
-                        // stream.close();
-                        sender.send(false);
+                        session.stream.close();
                     }
                 }
             }
@@ -286,6 +280,7 @@ impl<T> QueenInner<T> {
                 DETACH => self.detach(token, message),
                 PING => self.ping(token, message),
                 QUERY => self.query(token, message),
+                MINE => self.mine(token, message),
                 CUSTOM => self.custom(token, message),
                 CLIENT_KILL => self.kill(token, message)?,
                 _ => {
@@ -309,7 +304,7 @@ impl<T> QueenInner<T> {
         };
 
         if success {
-            let _ = conn.send(Some(message));
+            let _ = conn.send(&mut Some(message));
         }
     }
 
@@ -655,7 +650,7 @@ impl<T> QueenInner<T> {
                         SUPER: conn.supe,
                         CHANS: chans,
                         CLIENT_ID: client_id,
-                        ATTR: conn.stream.attr.clone(),
+                        ATTR: conn.stream.attr().clone(),
                         SEND_MESSAGES: conn.send_messages.get() as u64,
                         RECV_MESSAGES: conn.recv_messages.get() as u64
                     });
@@ -685,7 +680,7 @@ impl<T> QueenInner<T> {
                                 SUPER: conn.supe,
                                 CHANS: chans,
                                 CLIENT_ID: client_id,
-                                ATTR: conn.stream.attr.clone(),
+                                ATTR: conn.stream.attr().clone(),
                                 SEND_MESSAGES: conn.send_messages.get() as u64,
                                 RECV_MESSAGES: conn.recv_messages.get() as u64
                             };
@@ -716,6 +711,42 @@ impl<T> QueenInner<T> {
 
         self.send_message(&self.sessions.conns[token], message);
     }
+
+    fn mine(&self, token: usize, mut message: Message) {
+        if let Some(conn) = self.sessions.conns.get(token) {
+            let mut chans = Message::new();
+
+            for (chan, labels) in &conn.chans {
+                let labels: Vec<&String> = labels.iter().collect();
+
+                chans.insert(chan, labels);
+            }
+
+            let client_id: Value = if let Some(id) = &conn.id {
+                id.clone().into()
+            } else {
+                Value::Null
+            };
+
+            let port = msg!{
+                AUTH: conn.auth,
+                SUPER: conn.supe,
+                CHANS: chans,
+                CLIENT_ID: client_id,
+                ATTR: conn.stream.attr().clone(),
+                SEND_MESSAGES: conn.send_messages.get() as u64,
+                RECV_MESSAGES: conn.recv_messages.get() as u64
+            };
+
+            message.insert(VALUE, port);
+        } else {
+            unreachable!()
+        }
+
+        ErrorCode::OK.insert_message(&mut message);
+
+        self.send_message(&self.sessions.conns[token], message);
+    } 
 
     fn custom(&self, token: usize, mut message: Message) {
         {
@@ -1106,7 +1137,7 @@ impl Session {
         }
     }
 
-    pub fn send(&self, message: Option<Message>) -> io::Result<()> {
+    pub fn send(&self, message: &mut Option<Message>) -> io::Result<()> {
         self.stream.send(message).map(|m| {
             self.send_messages.set(self.send_messages.get() + 1);
             m

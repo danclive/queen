@@ -30,7 +30,7 @@ impl Port {
 
         let mut net_work = NetWork::new(port.queue.clone(), port.run.clone())?;
 
-        thread::Builder::new().name("net".to_string()).spawn(move || {
+        thread::Builder::new().name("port_net".to_string()).spawn(move || {
             let ret = net_work.run();
             if ret.is_err() {
                 log::error!("net thread exit: {:?}", ret);

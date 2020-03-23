@@ -1,11 +1,15 @@
 // node
 pub const CHAN:      &str = "_chan";
+
 pub const CHANS:     &str = "_chas";
 pub const AUTH:      &str = "_auth";
 pub const ATTACH:    &str = "_atta";
 pub const DETACH:    &str = "_deta";
 pub const PING:      &str = "_ping";
 pub const QUERY:     &str = "_quer";
+pub const MINE:      &str = "_mine";
+pub const CUSTOM:    &str = "_cust";
+
 pub const NODE_ID:   &str = "_noid";
 pub const CLIENT_ID: &str = "_clid";
 pub const VALUE:     &str = "_valu";
@@ -16,11 +20,10 @@ pub const SHARE:     &str = "_shar";
 pub const ACK:       &str = "_ack";
 pub const SUPER:     &str = "_supe";
 pub const ATTR:      &str = "_attr";
-pub const CUSTOM:    &str = "_cust";
+pub const ADDR:      &str = "_addr";
 
 // message
 pub const ID:        &str = "_id";
-pub const ADDR:      &str = "_addr";
 
 // error
 pub const OK:    &str = "ok";
@@ -52,10 +55,3 @@ pub const CHACHA20_POLY1305: &str = "CHACHA20_POLY1305";
 pub const HANDSHAKE: &str = "_hand";
 pub const METHOD:    &str = "_meth";
 pub const ACCESS:    &str = "_acce";
-
-// client
-pub const ATTACH_ID:    &str = "_atid";
-pub const REQUEST_ID:   &str = "_reid";
-pub const RECV:         &str = "RECV";
-pub const CALL:         &str = "CALL";
-pub const UNKNOWN:      &str = "_unknown";
