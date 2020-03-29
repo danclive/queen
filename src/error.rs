@@ -1,5 +1,5 @@
-use std::{io, result};
-use std::error;
+use std::io;
+use std::{error, result};
 use std::fmt;
 
 use nson::Message;

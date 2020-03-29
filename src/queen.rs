@@ -58,13 +58,15 @@ impl Queen {
             run
         )?;
 
-        thread::Builder::new().name("relay".to_string()).spawn(move || {
+        thread::Builder::new().name("queen".to_string()).spawn(move || {
             let ret = inner.run();
             if ret.is_err() {
                 log::error!("relay thread exit: {:?}", ret);
             } else {
                 log::trace!("relay thread exit");
             }
+
+            inner.run.store(false, Ordering::Relaxed);
         }).unwrap();
 
         Ok(queen)
@@ -304,7 +306,9 @@ impl<T> QueenInner<T> {
         };
 
         if success {
-            let _ = conn.send(&mut Some(message));
+            if !conn.stream.tx.is_full() {
+                let _ = conn.send(&mut Some(message));
+            }
         }
     }
 

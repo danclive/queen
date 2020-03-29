@@ -197,11 +197,16 @@ impl NetWork {
         let mut remove = false;
 
         if let Some(stream) = self.streams.get(index) {
-            remove = stream.is_close();
-
-            if let Ok(message) = stream.recv() {
-                if let Some(net_conn) = self.nets.get_mut(index) {
-                    net_conn.push_data(&self.epoll, message)?;
+            match stream.recv() {
+                Ok(message) => {
+                    if let Some(net_conn) = self.nets.get_mut(index) {
+                        net_conn.push_data(&self.epoll, message)?;
+                    }
+                }
+                Err(err) => {
+                    if err.kind() != WouldBlock {
+                        remove = true
+                    }
                 }
             }
         }
@@ -282,10 +287,6 @@ impl NetConn {
     }
 
     fn read(&mut self, epoll: &Epoll, stream: &Stream<Message>) -> io::Result<()> {
-        if stream.tx.is_full() {
-            return Ok(())
-        }
-
         loop {
             let ret = read_nonblock(&mut self.stream, &mut self.r_buffer);
 
@@ -294,7 +295,9 @@ impl NetConn {
                     if let Some(bytes) = ret {
                         if self.handshake {
                             let message = Crypto::decrypt_message(&self.crypto, bytes)?;
-                            let _ = stream.send(&mut Some(message));
+                            if !stream.tx.is_full() {
+                                let _ = stream.send(&mut Some(message));
+                            }
                         } else {
                             match Message::from_slice(&bytes) {
                                 Ok(mut message) => {

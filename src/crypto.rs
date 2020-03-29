@@ -94,7 +94,8 @@ impl Crypto {
     }
 
     pub fn encrypt_message(crypto: &Option<Crypto>, message: &Message) -> io::Result<Vec<u8>> {
-        let mut data = message.to_vec().expect("InvalidData");
+        let mut data = message.to_vec()
+            .map_err(|err|{ io::Error::new(InvalidData, format!("{}", err))})?;
 
         if let Some(crypto) = &crypto {
             crypto.encrypt(&mut data).map_err(|err|
