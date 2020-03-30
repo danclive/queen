@@ -18,8 +18,8 @@ fn stream() {
     // start queen
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
-    let stream2 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
     // stream1 auth
     let _ = stream1.send(&mut Some(msg!{
@@ -118,7 +118,7 @@ fn stream_over_port() {
     });
 
     // start stream
-    let stream1 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH
@@ -127,7 +127,7 @@ fn stream_over_port() {
     // start port
     let port = Port::new().unwrap();
 
-    let stream2 = port.connect(addr, None).unwrap();
+    let stream2 = port.connect(addr, None, None).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
@@ -226,7 +226,7 @@ fn stream_over_port_secure() {
     });
 
     // start stream
-    let stream1 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH
@@ -241,7 +241,7 @@ fn stream_over_port_secure() {
         secret: "99557df09590ad6043ceefd1".to_string()
     };
 
-    let stream2 = port.connect(addr, Some(crypto_options)).unwrap();
+    let stream2 = port.connect(addr, Some(crypto_options), None).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 

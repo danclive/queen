@@ -80,8 +80,8 @@ impl Queen {
         self.run.load(Ordering::Relaxed)
     }
 
-    pub fn connect(&self, attr: Message, timeout: Option<Duration>) -> io::Result<Stream<Message>> {
-        let (stream1, stream2) = Stream::pipe(64, attr)?;
+    pub fn connect(&self, attr: Message, capacity: Option<usize>, timeout: Option<Duration>) -> io::Result<Stream<Message>> {
+        let (stream1, stream2) = Stream::pipe(capacity.unwrap_or(64), attr)?;
 
         let packet = Packet::NewConn(stream1);
 

@@ -13,7 +13,7 @@ fn conn() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
     for _ in 0..10000 {
-        let _stream = queen.connect(msg!{}, None).unwrap();
+        let _stream = queen.connect(msg!{}, None, None).unwrap();
     }
 
     // init queen callback
@@ -25,7 +25,7 @@ fn conn() {
 
     let queen = Queen::new(MessageId::new(), (), Some(callback)).unwrap();
 
-    let ret = queen.connect(msg!{}, None);
+    let ret = queen.connect(msg!{}, None, None);
     assert!(ret.is_err());
 
     match ret {
@@ -40,8 +40,8 @@ fn conn() {
 fn connect() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
-    let stream2 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: PING
@@ -79,7 +79,7 @@ fn connect() {
 fn auth() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: ATTACH
@@ -106,8 +106,8 @@ fn auth() {
 fn attach_detach() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
-    let stream2 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream1.send(&mut Some(msg!{
@@ -195,9 +195,9 @@ fn attach_detach() {
 fn label() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
-    let stream2 = queen.connect(msg!{}, None).unwrap();
-    let stream3 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
+    let stream3 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream1.send(&mut Some(msg!{
@@ -321,7 +321,7 @@ fn label() {
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
 
-    let stream4 = queen.connect(msg!{}, None).unwrap();
+    let stream4 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream4.send(&mut Some(msg!{
@@ -399,9 +399,9 @@ fn label() {
 fn labels() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
-    let stream2 = queen.connect(msg!{}, None).unwrap();
-    let stream3 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
+    let stream3 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream1.send(&mut Some(msg!{
@@ -652,7 +652,7 @@ fn labels() {
 
     assert!(stream2.recv().is_err());
 
-    let stream4 = queen.connect(msg!{}, None).unwrap();
+    let stream4 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream4.send(&mut Some(msg!{
@@ -730,10 +730,10 @@ fn labels() {
 fn share() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
-    let stream2 = queen.connect(msg!{}, None).unwrap();
-    let stream3 = queen.connect(msg!{}, None).unwrap();
-    let stream4 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
+    let stream3 = queen.connect(msg!{}, None, None).unwrap();
+    let stream4 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream1.send(&mut Some(msg!{
@@ -902,9 +902,9 @@ fn share() {
 fn client_id() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
-    let stream2 = queen.connect(msg!{}, None).unwrap();
-    let stream3 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
+    let stream3 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream1.send(&mut Some(msg!{
@@ -942,7 +942,7 @@ fn client_id() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // type
-    let stream4 = queen.connect(msg!{}, None).unwrap();
+    let stream4 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream4.send(&mut Some(msg!{
         CHAN: AUTH,
@@ -1026,7 +1026,7 @@ fn client_id() {
     assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
     // generate message id
-    let stream4 = queen.connect(msg!{}, None).unwrap();
+    let stream4 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream4.send(&mut Some(msg!{
         CHAN: AUTH
@@ -1043,7 +1043,7 @@ fn client_id() {
 fn port_event() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH,
@@ -1094,7 +1094,7 @@ fn port_event() {
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // auth
-    let stream2 = queen.connect(msg!{}, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH,
@@ -1187,7 +1187,7 @@ fn port_event() {
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
     // auth
-    let stream2 = queen.connect(msg!{}, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH,
@@ -1230,7 +1230,7 @@ fn port_event() {
 fn query() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream1.send(&mut Some(msg!{
@@ -1304,7 +1304,7 @@ fn query() {
 
     assert!(recv.get_u32("port_num").unwrap() == 1);
 
-    let stream2 = queen.connect(msg!{}, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
@@ -1431,7 +1431,7 @@ fn query() {
 fn mine() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
     // mine
     let _ = stream1.send(&mut Some(msg!{
@@ -1495,9 +1495,9 @@ fn mine() {
 fn port_event_send_recv() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
-    let stream2 = queen.connect(msg!{}, None).unwrap();
-    let stream3 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
+    let stream3 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream1.send(&mut Some(msg!{
@@ -1589,7 +1589,7 @@ fn port_event_send_recv() {
 fn self_send_recv() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None).unwrap();
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream1.send(&mut Some(msg!{
@@ -1624,7 +1624,7 @@ fn self_send_recv() {
     assert!(stream1.recv().is_err());
 
     // stream2
-    let stream2 = queen.connect(msg!{}, None).unwrap();
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
     let _ = stream2.send(&mut Some(msg!{

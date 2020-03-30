@@ -121,7 +121,7 @@ impl Node {
                         socket.set_keep_intvl(5)?; // 探测时发包的时间间隔为5秒
                         socket.set_keep_cnt(3)?; // 探测尝试的次数.如果第1次探测包就收到响应了,则后2次的不再发
 
-                        match self.queen.connect(attr, None) {
+                        match self.queen.connect(attr, None, None) {
                             Ok(stream) => {
                                 if let Some(queue) = self.queues.choose(&mut self.rand) {
                                     queue.push(Packet::NewServ {

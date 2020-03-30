@@ -53,7 +53,8 @@ impl Port {
     pub fn connect<A: ToSocketAddrs>(
         &self,
         addr: A,
-        crypto_options: Option<CryptoOptions>
+        crypto_options: Option<CryptoOptions>,
+        capacity: Option<usize>
     ) -> io::Result<Stream<Message>> {
         let net_stream = TcpStream::connect(addr)?;
 
@@ -61,7 +62,7 @@ impl Port {
             ADDR: net_stream.peer_addr()?.to_string()
         };
 
-        let (stream1, stream2) = Stream::pipe(64, attr).unwrap();
+        let (stream1, stream2) = Stream::pipe(capacity.unwrap_or(64), attr).unwrap();
 
         self.queue.push(Packet::NewConn {
             net_stream,
