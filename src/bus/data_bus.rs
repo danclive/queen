@@ -23,6 +23,7 @@ impl fmt::Debug for DataBus {
 struct InnerDataBus {
     data: HashMap<String, Cell>,
     push: Vec<PushCell>,
+    #[allow(clippy::type_complexity)]
     on_set: Option<Arc<Box<dyn Fn(String, Value, Option<Message>, bool) + Sync + Send>>>
 }
 
@@ -37,6 +38,12 @@ pub struct PushCell {
     pub key: String,
     pub value: Value,
     pub attr: Option<Message>
+}
+
+impl Default for DataBus {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DataBus {

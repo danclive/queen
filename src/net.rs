@@ -15,5 +15,5 @@ pub struct CryptoOptions {
 }
 
 pub fn parse_addr<A: ToSocketAddrs>(addr: A) -> io::Result<SocketAddr> {
-    addr.to_socket_addrs()?.next().ok_or(Error::new(ErrorKind::InvalidInput, "Address is not valid"))
+    addr.to_socket_addrs()?.next().ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Address is not valid"))
 }

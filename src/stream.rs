@@ -56,8 +56,8 @@ impl<T: Send> Stream<T> {
             rx: StreamRx {
                 capacity,
                 rx: queue1,
-                close: close,
-                attr: attr
+                close,
+                attr
             }
         };
 

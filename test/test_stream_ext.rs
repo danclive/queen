@@ -44,12 +44,12 @@ fn stream() {
         Err(Error::ErrorCode(ErrorCode::Unauthorized))
     ));
 
-    assert!(!stream_ext.authed());
+    assert!(!stream_ext.is_auth());
 
     // auth
     assert!(stream_ext.auth(msg!{}).is_ok());
 
-    assert!(stream_ext.authed());
+    assert!(stream_ext.is_auth());
 
     // try attach
     assert!(stream_ext.attach("hello", None).is_ok());
@@ -147,12 +147,12 @@ fn stream_over_port() {
         Err(Error::ErrorCode(ErrorCode::Unauthorized))
     ));
 
-    assert!(!stream_ext.authed());
+    assert!(!stream_ext.is_auth());
 
     // auth
     assert!(stream_ext.auth(msg!{}).is_ok());
 
-    assert!(stream_ext.authed());
+    assert!(stream_ext.is_auth());
 
     // try attach
     assert!(stream_ext.attach("hello", None).is_ok());
@@ -261,12 +261,12 @@ fn stream_over_port_secure() {
         Err(Error::ErrorCode(ErrorCode::Unauthorized))
     ));
 
-    assert!(!stream_ext.authed());
+    assert!(!stream_ext.is_auth());
 
     // auth
     assert!(stream_ext.auth(msg!{}).is_ok());
 
-    assert!(stream_ext.authed());
+    assert!(stream_ext.is_auth());
 
     // try attach
     assert!(stream_ext.attach("hello", None).is_ok());

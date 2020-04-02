@@ -163,3 +163,50 @@ fn port_secure() {
     let recv = stream2.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 }
+
+#[test]
+fn port_secure2() {
+    // start node
+    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+
+    let addr = get_free_addr();
+
+    let mut node = Node::new(
+        queen.clone(),
+        2,
+        vec![addr.parse().unwrap()]
+    ).unwrap();
+
+    node.set_access_fn(|key|{
+        assert!(key == "12d3eaf5e9effffb14fb213e");
+        Some("99557df09590ad6043ceefd1".to_string())
+    });
+
+    thread::spawn(move || {
+        node.run().unwrap();
+    });
+
+    // start stream
+    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+
+    let _ = stream1.send(&mut Some(msg!{
+        CHAN: AUTH
+    }));
+
+    // start port
+    let port = Port::new().unwrap();
+
+    let stream2 = port.connect(addr, None, None).unwrap();
+
+    let _ = stream2.send(&mut Some(msg!{
+        CHAN: AUTH
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    // stream1 recv
+    let recv = stream1.recv().unwrap();
+    assert!(recv.get_i32(OK).unwrap() == 0);
+
+    assert!(stream2.is_close());
+}

@@ -16,8 +16,9 @@ pub struct StreamExt {
 
 struct StreamExtSession {
     stream_tx: StreamTx<Message>,
-    authed: bool,
+    auth: bool,
     sending: HashMap<MessageId, Sender<Result<Message>>>,
+    #[allow(clippy::type_complexity)]
     handle: Option<Arc<Box<dyn Fn(String, Message) + Sync + Send + 'static>>>,
     on_close: Option<Arc<Box<dyn Fn() + Sync + Send + 'static>>>
 }
@@ -28,7 +29,7 @@ impl StreamExt {
 
         let session = StreamExtSession {
             stream_tx,
-            authed: false,
+            auth: false,
             sending: HashMap::new(),
             handle: None,
             on_close: None
@@ -51,7 +52,7 @@ impl StreamExt {
                                     if let Some(sending_tx) = session.sending.remove(id) {
                                         if ok == 0 {
                                             if chan == AUTH {
-                                                session.authed = true;
+                                                session.auth = true;
                                             }
 
                                             sending_tx.send(Ok(message));
@@ -85,13 +86,9 @@ impl StreamExt {
                         let mut session = stream_ext2.session.lock().unwrap();
                         session.sending.clear();
 
-                        let on_close = session.on_close.clone();
-
                         drop(session);
 
-                        if let Some(on_close) = on_close {
-                            on_close()
-                        }
+                        stream_ext2.close();
 
                         return
                     }
@@ -107,9 +104,9 @@ impl StreamExt {
         self._send(message, None)
     }
 
-    pub fn authed(&self) -> bool {
+    pub fn is_auth(&self) -> bool {
         let session = self.session.lock().unwrap();
-        session.authed
+        session.auth
     }
 
     pub fn ping(&self, mut message: Message) -> Result<Message> {
@@ -118,7 +115,7 @@ impl StreamExt {
     }
 
     pub fn attach(&self, chan: &str, label: Option<Vec<String>>) -> Result<Message> {
-        if !self.authed() {
+        if !self.is_auth() {
             return Err(ErrorCode::Unauthorized.into())
         }
 
@@ -135,7 +132,7 @@ impl StreamExt {
     }
 
     pub fn detach(&self, chan: &str, label: Option<Vec<String>>) -> Result<Message> {
-        if !self.authed() {
+        if !self.is_auth() {
             return Err(ErrorCode::Unauthorized.into())
         }
 
@@ -152,7 +149,7 @@ impl StreamExt {
     }
 
     pub fn query(&self, mut message: Message) -> Result<Message> {
-        if !self.authed() {
+        if !self.is_auth() {
             return Err(ErrorCode::Unauthorized.into())
         }
 
@@ -166,11 +163,20 @@ impl StreamExt {
     }
 
     pub fn custom(&self, mut message: Message) -> Result<Message> {
-        if !self.authed() {
+        if !self.is_auth() {
             return Err(ErrorCode::Unauthorized.into())
         }
 
         message.insert(CHAN, CUSTOM);
+        self._send(message, None)
+    }
+
+    pub fn client_kill(&self, mut message: Message) -> Result<Message> {
+        if !self.is_auth() {
+            return Err(ErrorCode::Unauthorized.into())
+        }
+
+        message.insert(CHAN, CLIENT_KILL);
         self._send(message, None)
     }
 
@@ -182,7 +188,7 @@ impl StreamExt {
         to: Option<Vec<MessageId>>,
         timeout: Option<Duration>
     ) -> Result<()> {
-        if !self.authed() {
+        if !self.is_auth() {
             return Err(ErrorCode::Unauthorized.into())
         }
 
@@ -213,8 +219,16 @@ impl StreamExt {
     }
 
     pub fn close(&self) {
-        let session = self.session.lock().unwrap();
-        session.stream_tx.close()
+        let mut session = self.session.lock().unwrap();
+        session.stream_tx.close();
+
+        let on_close = session.on_close.take();
+
+        drop(session);
+
+        if let Some(on_close) = on_close {
+            on_close()
+        }
     }
 
     pub fn is_close(&self) -> bool {

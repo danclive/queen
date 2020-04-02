@@ -30,21 +30,22 @@ pub const OK:    &str = "ok";
 pub const ERROR: &str = "error";
 
 // client event
-pub const CLIENT_READY:  &str = "_ptre";
-pub const CLIENT_BREAK:  &str = "_ptbr";
-pub const CLIENT_ATTACH: &str = "_ptat";
-pub const CLIENT_DETACH: &str = "_ptde";
-pub const CLIENT_KILL:   &str = "_ptki";
-pub const CLIENT_SEND:   &str = "_ptse";
-pub const CLIENT_RECV:   &str = "_ptrc";
+pub const CLIENT_READY:  &str = "_ctre";
+pub const CLIENT_BREAK:  &str = "_ctbr";
+pub const CLIENT_ATTACH: &str = "_ctat";
+pub const CLIENT_DETACH: &str = "_ctde";
+pub const CLIENT_KILL:   &str = "_ctki";
+pub const CLIENT_SEND:   &str = "_ctse";
+pub const CLIENT_RECV:   &str = "_ctrc";
 
 // query
-pub const QUERY_PORT_NUM: &str = "$port_num";
-pub const QUERY_CHAN_NUM: &str = "$chan_num";
-pub const QUERY_PORTS:    &str = "$ports";
-pub const QUERY_PORT:     &str = "$port";
-pub const SEND_MESSAGES:  &str = "send_msgs";
-pub const RECV_MESSAGES:  &str = "recv_msgs";
+pub const QUERY_CLIENT_NUM: &str = "$client_num";
+pub const QUERY_CHAN_NUM:   &str = "$chan_num";
+pub const QUERY_CLIENTS:    &str = "$clients";
+pub const QUERY_CLIENT:     &str = "$client";
+
+pub const SEND_MESSAGES:    &str = "send_msgs";
+pub const RECV_MESSAGES:    &str = "recv_msgs";
 
 // crypto
 pub const AES_128_GCM:       &str = "AES_128_GCM";
@@ -52,6 +53,6 @@ pub const AES_256_GCM:       &str = "AES_256_GCM";
 pub const CHACHA20_POLY1305: &str = "CHACHA20_POLY1305";
 
 // network
-pub const HANDSHAKE: &str = "_hand";
+pub const HAND: &str = "_hand";
 pub const METHOD:    &str = "_meth";
 pub const ACCESS:    &str = "_acce";

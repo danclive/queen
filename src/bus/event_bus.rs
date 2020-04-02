@@ -72,7 +72,7 @@ impl EventBus {
     pub fn off(&self, id: usize) -> bool {
         let mut handles = self.inner.handles.write().unwrap();
 
-        if let Some(event) = handles.index.get(&id).map(|e| e.clone()) {
+        if let Some(event) = handles.index.get(&id).cloned() {
             if let Some(vector) = handles.callbacks.get_mut(&event) {
                 if let Some(position) = vector.iter().position(|(x, _)| x == &id) {
                     vector.remove(position);

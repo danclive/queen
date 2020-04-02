@@ -117,10 +117,10 @@ impl NetWork {
 
                     let mut conn = NetConn::new(id2, net_stream);
 
-                    // handshake message
+                    // hand message
                     if let Some(options) = options {
                         let hand_message = msg!{
-                            CHAN: HANDSHAKE,
+                            CHAN: HAND,
                             METHOD: options.method.as_str(),
                             ACCESS: options.access
                         };
@@ -132,14 +132,14 @@ impl NetWork {
 
                     } else {
                         let hand_message = msg!{
-                            CHAN: HANDSHAKE
+                            CHAN: HAND
                         };
 
                         conn.push_data(&self.epoll, hand_message)?;
                     }
 
                     // conn.is_server = false;
-                    // conn.handshake = false;
+                    // conn.hand = false;
 
                     entry2.insert(conn);
                 }
@@ -265,7 +265,7 @@ struct NetConn {
     interest: Ready,
     r_buffer: Vec<u8>,
     w_buffer: VecDeque<Vec<u8>>,
-    handshake: bool,
+    hand: bool,
     is_server: bool,
     access_fn: Option<AccessFn>,
     crypto: Option<Crypto>
@@ -279,7 +279,7 @@ impl NetConn {
             interest: Ready::readable() | Ready::hup(),
             r_buffer: Vec::with_capacity(1024),
             w_buffer: VecDeque::new(),
-            handshake: false,
+            hand: false,
             is_server: false,
             access_fn: None,
             crypto: None
@@ -293,7 +293,7 @@ impl NetConn {
             match ret {
                 Ok(ret) => {
                     if let Some(bytes) = ret {
-                        if self.handshake {
+                        if self.hand {
                             let message = Crypto::decrypt_message(&self.crypto, bytes)?;
                             if !stream.tx.is_full() {
                                 let _ = stream.send(&mut Some(message));
@@ -308,8 +308,8 @@ impl NetConn {
                                         }
                                     };
 
-                                    if chan != HANDSHAKE {
-                                        return Err(io::Error::new(InvalidData, "chan != HANDSHAKE"))
+                                    if chan != HAND {
+                                        return Err(io::Error::new(InvalidData, "chan != HAND"))
                                     }
 
                                     if self.is_server {
@@ -317,7 +317,7 @@ impl NetConn {
                                             let method = if let Ok(method) = Method::from_str(method) {
                                                 method
                                             } else {
-                                                return Err(io::Error::new(InvalidData, "Method::from_str(handshake)"))
+                                                return Err(io::Error::new(InvalidData, "Method::from_str(hand)"))
                                             };
 
                                             let access = if let Ok(access) = message.get_str(ACCESS) {
@@ -336,7 +336,7 @@ impl NetConn {
                                                 return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
                                             };
 
-                                            self.handshake = true;
+                                            self.hand = true;
 
                                             ErrorCode::OK.insert_message(&mut message);
 
@@ -345,18 +345,20 @@ impl NetConn {
                                             let crypto = Crypto::new(&method, secret.as_bytes());
                                             self.crypto = Some(crypto);
                                         } else {
-                                            self.handshake = true;
+                                            if self.access_fn.is_some() {
+                                                return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
+                                            }
+
+                                            self.hand = true;
 
                                             ErrorCode::OK.insert_message(&mut message);
 
                                             self.push_data(epoll, message)?;
                                         }
+                                    } else if message.get_i32(OK) == Ok(0) {
+                                        self.hand = true;
                                     } else {
-                                        if message.get_i32(OK) == Ok(0) {
-                                            self.handshake = true;
-                                        } else {
-                                            return Err(io::Error::new(InvalidData, "message.get_i32(OK) == Ok(0)"))
-                                        }
+                                        return Err(io::Error::new(InvalidData, "message.get_i32(OK) == Ok(0)"))
                                     }
                                 },
                                 Err(err) => {

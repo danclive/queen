@@ -930,7 +930,7 @@ fn client_id() {
     // assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
     let recv = stream3.recv().unwrap();
 
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::DuplicatePortId));
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::DuplicateClientId));
 
     let _ = stream3.send(&mut Some(msg!{
         CHAN: AUTH,
@@ -953,9 +953,9 @@ fn client_id() {
 
     let recv = stream4.recv().unwrap();
 
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::InvalidPortIdFieldType));
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::InvalidClientIdFieldType));
 
-    // port to port
+    // client to client
     let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
@@ -967,7 +967,7 @@ fn client_id() {
 
     let recv = stream3.recv().unwrap();
 
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetPortIdNotExist));
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetClientIdNotExist));
 
     let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
@@ -987,7 +987,7 @@ fn client_id() {
     assert!(recv.get_str("hello").unwrap() == "world");
     assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
-    // port to ports
+    // client to clients
     let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
         "hello": "world",
@@ -999,7 +999,7 @@ fn client_id() {
 
     let recv = stream3.recv().unwrap();
 
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetPortIdNotExist));
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetClientIdNotExist));
 
     let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
@@ -1040,7 +1040,7 @@ fn client_id() {
 }
 
 #[test]
-fn port_event() {
+fn client_event() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
@@ -1235,7 +1235,7 @@ fn query() {
     // auth
     let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
-        "port_num": QUERY_PORT_NUM
+        "client_num": QUERY_CLIENT_NUM
     }));
 
     thread::sleep(Duration::from_secs(1));
@@ -1255,7 +1255,7 @@ fn query() {
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
-        "port_num": QUERY_PORT_NUM
+        "client_num": QUERY_CLIENT_NUM
     }));
 
     thread::sleep(Duration::from_secs(1));
@@ -1274,7 +1274,7 @@ fn query() {
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
-        "port_num": QUERY_PORT_NUM
+        "client_num": QUERY_CLIENT_NUM
     }));
 
     thread::sleep(Duration::from_secs(1));
@@ -1283,7 +1283,7 @@ fn query() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
-    // port num
+    // client num
     let _ = stream1.send(&mut Some(msg!{
         CHAN: AUTH,
         SUPER: true
@@ -1295,27 +1295,27 @@ fn query() {
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
-        "port_num": QUERY_PORT_NUM
+        "client_num": QUERY_CLIENT_NUM
     }));
 
     thread::sleep(Duration::from_secs(1));
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_u32("port_num").unwrap() == 1);
+    assert!(recv.get_u32("client_num").unwrap() == 1);
 
     let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
-        "port_num": QUERY_PORT_NUM
+        "client_num": QUERY_CLIENT_NUM
     }));
 
     thread::sleep(Duration::from_secs(1));
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_u32("port_num").unwrap() == 1);
+    assert!(recv.get_u32("client_num").unwrap() == 1);
 
     let _ = stream2.send(&mut Some(msg!{
         CHAN: AUTH
@@ -1327,14 +1327,14 @@ fn query() {
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
-        "port_num": QUERY_PORT_NUM
+        "client_num": QUERY_CLIENT_NUM
     }));
 
     thread::sleep(Duration::from_secs(1));
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_u32("port_num").unwrap() == 2);
+    assert!(recv.get_u32("client_num").unwrap() == 2);
 
     // chan num
     let _ = stream1.send(&mut Some(msg!{
@@ -1388,22 +1388,22 @@ fn query() {
 
     assert!(recv.get_u32("chan_num").unwrap() == 0);
 
-    // ports
+    // clients
     let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
-        "ports": QUERY_PORTS
+        "clients": QUERY_CLIENTS
     }));
 
     thread::sleep(Duration::from_secs(1));
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_array("ports").unwrap().len() == 2);
+    assert!(recv.get_array("clients").unwrap().len() == 2);
 
-    // port
+    // client
     let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
-        "port": QUERY_PORT,
+        "client": QUERY_CLIENT,
         CLIENT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
     }));
 
@@ -1415,7 +1415,7 @@ fn query() {
 
     let _ = stream1.send(&mut Some(msg!{
         CHAN: QUERY,
-        "port": QUERY_PORT,
+        "client": QUERY_CLIENT,
         CLIENT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
     }));
 
@@ -1423,7 +1423,7 @@ fn query() {
 
     let recv = stream1.recv().unwrap();
 
-    assert!(recv.get_message("port").unwrap().get_message_id(CLIENT_ID).unwrap()
+    assert!(recv.get_message("client").unwrap().get_message_id(CLIENT_ID).unwrap()
         == &MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap());
 }
 
@@ -1492,7 +1492,7 @@ fn mine() {
 }
 
 #[test]
-fn port_event_send_recv() {
+fn client_event_send_recv() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
@@ -1519,7 +1519,7 @@ fn port_event_send_recv() {
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    // attach port event
+    // attach client event
     let _ = stream3.send(&mut Some(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_SEND,
