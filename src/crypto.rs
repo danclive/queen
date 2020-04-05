@@ -1,6 +1,5 @@
 use std::cmp;
 use std::str::FromStr;
-use std::io::{self, ErrorKind::InvalidData};
 
 use ring::aead::{Algorithm, LessSafeKey, Nonce, UnboundKey, Aad};
 use ring::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305};
@@ -12,6 +11,7 @@ use rand::{self, thread_rng, Rng};
 use nson::Message;
 
 use crate::dict;
+use crate::error::{Result as QueenResult, Error as QueenError};
 
 #[derive(Debug, Clone)]
 pub enum Method {
@@ -93,14 +93,14 @@ impl Crypto {
         Ok(())
     }
 
-    pub fn encrypt_message(crypto: &Option<Crypto>, message: &Message) -> io::Result<Vec<u8>> {
+    pub fn encrypt_message(crypto: &Option<Crypto>, message: &Message) -> QueenResult<Vec<u8>> {
         let mut data = message.to_vec()
-            .map_err(|err|{ io::Error::new(InvalidData, format!("{}", err))})?;
+            .map_err(|err| QueenError::InvalidData(format!("{}", err)) )?;
 
         if let Some(crypto) = &crypto {
             crypto.encrypt(&mut data).map_err(|err|
-                io::Error::new(InvalidData, format!("{}", err)
-            ))?;
+                QueenError::InvalidData(format!("{}", err))
+            )?;
         }
 
         Ok(data)
@@ -121,16 +121,16 @@ impl Crypto {
         Ok(())
     }
 
-    pub fn decrypt_message(crypto: &Option<Crypto>, mut data: Vec<u8>) -> io::Result<Message> {
+    pub fn decrypt_message(crypto: &Option<Crypto>, mut data: Vec<u8>) -> QueenResult<Message> {
         if let Some(crypto) = &crypto {
             crypto.decrypt(&mut data).map_err(|err|
-                io::Error::new(InvalidData, format!("{}", err)
-            ))?;
+                QueenError::InvalidData(format!("{}", err))
+            )?;
         }
 
         let recv = Message::from_slice(&data);
 
-        recv.map_err(|err| io::Error::new(InvalidData, format!("{}", err)))
+        recv.map_err(|err| QueenError::InvalidData(format!("{}", err)))
     }
 
     pub fn init_nonce() -> [u8; Self::NONCE_LEN] {

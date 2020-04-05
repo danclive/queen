@@ -6,8 +6,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering}
 };
 use std::io::{
-    self, Write,
-    ErrorKind::{WouldBlock, BrokenPipe, InvalidData, PermissionDenied}
+    Write,
+    ErrorKind::WouldBlock
 };
 
 use queen_io::{
@@ -24,7 +24,7 @@ use crate::Stream;
 use crate::crypto::{Method, Crypto};
 use crate::util::message::read_nonblock;
 use crate::dict::*;
-use crate::error::ErrorCode;
+use crate::error::{ErrorCode, Error, Result};
 
 use super::CryptoOptions;
 
@@ -56,7 +56,7 @@ impl NetWork {
     const START_TOKEN: usize = 2;
     const QUEUE_TOKEN: usize = 0;
 
-    pub fn new(queue: Queue<Packet>, run: Arc<AtomicBool>) -> io::Result<Self> {
+    pub fn new(queue: Queue<Packet>, run: Arc<AtomicBool>) -> Result<Self> {
         Ok(Self {
             epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
@@ -67,7 +67,7 @@ impl NetWork {
         })
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         self.epoll.add(&self.queue, Token(Self::QUEUE_TOKEN), Ready::readable(), EpollOpt::level())?;
 
         while self.run.load(Ordering::Relaxed) {
@@ -87,7 +87,7 @@ impl NetWork {
         Ok(())
     }
 
-    fn dispatch_queue(&mut self) -> io::Result<()> {
+    fn dispatch_queue(&mut self) -> Result<()> {
         if let Some(packet) = self.queue.pop() {
             match packet {
                 Packet::NewConn{ stream, net_stream, options } => {
@@ -181,7 +181,7 @@ impl NetWork {
         Ok(())
     }
 
-    fn dispatch_conn(&mut self, event: Event) -> io::Result<()> {
+    fn dispatch_conn(&mut self, event: Event) -> Result<()> {
         let token = event.token().0 - Self::START_TOKEN;
 
         if token % 2 == 0 {
@@ -193,7 +193,7 @@ impl NetWork {
         Ok(())
     }
 
-    fn dispatch_stream(&mut self, index: usize) -> io::Result<()> {
+    fn dispatch_stream(&mut self, index: usize) -> Result<()> {
         let mut remove = false;
 
         if let Some(stream) = self.streams.get(index) {
@@ -204,7 +204,7 @@ impl NetWork {
                     }
                 }
                 Err(err) => {
-                    if err.kind() != WouldBlock {
+                    if !matches!(err, Error::Empty(_)) {
                         remove = true
                     }
                 }
@@ -218,7 +218,7 @@ impl NetWork {
         Ok(())
     }
 
-    fn dispatch_net_stream(&mut self, index: usize, ready: Ready) -> io::Result<()> {
+    fn dispatch_net_stream(&mut self, index: usize, ready: Ready) -> Result<()> {
         let mut remove = ready.is_hup() || ready.is_error();
 
         if ready.is_readable() {
@@ -248,7 +248,7 @@ impl NetWork {
         Ok(())
     }
 
-    fn remove_conn(&mut self, index: usize) -> io::Result<()> {
+    fn remove_conn(&mut self, index: usize) -> Result<()> {
         let stream = self.streams.remove(index);
         self.epoll.delete(&stream)?;
 
@@ -286,7 +286,7 @@ impl NetConn {
         }
     }
 
-    fn read(&mut self, epoll: &Epoll, stream: &Stream<Message>) -> io::Result<()> {
+    fn read(&mut self, epoll: &Epoll, stream: &Stream<Message>) -> Result<()> {
         loop {
             let ret = read_nonblock(&mut self.stream, &mut self.r_buffer);
 
@@ -304,12 +304,12 @@ impl NetConn {
                                     let chan = match message.get_str(CHAN) {
                                         Ok(chan) => chan,
                                         Err(_) => {
-                                            return Err(io::Error::new(InvalidData, "message.get_str(CHAN)"))
+                                            return Err(Error::InvalidData("message.get_str(CHAN)".to_string()))
                                         }
                                     };
 
                                     if chan != HAND {
-                                        return Err(io::Error::new(InvalidData, "chan != HAND"))
+                                        return Err(Error::InvalidData("chan != HAND".to_string()))
                                     }
 
                                     if self.is_server {
@@ -317,23 +317,23 @@ impl NetConn {
                                             let method = if let Ok(method) = Method::from_str(method) {
                                                 method
                                             } else {
-                                                return Err(io::Error::new(InvalidData, "Method::from_str(hand)"))
+                                                return Err(Error::InvalidData("Method::from_str(hand)".to_string()))
                                             };
 
                                             let access = if let Ok(access) = message.get_str(ACCESS) {
                                                 access
                                             } else {
-                                                return Err(io::Error::new(InvalidData, "message.get_str(ACCESS)"))
+                                                return Err(Error::InvalidData("message.get_str(ACCESS)".to_string()))
                                             };
 
                                             let secret = if let Some(access_fn) = &self.access_fn {
                                                 if let Some(secret) = access_fn(access.to_string()) {
                                                     secret
                                                 } else {
-                                                    return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
+                                                    return Err(Error::PermissionDenied("access_fn".to_string()))
                                                 }
                                             } else {
-                                                return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
+                                                return Err(Error::PermissionDenied("access_fn".to_string()))
                                             };
 
                                             self.hand = true;
@@ -346,7 +346,7 @@ impl NetConn {
                                             self.crypto = Some(crypto);
                                         } else {
                                             if self.access_fn.is_some() {
-                                                return Err(io::Error::new(PermissionDenied, "PermissionDenied"))
+                                                return Err(Error::PermissionDenied("access_fn".to_string()))
                                             }
 
                                             self.hand = true;
@@ -358,11 +358,11 @@ impl NetConn {
                                     } else if message.get_i32(OK) == Ok(0) {
                                         self.hand = true;
                                     } else {
-                                        return Err(io::Error::new(InvalidData, "message.get_i32(OK) == Ok(0)"))
+                                        return Err(Error::InvalidData("message.get_i32(OK) == Ok(0)".to_string()))
                                     }
                                 },
                                 Err(err) => {
-                                    return Err(io::Error::new(InvalidData, format!("Message::from_slice: {}", err)))
+                                    return Err(Error::InvalidData(format!("Message::from_slice: {}", err)))
                                 }
                             }
                         }
@@ -372,7 +372,7 @@ impl NetConn {
                     if let WouldBlock = err.kind() {
                         break;
                     } else {
-                        return Err(err)
+                        return Err(err.into())
                     }
                 }
             }
@@ -381,12 +381,12 @@ impl NetConn {
         Ok(())
     }
 
-    fn write(&mut self) -> io::Result<()> {
+    fn write(&mut self) -> Result<()> {
         while let Some(front) = self.w_buffer.front_mut() {
             match self.stream.write(front) {
                 Ok(size) => {
                     if size == 0 {
-                        return Err(io::Error::new(BrokenPipe, "BrokenPipe"))
+                        return Err(Error::BrokenPipe("NetConn.write".to_string()))
                     } else if size >= front.len() {
                         self.w_buffer.pop_front();
                     } else if size < front.len() {
@@ -398,7 +398,7 @@ impl NetConn {
                     if let WouldBlock = err.kind() {
                         break;
                     } else {
-                        return Err(err)
+                        return Err(err.into())
                     }
                 }
             }
@@ -415,7 +415,7 @@ impl NetConn {
         Ok(())
     }
 
-    fn push_data(&mut self, epoll: &Epoll, message: Message) -> io::Result<()> {
+    fn push_data(&mut self, epoll: &Epoll, message: Message) -> Result<()> {
         let data = Crypto::encrypt_message(&self.crypto, &message)?;
 
         self.w_buffer.push_back(data);

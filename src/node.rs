@@ -1,4 +1,4 @@
-use std::io::{self, ErrorKind::{WouldBlock}};
+use std::io::ErrorKind::WouldBlock;
 use std::os::unix::io::AsRawFd;
 use std::thread;
 use std::time::Duration;
@@ -22,6 +22,7 @@ use crate::Queen;
 use crate::net::{NetWork, Packet, AccessFn};
 use crate::net::tcp_ext::TcpExt;
 use crate::dict::*;
+use crate::error::Result;
 
 pub struct Node {
     queen: Queen,
@@ -39,7 +40,7 @@ impl Node {
         queen: Queen,
         works: usize,
         addrs: Vec<SocketAddr>
-    ) -> io::Result<Node> {
+    ) -> Result<Node> {
         let run = Arc::new(AtomicBool::new(true));
 
         let mut listens = Vec::new();
@@ -87,7 +88,7 @@ impl Node {
         self.access_fn = Some(Arc::new(Box::new(f)))
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         for (id, listen) in self.listens.iter().enumerate() {
             self.epoll.add(&listen.as_raw_fd(), Token(id), Ready::readable(), EpollOpt::edge())?;
         }
@@ -107,7 +108,7 @@ impl Node {
                                 if let WouldBlock = err.kind() {
                                     break;
                                 } else {
-                                    return Err(err)
+                                    return Err(err.into())
                                 }
                             }
                         };

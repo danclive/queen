@@ -1,6 +1,5 @@
 use std::time::Duration;
 use std::collections::{HashMap, HashSet};
-use std::io::{self, ErrorKind::{ConnectionRefused, WouldBlock}};
 use std::thread;
 use std::sync::{
     Arc,
@@ -24,7 +23,7 @@ use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
 use crate::stream::Stream;
 use crate::dict::*;
-use crate::error::ErrorCode;
+use crate::error::{ErrorCode, Result, Error};
 
 pub use callback::Callback;
 
@@ -41,7 +40,7 @@ impl Queen {
         id: MessageId,
         data: T,
         callback: Option<Callback<T>>
-    ) -> io::Result<Queen> {
+    ) -> Result<Queen> {
         let queue = Queue::new()?;
         let run = Arc::new(AtomicBool::new(true));
 
@@ -80,7 +79,7 @@ impl Queen {
         self.run.load(Ordering::Relaxed)
     }
 
-    pub fn connect(&self, attr: Message, capacity: Option<usize>, timeout: Option<Duration>) -> io::Result<Stream<Message>> {
+    pub fn connect(&self, attr: Message, capacity: Option<usize>, timeout: Option<Duration>) -> Result<Stream<Message>> {
         let (stream1, stream2) = Stream::pipe(capacity.unwrap_or(64), attr)?;
 
         let packet = Packet::NewConn(stream1);
@@ -91,7 +90,7 @@ impl Queen {
         log::debug!("Queen::connect: {:?}", ret);
 
         if ret.is_err() {
-            return Err(io::Error::new(ConnectionRefused, "Queen::connect"))
+            return Err(Error::ConnectionRefused("Queen::connect".to_string()))
         }
 
         Ok(stream2)
@@ -131,7 +130,7 @@ impl<T> QueenInner<T> {
         data: T,
         callback: Callback<T>,
         run: Arc<AtomicBool>
-    ) -> io::Result<QueenInner<T>> {
+    ) -> Result<QueenInner<T>> {
         Ok(QueenInner {
             id,
             epoll: Epoll::new()?,
@@ -145,7 +144,7 @@ impl<T> QueenInner<T> {
         })
     }
 
-    fn run(&mut self) -> io::Result<()> {
+    fn run(&mut self) -> Result<()> {
         self.epoll.add(&self.queue, Self::QUEUE_TOKEN, Ready::readable(), EpollOpt::level())?;
 
         while self.run.load(Ordering::Relaxed) {
@@ -165,7 +164,7 @@ impl<T> QueenInner<T> {
         Ok(())
     }
 
-    fn dispatch_queue(&mut self) -> io::Result<()> {
+    fn dispatch_queue(&mut self) -> Result<()> {
         if let Some(packet) = self.queue.pop() {
             match packet {
                 Packet::NewConn(stream) => {
@@ -192,14 +191,14 @@ impl<T> QueenInner<T> {
         Ok(())
     }
 
-    fn dispatch_conn(&mut self, token: usize) -> io::Result<()> {
+    fn dispatch_conn(&mut self, token: usize) -> Result<()> {
         if let Some(conn) = self.sessions.conns.get(token) {
             match conn.recv() {
                 Ok(message) => {
                     self.handle_message(token, message)?;
                 }
                 Err(err) => {
-                    if err.kind() != WouldBlock {
+                    if !matches!(err, Error::Empty(_)) {
                         self.remove_conn(token)?;
                     }
                 } 
@@ -209,7 +208,7 @@ impl<T> QueenInner<T> {
         Ok(())
     }
 
-    fn remove_conn(&mut self, token: usize) -> io::Result<()> {
+    fn remove_conn(&mut self, token: usize) -> Result<()> {
         if self.sessions.conns.contains(token) {
             let conn = self.sessions.conns.remove(token);
             // conn.stream.close();
@@ -249,7 +248,7 @@ impl<T> QueenInner<T> {
         Ok(())
     }
 
-    fn handle_message(&mut self, token: usize, mut message: Message) -> io::Result<()> {
+    fn handle_message(&mut self, token: usize, mut message: Message) -> Result<()> {
         let success = if let Some(recv_fn) = &self.callback.recv_fn {
             recv_fn(&self.sessions.conns[token], &mut message, &self.data)
         } else {
@@ -768,7 +767,7 @@ impl<T> QueenInner<T> {
         }
     }
 
-    fn kill(&mut self, token: usize, mut message: Message) -> io::Result<()> {
+    fn kill(&mut self, token: usize, mut message: Message) -> Result<()> {
         {
             let conn = &self.sessions.conns[token];
 
@@ -1142,14 +1141,14 @@ impl Session {
         }
     }
 
-    pub fn send(&self, message: &mut Option<Message>) -> io::Result<()> {
+    pub fn send(&self, message: &mut Option<Message>) -> Result<()> {
         self.stream.send(message).map(|m| {
             self.send_messages.set(self.send_messages.get() + 1);
             m
         })
     }
 
-    pub fn recv(&self) -> io::Result<Message> {
+    pub fn recv(&self) -> Result<Message> {
         self.stream.recv().map(|m| {
             self.recv_messages.set(self.recv_messages.get() + 1);
             m

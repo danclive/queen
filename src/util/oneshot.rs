@@ -1,222 +1,216 @@
-use std::fmt::{self, Debug};
-use std::sync::{Arc, Condvar, Mutex};
+use std::ptr;
+use std::sync::atomic::{AtomicPtr, Ordering};
 use std::time::Duration;
-use std::io::{self, ErrorKind::{TimedOut, BrokenPipe}};
+use std::os::unix::io::AsRawFd;
+use std::result;
 
-pub fn oneshot<T>() -> (Sender<T>, Receiver<T>) {
-    let inner = Arc::new(Inner::new());
+use queen_io::{Awakener, poll};
 
-    let receiver = Receiver {
-        inner: inner.clone()
-    };
+use crate::error::{Result, Error, SendError, RecvError};
 
-    let sender = Sender {
-        inner,
-        send: false
-    };
-
-    (sender, receiver)
+pub fn channel<T>() -> Result<(Sender<T>, Receiver<T>)> {
+    let (shared0, shared1) = SharedBox::allocate();
+    let wakeup = Awakener::new()?;
+    let tx = Sender { sb: shared0, wakeup: wakeup.clone() };
+    let rx = Receiver { sb: shared1, wakeup };
+    Ok((tx, rx))
 }
 
-struct Inner<T> {
-    payload: Mutex<Option<T>>,
-    cond: Condvar,
-}
-
-impl<T> Inner<T> {
-    fn new() -> Inner<T> {
-        Inner {
-            payload: Mutex::new(None),
-            cond: Condvar::new(),
-        }
-    }
-
-    fn send(&self, t: T) {
-        let mut lock = self.payload.lock().unwrap();
-
-        *lock = Some(t);
-
-        self.cond.notify_all();
-    }
-
-    fn wait(&self) -> T {
-        let mut lock = self.payload.lock().unwrap();
-
-        while lock.is_none() {
-            lock = self.cond.wait(lock).unwrap();
-        }
-
-        lock.take().unwrap()
-    }
-
-    fn wait_timeout(&self, timeout: Duration) -> io::Result<T> {
-        let lock = self.payload.lock().unwrap();
-
-        let (mut lock, result) = self.cond.wait_timeout(lock, timeout).unwrap();
-
-        if result.timed_out() {
-            return Err(io::Error::new(TimedOut, "wait_timeout"))
-        }
-
-        Ok(lock.take().unwrap())
-    }
-}
-
-pub struct Receiver<T> {
-    inner: Arc<Inner<io::Result<T>>>
-}
-
-impl<T> Receiver<T> {
-    pub fn is_ready(&self) -> bool {
-        // relaxed variant
-        Arc::strong_count(&self.inner) == 1
-    }
-
-    pub fn wait(self) -> io::Result<T> {
-        self.inner.wait()
-    }
-
-    pub fn wait_timeout(self, timeout: Duration) -> io::Result<T> {
-        self.inner.wait_timeout(timeout)?
-    }
-
-    pub fn try_recv(self) -> Result<io::Result<T>, Receiver<T>> {
-        match Arc::try_unwrap(self.inner) {
-            Ok(inner) => Ok(inner.wait()),
-            Err(inner) => Err(Receiver { inner }),
-        }
-    }
-}
-impl<T> Debug for Receiver<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Receiver")
-    }
-}
-
+/// The sending-half of an asynchronous oneshot channel.
+#[derive(Debug)]
 pub struct Sender<T> {
-    inner: Arc<Inner<io::Result<T>>>,
-    send: bool
+    sb: SharedBox<T>,
+    wakeup: Awakener
 }
 
 impl<T> Sender<T> {
-    pub fn is_needed(&self) -> bool {
-        // relaxed variant
-        Arc::strong_count(&self.inner) == 2
-    }
+    pub fn send(mut self, t: T) -> result::Result<(), SendError<T>> {
+        let new = into_raw_ptr(t);
+        let old = self.sb.swap(new);
 
-    pub fn send(mut self, t: T) {
-        self.inner.send(Ok(t));
-        self.send = true;
-    }
-}
-
-impl<T> Debug for Sender<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Sender")
+        if old == mark_empty() {
+            // Secceeded.
+            self.sb.abandon();
+            let _ = self.wakeup.wakeup();
+            Ok(())
+        } else {
+            // Failed; the receiver already has dropped.
+            debug_assert_eq!(old, mark_dropped());
+            let t = from_raw_ptr(self.sb.load());
+            self.sb.release();
+            Err(SendError::Disconnected(t))
+        }
     }
 }
 
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
-        if !self.send {
-            self.inner.send(Err(io::Error::new(BrokenPipe, "Drop for Sender")));
+        if self.sb.is_available() {
+            // This channel has not been used.
+            let old = self.sb.swap(mark_dropped());
+            if old == mark_dropped() {
+                // The peer (i.e., receiver) dropped first.
+                self.sb.release();
+            }
+        }
+        let _ = self.wakeup.wakeup();
+    }
+}
+
+unsafe impl<T: Send> Send for Sender<T> {}
+
+/// The receiving-half of an asynchronous oneshot channel.
+#[derive(Debug)]
+pub struct Receiver<T> {
+    sb: SharedBox<T>,
+    wakeup: Awakener
+}
+
+impl<T> Receiver<T> {
+    /// Attempts to return a pending value on this receiver without blocking.
+    pub fn try_recv(&mut self) -> result::Result<T, RecvError> {
+        if !self.sb.is_available() {
+            return Err(RecvError::Disconnected);
+        }
+
+        let ptr = self.sb.load();
+        if ptr == mark_empty() {
+            Err(RecvError::Empty)
+        } else if ptr == mark_dropped() {
+            self.sb.release();
+            Err(RecvError::Disconnected)
+        } else {
+            let t = from_raw_ptr(ptr);
+            self.sb.release();
+            Ok(t)
+        }
+    }
+
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<()> {
+        if poll::wait(self.wakeup.as_raw_fd(), poll::Ready::readable(), timeout)?.is_readable() {
+            return Ok(())
+        }
+
+        Err(Error::TimedOut("Receiver.wait".to_string()))
+    }
+}
+
+impl<T> Drop for Receiver<T> {
+    fn drop(&mut self) {
+        if self.sb.is_available() {
+            let old = self.sb.swap(mark_dropped());
+            if old != mark_empty() {
+                // The peer (i.e., sender) dropped first.
+                if old != mark_dropped() {
+                    // The channel has an unreceived item.
+                    let _t = from_raw_ptr(old);
+                }
+                self.sb.release();
+            }
         }
     }
 }
 
+unsafe impl<T: Send> Send for Receiver<T> {}
+
+#[derive(Debug, Clone)]
+struct SharedBox<T>(*mut AtomicPtr<T>);
+
+impl<T> SharedBox<T> {
+    #[inline]
+    pub fn allocate() -> (Self, Self) {
+        let ptr = into_raw_ptr(AtomicPtr::default());
+        (SharedBox(ptr), SharedBox(ptr))
+    }
+
+    #[inline]
+    pub fn release(&mut self) {
+        debug_assert_ne!(self.0, ptr::null_mut());
+        let _ = from_raw_ptr(self.0);
+        self.0 = ptr::null_mut();
+    }
+
+    #[inline]
+    pub fn abandon(&mut self) {
+        debug_assert_ne!(self.0, ptr::null_mut());
+        self.0 = ptr::null_mut();
+    }
+
+    #[inline]
+    pub fn is_available(&self) -> bool {
+        !self.0.is_null()
+    }
+
+    #[inline]
+    pub fn swap(&self, value: *mut T) -> *mut T {
+        debug_assert_ne!(self.0, ptr::null_mut());
+        unsafe { &*self.0 }.swap(value, Ordering::SeqCst)
+    }
+
+    #[inline]
+    pub fn load(&self) -> *mut T {
+        unsafe { &*self.0 }.load(Ordering::SeqCst)
+    }
+}
+
+unsafe impl<T: Send> Send for SharedBox<T> {}
+
+#[inline]
+fn mark_dropped<T>() -> *mut T {
+    static MARK_DROPPED: &u8 = &0;
+    MARK_DROPPED as *const _ as _
+}
+
+#[inline]
+fn mark_empty<T>() -> *mut T {
+    ptr::null_mut()
+}
+
+#[inline]
+fn into_raw_ptr<T>(t: T) -> *mut T {
+    Box::into_raw(Box::new(t))
+}
+
+#[inline]
+fn from_raw_ptr<T>(ptr: *mut T) -> T {
+    unsafe { *Box::from_raw(ptr) }
+}
+
 #[cfg(test)]
-mod tests {
-    use super::oneshot;
-    use std::thread;
-    use std::time::Duration;
-    use std::io::ErrorKind::TimedOut;
+mod test {
+    use super::*;
 
     #[test]
-    fn test_wait_setting() {
-        let (tx, rx) = oneshot();
-
-        let h = thread::spawn(move || {
-            thread::sleep(Duration::from_millis(500));
-            tx.send(5);
-        });
-
-        assert_eq!(rx.wait().unwrap(), 5);
-
-        h.join().unwrap();
-    }
-    
-    #[test]
-    fn test_wait_getting() {
-        let (tx, rx) = oneshot();
-
-        let h = thread::spawn(move || {
-            tx.send(3);
-        });
-
-        thread::sleep(Duration::from_millis(500));
-
-        assert_eq!(rx.wait().unwrap(), 3);
-
-        h.join().unwrap();
-    }
-    
-    #[test]
-    fn test_drop_setter() {
-        let (tx, rx) = oneshot::<i32>();
-
-        let h = thread::spawn(move || {
-            let _tx = tx;
-        });
-
-        thread::sleep(Duration::from_millis(500));
-
-        assert!(rx.wait().is_err());
-
-        h.join().unwrap();
+    fn send_and_recv_succeeds() {
+        let (tx, mut rx) = channel().unwrap();
+        tx.send(1).unwrap();
+        assert_eq!(rx.try_recv(), Ok(1));
     }
 
     #[test]
-    fn test_wait_timeout() {
-        let (tx, rx) = oneshot::<i32>();
-
-        let h = thread::spawn(move || {
-            thread::sleep(Duration::from_millis(500));
-            tx.send(123);
-        });
-
-        let ret = rx.wait_timeout(Duration::from_millis(100));
-
-        assert!(ret.is_err());
-        assert!(ret.err().unwrap().kind() == TimedOut);
-
-        h.join().unwrap();
-    }
-
-    #[test]
-    fn test_wait_timeout2() {
-        let (tx, rx) = oneshot::<i32>();
-
-        let h = thread::spawn(move || {
-            thread::sleep(Duration::from_millis(100));
-            tx.send(123);
-        });
-
-        let ret = rx.wait_timeout(Duration::from_millis(500));
-
-        assert!(ret.is_ok());
-        assert!(ret.unwrap() == 123);
-
-        h.join().unwrap();
-    }
-
-    #[test]
-    fn is_needed() {
-        let (tx, rx) = oneshot::<i32>();
-
-        assert_eq!(tx.is_needed(), true);
-
+    fn send_succeeds() {
+        let (tx, rx) = channel().unwrap();
+        tx.send(1).unwrap();
         drop(rx);
+    }
 
-        assert_eq!(tx.is_needed(), false);
+    #[test]
+    fn send_fails() {
+        let (tx, rx) = channel().unwrap();
+        drop(rx);
+        assert_eq!(tx.send(1), Err(SendError::Disconnected(1)));
+    }
+
+    #[test]
+    fn recv_fails() {
+        let (tx, mut rx) = channel::<()>().unwrap();
+        assert_eq!(rx.try_recv(), Err(RecvError::Empty));
+        drop(tx);
+        assert_eq!(rx.try_recv(), Err(RecvError::Disconnected));
+    }
+
+    #[test]
+    fn unused() {
+        channel::<()>().unwrap();
     }
 }

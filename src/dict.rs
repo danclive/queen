@@ -26,8 +26,8 @@ pub const ADDR:      &str = "_addr";
 pub const ID:        &str = "_id";
 
 // error
-pub const OK:    &str = "ok";
-pub const ERROR: &str = "error";
+pub const OK:    &str = "_ok";
+pub const ERROR: &str = "_error";
 
 // client event
 pub const CLIENT_READY:  &str = "_ctre";

@@ -4,13 +4,13 @@ use std::sync::{
 };
 
 use std::thread;
-use std::io;
 use std::net::ToSocketAddrs;
 
 use crate::net::{NetWork, Packet, CryptoOptions};
 use crate::Stream;
 use crate::dict::*;
 use crate::nson::{msg, Message};
+use crate::error::Result;
 
 use queen_io::tcp::TcpStream;
 use queen_io::queue::mpsc::Queue;
@@ -22,7 +22,7 @@ pub struct Port {
 }
 
 impl Port {
-    pub fn new() -> io::Result<Port> {
+    pub fn new() -> Result<Port> {
         let port = Port {
             queue: Queue::new()?,
             run: Arc::new(AtomicBool::new(true))
@@ -55,7 +55,7 @@ impl Port {
         addr: A,
         crypto_options: Option<CryptoOptions>,
         capacity: Option<usize>
-    ) -> io::Result<Stream<Message>> {
+    ) -> Result<Stream<Message>> {
         let net_stream = TcpStream::connect(addr)?;
 
         let attr = msg!{

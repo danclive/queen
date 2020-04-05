@@ -1,4 +1,4 @@
-use std::io::{self, ErrorKind::{WouldBlock, BrokenPipe, TimedOut}};
+use std::io;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering}
@@ -15,6 +15,8 @@ use queen_io::poll;
 
 use nson::Message;
 
+use crate::error::{Result, Error};
+
 pub use ext::StreamExt;
 
 mod ext;
@@ -25,7 +27,7 @@ pub struct Stream<T: Send> {
 }
 
 impl<T: Send> Stream<T> {
-    pub fn pipe(capacity: usize, attr: Message) -> io::Result<(Stream<T>, Stream<T>)> {
+    pub fn pipe(capacity: usize, attr: Message) -> Result<(Stream<T>, Stream<T>)> {
         let queue1 = Queue::with_cache(capacity)?;
         let queue2 = Queue::with_cache(capacity)?;
 
@@ -72,11 +74,11 @@ impl<T: Send> Stream<T> {
         &self.tx.attr
     }
 
-    pub fn send(&self, data: &mut Option<T>) -> io::Result<()> {
+    pub fn send(&self, data: &mut Option<T>) -> Result<()> {
         self.tx.send(data)
     }
 
-    pub fn recv(&self) -> io::Result<T> {
+    pub fn recv(&self) -> Result<T> {
         self.rx.recv()
     }
 
@@ -88,7 +90,7 @@ impl<T: Send> Stream<T> {
         self.tx.is_close()
     }
 
-    pub fn wait(&self, timeout: Option<Duration>) -> io::Result<T> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<T> {
         self.rx.wait(timeout)
     }
 }
@@ -109,7 +111,7 @@ impl<T: Send> Evented for Stream<T> {
 
 pub struct StreamTx<T: Send> {
     capacity: usize,
-    tx: Queue<io::Result<T>>,
+    tx: Queue<Result<T>>,
     close: Arc<AtomicBool>,
     attr: Message
 }
@@ -123,17 +125,17 @@ impl<T: Send> StreamTx<T> {
         &self.attr
     }
 
-    pub fn send(&self, data: &mut Option<T>) -> io::Result<()> {
+    pub fn send(&self, data: &mut Option<T>) -> Result<()> {
         if !self.is_close() {
             self.tx.push(Ok(data.take().expect("The data sent must not be None")));
             return Ok(())
         }
 
-        Err(io::Error::new(BrokenPipe, "Stream::send"))
+        Err(Error::Disconnected("Stream::send".to_string()))
     }
 
     pub fn close(&self) {
-        self.tx.push(Err(io::Error::new(BrokenPipe, "Stream::close")));
+        self.tx.push(Err(Error::Disconnected("Stream::close".to_string())));
         self.close.store(true, Ordering::Relaxed);
     }
 
@@ -158,7 +160,7 @@ impl<T: Send> Drop for StreamTx<T> {
 
 pub struct StreamRx<T: Send> {
     capacity: usize,
-    rx: Queue<io::Result<T>>,
+    rx: Queue<Result<T>>,
     close: Arc<AtomicBool>,
     attr: Message
 }
@@ -172,10 +174,10 @@ impl<T: Send> StreamRx<T> {
         &self.attr
     }
 
-    pub fn recv(&self) -> io::Result<T> {
+    pub fn recv(&self) -> Result<T> {
         match self.rx.pop() {
             Some(data) => data,
-            None => Err(io::Error::new(WouldBlock, "Stream::recv"))
+            None => Err(Error::Empty("Stream::recv".to_string()))
         }
     }
 
@@ -195,18 +197,12 @@ impl<T: Send> StreamRx<T> {
         self.rx.pending()
     }
 
-    pub fn wait(&self, timeout: Option<Duration>) -> io::Result<T> {
-        let mut events = poll::Events::new();
-
-        events.put(self.rx.as_raw_fd(), poll::Ready::readable());
-
-        poll::poll(&mut events, timeout)?;
-
-        if events.get(0).unwrap().readiness().is_readable() {
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<T> {
+        if poll::wait(self.rx.as_raw_fd(), poll::Ready::readable(), timeout)?.is_readable() {
             return self.recv()
         }
 
-        Err(io::Error::new(TimedOut, "Stream::wait"))
+        Err(Error::TimedOut("Stream::wait".to_string()))
     }
 }
 
@@ -235,8 +231,9 @@ mod tests {
     use super::Stream;
     use std::thread;
     use std::time::Duration;
-    use std::io::ErrorKind::{TimedOut, BrokenPipe};
+
     use nson::msg;
+    use crate::error::Error;
 
     #[test]
     fn send() {
@@ -271,7 +268,7 @@ mod tests {
         match ret {
             Ok(_) => (),
             Err(err) => {
-                assert!(err.kind() == TimedOut)
+                assert!(matches!(err, Error::TimedOut(_)));
             }
         }
 
@@ -287,7 +284,7 @@ mod tests {
         match ret {
             Ok(_) => (),
             Err(err) => {
-                assert!(err.kind() == BrokenPipe)
+                assert!(matches!(err, Error::Disconnected(_)));
             }
         }
 

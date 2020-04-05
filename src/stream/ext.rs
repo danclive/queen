@@ -2,13 +2,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::thread;
-use std::io::{self, ErrorKind::{WouldBlock, TimedOut, NotConnected}};
 
 use crate::stream::{Stream, StreamTx};
 use crate::nson::{msg, Message, MessageId};
 use crate::dict::*;
-use crate::util::oneshot::{oneshot, Sender};
-use crate::error::{Result, ErrorCode};
+use crate::util::oneshot::{channel, Sender};
+use crate::error::{Result, ErrorCode, Error};
 
 pub struct StreamExt {
     session: Arc<Mutex<StreamExtSession>>
@@ -55,9 +54,9 @@ impl StreamExt {
                                                 session.auth = true;
                                             }
 
-                                            sending_tx.send(Ok(message));
+                                            let _ = sending_tx.send(Ok(message));
                                         } else {
-                                            sending_tx.send(Err(ErrorCode::from_i32(ok).into()));
+                                            let _ = sending_tx.send(Err(ErrorCode::from_i32(ok).into()));
                                         }
                                     }
                                 }
@@ -77,7 +76,7 @@ impl StreamExt {
                         }
                     }
                     Err(err) => {
-                        if let WouldBlock | TimedOut = err.kind() {
+                        if matches!(err, Error::Empty(_) | Error::TimedOut(_)) {
                             continue;
                         }
 
@@ -250,13 +249,13 @@ impl StreamExt {
             id
         };
 
-        let (tx, rx) = oneshot::<Result<Message>>();
+        let (tx, mut rx) = channel::<Result<Message>>()?;
 
         {
             let mut session = self.session.lock().unwrap();
 
             if session.stream_tx.is_close() {
-                return Err(io::Error::new(NotConnected, "StreamExt::_send").into())
+                return Err(Error::NotConnected("StreamExt::_send".to_string()))
             }
 
             session.sending.insert(id.clone(), tx);
@@ -270,21 +269,26 @@ impl StreamExt {
 
         let timeout = timeout.unwrap_or_else(|| Duration::from_secs(60));
 
-        let ret = rx.wait_timeout(timeout);
-
-        if ret.is_err() {
+        rx.wait(Some(timeout)).map_err(|err| {
             let mut session = self.session.lock().unwrap();
             session.sending.remove(&id);
-        }
 
-        ret?
+            err
+        })?;
+
+        rx.try_recv().map_err(|err| {
+            let mut session = self.session.lock().unwrap();
+            session.sending.remove(&id);
+
+            err
+        })?
     }
 
     fn _send_no_ack(&self, message: Message) -> Result<()> {
         let session = self.session.lock().unwrap();
 
         if session.stream_tx.is_close() {
-            return Err(io::Error::new(NotConnected, "StreamExt::_send_no_ack").into())
+            return Err(Error::NotConnected("StreamExt::_send_no_ack".to_string()))
         }
 
         while session.stream_tx.is_full() {

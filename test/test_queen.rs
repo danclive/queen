@@ -1,12 +1,11 @@
 use std::time::Duration;
 use std::thread;
-use std::io::ErrorKind::ConnectionRefused;
 
 use nson::{msg, MessageId};
 
 use queen::{Queen, Callback};
 use queen::dict::*;
-use queen::error::ErrorCode;
+use queen::error::{ErrorCode, Error};
 
 #[test]
 fn conn() {
@@ -31,7 +30,7 @@ fn conn() {
     match ret {
         Ok(_) => unreachable!(),
         Err(err) => {
-            assert!(err.kind() == ConnectionRefused);
+            assert!(matches!(err, Error::ConnectionRefused(_)));
         }
     }
 }

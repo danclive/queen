@@ -8,8 +8,23 @@ use crate::dict::*;
 
 #[derive(Debug)]
 pub enum Error {
+    NotFound(String),
+    PermissionDenied(String),
+    ConnectionRefused(String),
+    ConnectionReset(String),
+    ConnectionAborted(String),
+    NotConnected(String),
+    BrokenPipe(String),
+    AlreadyExists(String),
+    InvalidInput(String),
+    InvalidData(String),
+    TimedOut(String),
+    Empty(String),
+    Disconnected(String),
+    Other(String),
     IoError(io::Error),
-    ErrorCode(ErrorCode)
+    ErrorCode(ErrorCode),
+    RecvError(RecvError)
 }
 
 pub type Result<T> = result::Result<T, Error>;
@@ -26,11 +41,32 @@ impl From<ErrorCode> for Error {
     }
 }
 
+impl From<RecvError> for Error {
+    fn from(err: RecvError) -> Error {
+        Error::RecvError(err)
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            Error::NotFound(ref inner) => write!(fmt, "NotFound({})", inner),
+            Error::PermissionDenied(ref inner) => write!(fmt, "PermissionDenied({})", inner),
+            Error::ConnectionRefused(ref inner) => write!(fmt, "ConnectionRefused({})", inner),
+            Error::ConnectionReset(ref inner) => write!(fmt, "ConnectionReset({})", inner),
+            Error::ConnectionAborted(ref inner) => write!(fmt, "ConnectionAborted({})", inner),
+            Error::NotConnected(ref inner) => write!(fmt, "NotConnected({})", inner),
+            Error::BrokenPipe(ref inner) => write!(fmt, "BrokenPipe({})", inner),
+            Error::AlreadyExists(ref inner) => write!(fmt, "AlreadyExists({})", inner),
+            Error::InvalidInput(ref inner) => write!(fmt, "InvalidInput({})", inner),
+            Error::InvalidData(ref inner) => write!(fmt, "InvalidData({})", inner),
+            Error::TimedOut(ref inner) => write!(fmt, "TimeOut({})", inner),
+            Error::Disconnected(ref inner) => write!(fmt, "Disconnected({})", inner),
+            Error::Empty(ref inner) => write!(fmt, "Empty({})", inner),
+            Error::Other(ref inner) => write!(fmt, "Other({})", inner),
             Error::IoError(ref inner) => inner.fmt(fmt),
-            Error::ErrorCode(ref inner) => inner.fmt(fmt)
+            Error::ErrorCode(ref inner) => inner.fmt(fmt),
+            Error::RecvError(ref inner) => inner.fmt(fmt)
         }
     }
 }
@@ -136,9 +172,54 @@ impl ErrorCode {
     }
 }
 
-
 impl fmt::Display for ErrorCode {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "code: {}, error: {}", self.code(), self.to_str())
     }
 }
+
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum SendError<T> {
+    Full(T),
+    Disconnected(T),
+}
+
+impl<T> fmt::Debug for SendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            SendError::Full(..) => "Full(..)".fmt(f),
+            SendError::Disconnected(..) => "Disconnected(..)".fmt(f),
+        }
+    }
+}
+
+impl<T> fmt::Display for SendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            SendError::Full(..) => "sending on a full channel".fmt(f),
+            SendError::Disconnected(..) => "sending on a closed channel".fmt(f),
+        }
+    }
+}
+
+impl<T> error::Error for SendError<T> {}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum RecvError {
+    Empty,
+    Disconnected,
+    TimedOut
+}
+
+impl fmt::Display for RecvError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            RecvError::Empty => "receiving on an empty channel".fmt(f),
+            RecvError::Disconnected => "receiving on a closed channel".fmt(f),
+            RecvError::TimedOut => "receiving timeout".fmt(f)
+        }
+    }
+}
+
+impl error::Error for RecvError {}
