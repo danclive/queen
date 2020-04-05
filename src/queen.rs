@@ -910,10 +910,6 @@ impl<T> QueenInner<T> {
             }
         }
 
-        if let Some(client_id) = &self.sessions.conns[token].id {
-            message.insert(FROM, client_id.clone());
-        }
-
         // labels
         let mut labels = HashSet::new();
 
@@ -939,6 +935,10 @@ impl<T> QueenInner<T> {
 
                 return
             }
+        }
+
+        if let Some(client_id) = &self.sessions.conns[token].id {
+            message.insert(FROM, client_id.clone());
         }
 
         macro_rules! send {
@@ -1042,6 +1042,8 @@ impl<T> QueenInner<T> {
         }
 
         if no_consumers {
+            message.remove(FROM);
+
             ErrorCode::NoConsumers.insert_message(&mut message);
 
             self.send_message(&self.sessions.conns[token], message);

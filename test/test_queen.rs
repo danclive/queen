@@ -135,6 +135,7 @@ fn attach_detach() {
     let recv = stream1.recv().unwrap();
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
+    assert!(recv.get(FROM).is_none());
 
     // attach
     let _ = stream2.send(&mut Some(msg!{
@@ -166,6 +167,7 @@ fn attach_detach() {
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get(FROM).is_some());
 
     // detach
     let _ = stream2.send(&mut Some(msg!{
@@ -248,11 +250,13 @@ fn label() {
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get(FROM).is_some());
 
     let recv = stream2.recv().unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get(FROM).is_some());
 
     // send with label
     let _ = stream3.send(&mut Some(msg!{
@@ -453,11 +457,13 @@ fn labels() {
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get(FROM).is_some());
 
     let recv = stream2.recv().unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get(FROM).is_some());
 
     // send with label
     let _ = stream3.send(&mut Some(msg!{
@@ -790,11 +796,13 @@ fn share() {
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get(FROM).is_some());
 
     let recv = stream2.recv().unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get(FROM).is_some());
 
     // send with share
     let _ = stream3.send(&mut Some(msg!{
@@ -862,11 +870,13 @@ fn share() {
 
     assert!(recv.get_str(CHAN).unwrap() == "bbb");
     assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get(FROM).is_some());
 
     let recv = stream2.recv().unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == "bbb");
     assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get(FROM).is_some());
 
     assert!(stream3.recv().is_err());
 
