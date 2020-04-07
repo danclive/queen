@@ -71,7 +71,7 @@ impl Queen {
         Ok(queen)
     }
 
-    pub fn stop(&mut self) {
+    pub fn stop(&self) {
         self.run.store(false, Ordering::Relaxed);
     }
 

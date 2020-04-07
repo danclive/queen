@@ -88,6 +88,14 @@ impl Node {
         self.access_fn = Some(Arc::new(Box::new(f)))
     }
 
+    pub fn stop(&self) {
+        self.run.store(false, Ordering::Relaxed);
+    }
+
+    pub fn is_run(&self) -> bool {
+        self.run.load(Ordering::Relaxed)
+    }
+
     pub fn run(&mut self) -> Result<()> {
         for (id, listen) in self.listens.iter().enumerate() {
             self.epoll.add(&listen.as_raw_fd(), Token(id), Ready::readable(), EpollOpt::edge())?;

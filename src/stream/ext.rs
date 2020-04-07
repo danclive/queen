@@ -82,11 +82,6 @@ impl StreamExt {
 
                         log::error!("stream_ext: {}, attr: {}", err, stream_rx.attr());
 
-                        let mut session = stream_ext2.session.lock().unwrap();
-                        session.sending.clear();
-
-                        drop(session);
-
                         stream_ext2.close();
 
                         return
@@ -220,6 +215,7 @@ impl StreamExt {
     pub fn close(&self) {
         let mut session = self.session.lock().unwrap();
         session.stream_tx.close();
+        session.sending.clear();
 
         let on_close = session.on_close.take();
 

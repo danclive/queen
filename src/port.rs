@@ -42,7 +42,7 @@ impl Port {
         Ok(port)
     }
 
-    pub fn stop(&mut self) {
+    pub fn stop(&self) {
         self.run.store(false, Ordering::Relaxed);
     }
 
