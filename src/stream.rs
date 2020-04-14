@@ -5,6 +5,7 @@ use std::sync::{
 };
 use std::time::Duration;
 use std::os::unix::io::AsRawFd;
+use std::marker::PhantomData;
 
 use queen_io::{
     epoll::{Epoll, Token, Ready, EpollOpt, Evented},
@@ -38,13 +39,15 @@ impl<T: Send> Stream<T> {
                 capacity,
                 tx: queue1.clone(),
                 close: close.clone(),
-                attr: attr.clone()
+                attr: attr.clone(),
+                _not_sync: PhantomData
             },
             rx: StreamRx {
                 capacity,
                 rx: queue2.clone(),
                 close: close.clone(),
-                attr: attr.clone()
+                attr: attr.clone(),
+                _not_sync: PhantomData
             }
         };
 
@@ -53,13 +56,15 @@ impl<T: Send> Stream<T> {
                 capacity,
                 tx: queue2,
                 close: close.clone(),
-                attr: attr.clone()
+                attr: attr.clone(),
+                _not_sync: PhantomData
             },
             rx: StreamRx {
                 capacity,
                 rx: queue1,
                 close,
-                attr
+                attr,
+                _not_sync: PhantomData
             }
         };
 
@@ -113,7 +118,8 @@ pub struct StreamTx<T: Send> {
     capacity: usize,
     tx: Queue<Result<T>>,
     close: Arc<AtomicBool>,
-    attr: Message
+    attr: Message,
+    _not_sync: PhantomData<*const ()>
 }
 
 impl<T: Send> StreamTx<T> {
@@ -162,7 +168,8 @@ pub struct StreamRx<T: Send> {
     capacity: usize,
     rx: Queue<Result<T>>,
     close: Arc<AtomicBool>,
-    attr: Message
+    attr: Message,
+    _not_sync: PhantomData<*const ()>
 }
 
 impl<T: Send> StreamRx<T> {
@@ -225,6 +232,9 @@ impl<T: Send> Drop for StreamRx<T> {
         self.close()
     }
 }
+
+unsafe impl<T: Send> Send for StreamTx<T> {}
+unsafe impl<T: Send> Send for StreamRx<T> {}
 
 #[cfg(test)]
 mod tests {
