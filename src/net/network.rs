@@ -162,7 +162,7 @@ impl NetWork {
                     self.epoll.add(
                         &net_stream,
                         Token(id2),
-                        Ready::readable() | Ready::hup(),
+                        Ready::readable() | Ready::hup() | Ready::error(),
                         EpollOpt::edge()
                     )?;
 
@@ -276,7 +276,7 @@ impl NetConn {
         Self {
             id,
             stream,
-            interest: Ready::readable() | Ready::hup(),
+            interest: Ready::readable() | Ready::hup() | Ready::error(),
             r_buffer: Vec::with_capacity(1024),
             w_buffer: VecDeque::new(),
             hand: false,

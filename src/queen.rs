@@ -346,22 +346,22 @@ impl<T> QueenInner<T> {
         if let Some(client_id) = message.get(CLIENT_ID) {
             if let Some(client_id) = client_id.as_message_id() {
                 if let Some(other_token) = self.sessions.client_ids.get(client_id) {
-                        if *other_token != token {
-                            ErrorCode::DuplicateClientId.insert_message(&mut message);
+                    if *other_token != token {
+                        ErrorCode::DuplicateClientId.insert_message(&mut message);
 
-                            self.send_message(&self.sessions.conns[token], message);
+                        self.send_message(&self.sessions.conns[token], message);
 
-                            return
-                        }
+                        return
                     }
+                }
 
-                    if let Some(client_id) = &conn.id {
-                        self.sessions.client_ids.remove(client_id);
-                    }
+                if let Some(client_id) = &conn.id {
+                    self.sessions.client_ids.remove(client_id);
+                }
 
-                    self.sessions.client_ids.insert(client_id.clone(), token);
+                self.sessions.client_ids.insert(client_id.clone(), token);
 
-                    conn.id = Some(client_id.clone());
+                conn.id = Some(client_id.clone());
             } else {
                 ErrorCode::InvalidClientIdFieldType.insert_message(&mut message);
 

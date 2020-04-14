@@ -32,6 +32,10 @@ pub struct Node {
     listens: Vec<TcpListener>,
     rand: SmallRng,
     access_fn: Option<AccessFn>,
+    pub tcp_keep_alive: bool,
+    pub tcp_keep_idle: u32,
+    pub tcp_keep_intvl: u32,
+    pub tcp_keep_cnt: u32,
     pub run: Arc<AtomicBool>
 }
 
@@ -78,6 +82,10 @@ impl Node {
             listens,
             rand: SmallRng::from_entropy(),
             access_fn: None,
+            tcp_keep_alive: true,
+            tcp_keep_idle: 30,
+            tcp_keep_intvl: 5,
+            tcp_keep_cnt: 3,
             run
         })
     }
@@ -126,10 +134,10 @@ impl Node {
                             SECURE: self.access_fn.is_some()
                         };
 
-                        socket.set_keep_alive(true)?; // 开启keepalive属性
-                        socket.set_keep_idle(60)?; // 如该连接在60秒内没有任何数据往来,则进行探测
-                        socket.set_keep_intvl(5)?; // 探测时发包的时间间隔为5秒
-                        socket.set_keep_cnt(3)?; // 探测尝试的次数.如果第1次探测包就收到响应了,则后2次的不再发
+                        socket.set_keep_alive(self.tcp_keep_alive)?;
+                        socket.set_keep_idle(self.tcp_keep_idle as i32)?;
+                        socket.set_keep_intvl(self.tcp_keep_intvl as i32)?;
+                        socket.set_keep_cnt(self.tcp_keep_cnt as i32)?;
 
                         match self.queen.connect(attr, None, None) {
                             Ok(stream) => {
