@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.7.2"
+version       = "0.7.3"
 license       = "MIT"
 authors       = ["danclive <dangcheng@hotmail.com>"]
 description   = "message queue"
@@ -30,7 +30,7 @@ slab = "0.4"
 ring = "0.16"
 
 [dev-dependencies]
-queen-log = "0.2"
+queen-log = "0.3"
 
 [[test]]
 name = "test"

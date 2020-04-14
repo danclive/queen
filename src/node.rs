@@ -122,7 +122,8 @@ impl Node {
                         };
 
                         let attr = msg!{
-                            ADDR: addr.to_string()
+                            ADDR: addr.to_string(),
+                            SECURE: self.access_fn.is_some()
                         };
 
                         socket.set_keep_alive(true)?; // 开启keepalive属性

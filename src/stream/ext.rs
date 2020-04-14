@@ -93,6 +93,11 @@ impl StreamExt {
         stream_ext
     }
 
+    pub fn attr(&self) -> Message {
+        let session = self.session.lock().unwrap();
+        session.stream_tx.attr().clone()
+    }
+
     pub fn auth(&self, mut message: Message) -> Result<Message> {
         message.insert(CHAN, AUTH);
         self._send(message, None)

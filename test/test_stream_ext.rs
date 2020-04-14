@@ -127,7 +127,7 @@ fn stream_over_port() {
     // start port
     let port = Port::new().unwrap();
 
-    let stream2 = port.connect(addr, None, None).unwrap();
+    let stream2 = port.connect(addr, msg!{}, None, None).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 
@@ -241,7 +241,7 @@ fn stream_over_port_secure() {
         secret: "99557df09590ad6043ceefd1".to_string()
     };
 
-    let stream2 = port.connect(addr, Some(crypto_options), None).unwrap();
+    let stream2 = port.connect(addr, msg!{}, Some(crypto_options), None).unwrap();
 
     thread::sleep(Duration::from_secs(1));
 

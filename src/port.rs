@@ -53,16 +53,20 @@ impl Port {
     pub fn connect<A: ToSocketAddrs>(
         &self,
         addr: A,
+        attr: Message,
         crypto_options: Option<CryptoOptions>,
         capacity: Option<usize>
     ) -> Result<Stream<Message>> {
         let net_stream = TcpStream::connect(addr)?;
 
-        let attr = msg!{
-            ADDR: net_stream.peer_addr()?.to_string()
+        let mut attr2 = msg!{
+            ADDR: net_stream.peer_addr()?.to_string(),
+            SECURE: crypto_options.is_some()
         };
 
-        let (stream1, stream2) = Stream::pipe(capacity.unwrap_or(64), attr).unwrap();
+        attr2.extend(attr);
+
+        let (stream1, stream2) = Stream::pipe(capacity.unwrap_or(64), attr2).unwrap();
 
         self.queue.push(Packet::NewConn {
             net_stream,
