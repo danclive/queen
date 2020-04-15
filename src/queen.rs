@@ -233,19 +233,22 @@ impl<T> QueenInner<T> {
                 remove_fn(&conn, &self.data);
             }
 
+            // 这里发一个事件，表示有 CLIENT 断开
+            // 注意，只有在 CLIENT_READY 和 CLIENT_BREAK 这两个事件才会返回
+            // CLIENT 的 LABEL 和 ATTR
             // client event
             // {
             //     CHAN: CLIENT_BREAK,
-            //     CLIENT_ID: $client_id
+            //     CLIENT_ID: $client_id,
+            //     LABEL: $label,
+            //     ATTR: $attr
             // }
-            let mut event_message = msg!{
-                CHAN: CLIENT_BREAK
+            let event_message = msg!{
+                CHAN: CLIENT_BREAK,
+                CLIENT_ID: conn.id,
+                LABEL: conn.label.clone(),
+                ATTR: conn.stream.attr().clone()
             };
-
-            if let Some(client_id) = conn.id {
-                self.sessions.client_ids.remove(&client_id);
-                event_message.insert(CLIENT_ID, client_id);
-            }
 
             self.relay_super_message(token, CLIENT_BREAK, event_message);
         }
@@ -316,6 +319,9 @@ impl<T> QueenInner<T> {
 
     fn auth(&mut self, token: usize, mut message: Message) {
         let success = if let Some(auth_fn) = &self.callback.auth_fn {
+            // 这里应该验证自定义字段的合法性
+            // 这里应该验证超级用户的合法性
+            // 这里应该验证 CLIENT_ID 的合法性
             auth_fn(&self.sessions.conns[token], &mut message, &self.data)
         } else {
             true
@@ -331,9 +337,15 @@ impl<T> QueenInner<T> {
 
         let mut conn = &mut self.sessions.conns[token];
 
+        // 这两个临时变量是为了防止在认证失败时修改这两个属性值
+        let mut tmp_supe = false;
+        let mut tmp_label = None;
+
+        // SUPER
         if let Some(s) = message.get(SUPER) {
+            // SUPER 字段的值只能为 bool
             if let Some(s) = s.as_bool() {
-                conn.supe = s;
+                tmp_supe = s;
             } else {
                 ErrorCode::InvalidSuperFieldType.insert_message(&mut message);
 
@@ -343,9 +355,26 @@ impl<T> QueenInner<T> {
             }
         }
 
+        // LABEL
+        if let Some(label) = message.get(LABEL) {
+            // LABEL 字段的值只能为 Message
+            if let Some(label) = label.as_message() {
+                tmp_label = Some(label.clone());
+            } else {
+                ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+
+                self.send_message(&self.sessions.conns[token], message);
+
+                return
+            }
+        }
+
+        // CLIENT_ID
         if let Some(client_id) = message.get(CLIENT_ID) {
+            // CLIENT_ID 的类型必须为 MessageId
             if let Some(client_id) = client_id.as_message_id() {
                 if let Some(other_token) = self.sessions.client_ids.get(client_id) {
+                    // CLIENT ID 不能重复，且不能挤掉已存在的客户端
                     if *other_token != token {
                         ErrorCode::DuplicateClientId.insert_message(&mut message);
 
@@ -355,13 +384,11 @@ impl<T> QueenInner<T> {
                     }
                 }
 
-                if let Some(client_id) = &conn.id {
-                    self.sessions.client_ids.remove(client_id);
-                }
-
+                // 认证时, 可以改变 CLIENT_ID
+                self.sessions.client_ids.remove(client_id);
                 self.sessions.client_ids.insert(client_id.clone(), token);
+                conn.id = client_id.clone();
 
-                conn.id = Some(client_id.clone());
             } else {
                 ErrorCode::InvalidClientIdFieldType.insert_message(&mut message);
 
@@ -369,16 +396,22 @@ impl<T> QueenInner<T> {
 
                 return
             }
-        } else if let Some(client_id) = &conn.id {
-            message.insert(CLIENT_ID, client_id.clone());
         } else {
-            let client_id = MessageId::new();
+            // 认证时，如果没有提供 CLIENT_ID, 可返回上次认证成功的 CLIENT_ID
+            message.insert(CLIENT_ID, conn.id.clone());
+            self.sessions.client_ids.insert(conn.id.clone(), token);
+        }
 
-            self.sessions.client_ids.insert(client_id.clone(), token);
+        conn.supe = tmp_supe;
 
-            conn.id = Some(client_id.clone());
-
-            message.insert(CLIENT_ID, client_id);
+        if let Some(label) = tmp_label {
+            conn.label = label;
+        } else {
+            // 认证时，如果没有提供 LABEL, 可返回上次认证成功的 LABEL
+            // 如果 LABEL 为空的话，就没必要返回了
+            if !conn.label.is_empty() {
+                message.insert(LABEL, conn.label.clone());
+            }
         }
 
         conn.auth = true;
@@ -387,21 +420,26 @@ impl<T> QueenInner<T> {
 
         ErrorCode::OK.insert_message(&mut message);
         
+        // 这里发一个事件，表示有 CLIENT 认证成功，准备好接收消息了
+        // 注意，只有在 CLIENT_READY 和 CLIENT_BREAK 这两个事件才会返回
+        // CLIENT 的 LABEL 和 ATTR
         // client event
         // {
         //     CHAN: CLIENT_READY,
         //     SUPER: $conn.supe,
-        //     CLIENT_ID: $client_id
+        //     CLIENT_ID: $client_id,
+        //     LABEL: $label,
+        //     ATTR: $attr
         // }
-        let mut event_message = msg!{
+        let event_message = msg!{
             CHAN: CLIENT_READY,
-            SUPER: conn.supe
+            SUPER: conn.supe,
+            CLIENT_ID: conn.id.clone(),
+            LABEL: conn.label.clone(),
+            ATTR: conn.stream.attr().clone()
         };
 
-        if let Some(client_id) = &conn.id {
-            event_message.insert(CLIENT_ID, client_id.clone());
-        }
-
+        // 之所以在这里才发送，是因为上面使用了 conn 的几个字段
         self.send_message(&self.sessions.conns[token], message);
 
         self.relay_super_message(token, CLIENT_READY, event_message);
@@ -484,10 +522,10 @@ impl<T> QueenInner<T> {
             //     client_id: $client_id
             // }
             let mut event_message = msg!{
-                CHAN: CLIENT_ATTACH
+                CHAN: CLIENT_ATTACH,
+                VALUE: &chan,
+                CLIENT_ID: self.sessions.conns[token].id.clone()
             };
-
-            event_message.insert(VALUE, &chan);
 
             if let Some(label) = message.get(LABEL) {
                 event_message.insert(LABEL, label.clone());
@@ -498,14 +536,9 @@ impl<T> QueenInner<T> {
             ids.insert(token);
 
             {
-
-                let conn = self.sessions.conns.get_mut(token).unwrap();
+                let conn = &mut self.sessions.conns[token];
                 let set = conn.chans.entry(chan).or_insert_with(HashSet::new);
                 set.extend(labels);
-
-                if let Some(client_id) = &conn.id {
-                    event_message.insert(CLIENT_ID, client_id.clone());
-                }
             }
 
             self.relay_super_message(token, CLIENT_ATTACH, event_message);
@@ -569,7 +602,8 @@ impl<T> QueenInner<T> {
             // }
             let mut event_message = msg!{
                 CHAN: CLIENT_DETACH,
-                VALUE: &chan
+                VALUE: &chan,
+                CLIENT_ID: self.sessions.conns[token].id.clone()
             };
 
             if let Some(label) = message.get(LABEL) {
@@ -578,7 +612,7 @@ impl<T> QueenInner<T> {
 
             // session_detach
             {
-                let conn = self.sessions.conns.get_mut(token).unwrap();
+                let conn = &mut self.sessions.conns[token];
 
                 if labels.is_empty() {
                     conn.chans.remove(&chan);
@@ -592,10 +626,6 @@ impl<T> QueenInner<T> {
                     }
                 } else if let Some(set) = conn.chans.get_mut(&chan) {
                     *set = set.iter().filter(|label| !labels.contains(*label)).map(|s| s.to_string()).collect();
-                }
-
-                if let Some(client_id) = &conn.id {
-                    event_message.insert(CLIENT_ID, client_id.clone());
                 }
             }
 
@@ -645,21 +675,18 @@ impl<T> QueenInner<T> {
                         chans.insert(chan, labels);
                     }
 
-                    let client_id: Value = if let Some(id) = &conn.id {
-                        id.clone().into()
-                    } else {
-                        Value::Null
-                    };
-
-                    array.push(msg!{
+                    let client = msg!{
                         AUTH: conn.auth,
                         SUPER: conn.supe,
                         CHANS: chans,
-                        CLIENT_ID: client_id,
+                        CLIENT_ID: conn.id.clone(),
+                        LABEL: conn.label.clone(),
                         ATTR: conn.stream.attr().clone(),
                         SEND_MESSAGES: conn.send_messages.get() as u64,
                         RECV_MESSAGES: conn.recv_messages.get() as u64
-                    });
+                    };
+
+                    array.push(client);
                 }
 
                 message.insert(key, array);
@@ -675,17 +702,12 @@ impl<T> QueenInner<T> {
                                 chans.insert(chan, labels);
                             }
 
-                            let client_id: Value = if let Some(id) = &conn.id {
-                                id.clone().into()
-                            } else {
-                                Value::Null
-                            };
-
                             let client = msg!{
                                 AUTH: conn.auth,
                                 SUPER: conn.supe,
                                 CHANS: chans,
-                                CLIENT_ID: client_id,
+                                CLIENT_ID: conn.id.clone(),
+                                LABEL: conn.label.clone(),
                                 ATTR: conn.stream.attr().clone(),
                                 SEND_MESSAGES: conn.send_messages.get() as u64,
                                 RECV_MESSAGES: conn.recv_messages.get() as u64
@@ -693,8 +715,6 @@ impl<T> QueenInner<T> {
 
                             message.insert(key, client);
                             message.remove(CLIENT_ID);
-                        } else {
-                            unreachable!()
                         }
                     } else {
                         ErrorCode::NotFound.insert_message(&mut message);
@@ -728,25 +748,18 @@ impl<T> QueenInner<T> {
                 chans.insert(chan, labels);
             }
 
-            let client_id: Value = if let Some(id) = &conn.id {
-                id.clone().into()
-            } else {
-                Value::Null
-            };
-
             let client = msg!{
                 AUTH: conn.auth,
                 SUPER: conn.supe,
                 CHANS: chans,
-                CLIENT_ID: client_id,
+                CLIENT_ID: conn.id.clone(),
+                LABEL: conn.label.clone(),
                 ATTR: conn.stream.attr().clone(),
                 SEND_MESSAGES: conn.send_messages.get() as u64,
                 RECV_MESSAGES: conn.recv_messages.get() as u64
             };
 
             message.insert(VALUE, client);
-        } else {
-            unreachable!()
         }
 
         ErrorCode::OK.insert_message(&mut message);
@@ -813,6 +826,12 @@ impl<T> QueenInner<T> {
 
                 return Ok(())
             }
+        } else {
+            ErrorCode::CannotGetClientIdField.insert_message(&mut message);
+
+            self.send_message(&self.sessions.conns[token], message);
+
+            return Ok(())
         }
 
         ErrorCode::OK.insert_message(&mut message);
@@ -851,7 +870,8 @@ impl<T> QueenInner<T> {
             return
         }
 
-        // build reply message
+        // 如果消息中有 ACK 字段，就发送一条回复消息
+        // ACK 是可以支出的任意类型
         let reply_message = if let Some(ack) = message.get(ACK) {
             let mut reply_message = msg!{
                 CHAN: &chan,
@@ -871,7 +891,9 @@ impl<T> QueenInner<T> {
             None
         };
 
-        // to
+        // P2P 的优先级比较高
+        // 不管 CLIENT 是否 ATTACH，都可给其发送消息
+        // 忽略 LABEL 和 SHARE
         let mut to_ids = vec![];
 
         if let Some(to) = message.remove(TO) {
@@ -941,9 +963,7 @@ impl<T> QueenInner<T> {
             }
         }
 
-        if let Some(client_id) = &self.sessions.conns[token].id {
-            message.insert(FROM, client_id.clone());
-        }
+        message.insert(FROM, &self.sessions.conns[token].id.clone());
 
         macro_rules! send {
             ($self: ident, $conn: ident, $message: ident) => {
@@ -961,14 +981,11 @@ impl<T> QueenInner<T> {
                     //     CHAN: CLIENT_RECV,
                     //     VALUE: $message
                     // }
-                    let mut event_message = msg!{
+                    let event_message = msg!{
                         CHAN: CLIENT_RECV,
-                        VALUE: $message.clone()
+                        VALUE: $message.clone(),
+                        TO: $conn.id.clone()
                     };
-
-                    if let Some(client_id) = &$conn.id {
-                        event_message.insert(TO, client_id);
-                    }
 
                     let id = $conn.token;
 
@@ -979,6 +996,7 @@ impl<T> QueenInner<T> {
 
         let mut no_consumers = true;
 
+        // 发送 P2P 消息
         if !to_ids.is_empty() {
             no_consumers = false;
 
@@ -989,6 +1007,8 @@ impl<T> QueenInner<T> {
                     }
                 }
             }
+        // 如果存在 SHARE 字段，且值为 false，则只会随机给其中一个 CLIENT 发送消息
+        // 会根据 LABEL 过滤
         } else if message.get_bool(SHARE).ok().unwrap_or(false) {
             let mut array: Vec<usize> = Vec::new();
 
@@ -1026,6 +1046,8 @@ impl<T> QueenInner<T> {
                 }
             }
 
+        // 给每个 CLIENT 发送消息
+        // 会根据 LABEL 过滤
         } else if let Some(ids) = self.sessions.chans.get(&chan) {
             for conn_id in ids.iter().filter(|id| **id != token ) {
                 if let Some(conn) = self.sessions.conns.get(*conn_id) {
@@ -1127,7 +1149,8 @@ pub struct Session {
     pub supe: bool,
     pub chans: HashMap<String, HashSet<String>>,
     pub stream: Stream<Message>,
-    pub id: Option<MessageId>,
+    pub id: MessageId, // 默认情况下会随机生成一个，可以在认证时修改
+    pub label: Message,
     pub send_messages: Cell<usize>,
     pub recv_messages: Cell<usize>
 }
@@ -1140,7 +1163,8 @@ impl Session {
             supe: false,
             chans: HashMap::new(),
             stream,
-            id: None,
+            id: MessageId::new(),
+            label: Message::new(),
             send_messages: Cell::new(0),
             recv_messages: Cell::new(0)
         }

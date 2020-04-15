@@ -99,6 +99,53 @@ fn auth() {
     let recv = stream1.recv().unwrap();
 
     assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_message_id(CLIENT_ID).is_ok());
+    assert!(recv.get(LABEL).is_none());
+
+    let _ = stream1.send(&mut Some(msg!{
+        CHAN: AUTH,
+        LABEL: msg!{
+            "aa": "bb"
+        }
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_message_id(CLIENT_ID).is_ok());
+    assert!(recv.get_message(LABEL).unwrap() == &msg!{"aa": "bb"});
+
+    let client_id = MessageId::new();
+
+    let _ = stream1.send(&mut Some(msg!{
+        CHAN: AUTH,
+        CLIENT_ID: client_id.clone()
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &client_id);
+    assert!(recv.get_message(LABEL).unwrap() == &msg!{"aa": "bb"});
+
+    let _ = stream1.send(&mut Some(msg!{
+        CHAN: AUTH,
+        LABEL: msg!{
+            "cc": "dd"
+        }
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_message_id(CLIENT_ID).is_ok());
+    assert!(recv.get_message(LABEL).unwrap() == &msg!{"cc": "dd"});
 }
 
 #[test]
@@ -1119,6 +1166,8 @@ fn client_event() {
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_READY);
     assert!(recv.get_bool(SUPER).unwrap() == true);
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
+    assert!(recv.get_message(LABEL).is_ok());
+    assert!(recv.get_message(ATTR).is_ok());
 
     // attach
     let _ = stream2.send(&mut Some(msg!{
@@ -1194,6 +1243,8 @@ fn client_event() {
 
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_BREAK);
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
+    assert!(recv.get_message(LABEL).is_ok());
+    assert!(recv.get_message(ATTR).is_ok());
 
     // auth
     let stream2 = queen.connect(msg!{}, None, None).unwrap();
@@ -1343,6 +1394,7 @@ fn query() {
 
     let recv = stream1.recv().unwrap();
 
+    println!("{:?}", recv);
     assert!(recv.get_u32("client_num").unwrap() == 2);
 
     // chan num
@@ -1458,7 +1510,7 @@ fn mine() {
     assert!(value.get_bool(AUTH).unwrap() == false);
     assert!(value.get_bool(SUPER).unwrap() == false);
     assert!(value.get_message(CHANS).unwrap().is_empty());
-    assert!(value.is_null(CLIENT_ID) == true);
+    assert!(value.is_null(CLIENT_ID) == false);
     assert!(value.get_u64(SEND_MESSAGES).unwrap() == 0);
     assert!(value.get_u64(RECV_MESSAGES).unwrap() == 1);
 
