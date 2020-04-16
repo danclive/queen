@@ -264,7 +264,7 @@ impl<T> QueenInner<T> {
         };
 
         if !success {
-            ErrorCode::RefuseReceiveMessage.insert_message(&mut message);
+            ErrorCode::RefuseReceiveMessage.insert(&mut message);
             
             self.send_message(&self.sessions.conns[token], message);
         
@@ -274,7 +274,7 @@ impl<T> QueenInner<T> {
         let chan = match message.get_str(CHAN) {
             Ok(chan) => chan,
             Err(_) => {
-                ErrorCode::CannotGetChanField.insert_message(&mut message);
+                ErrorCode::CannotGetChanField.insert(&mut message);
 
                 self.send_message(&self.sessions.conns[token], message);
 
@@ -293,7 +293,7 @@ impl<T> QueenInner<T> {
                 CUSTOM => self.custom(token, message),
                 CLIENT_KILL => self.kill(token, message)?,
                 _ => {
-                    ErrorCode::UnsupportedChan.insert_message(&mut message);
+                    ErrorCode::UnsupportedChan.insert(&mut message);
 
                     self.send_message(&self.sessions.conns[token], message);
                 }
@@ -328,7 +328,7 @@ impl<T> QueenInner<T> {
         };
 
         if !success {
-            ErrorCode::AuthenticationFailed.insert_message(&mut message);
+            ErrorCode::AuthenticationFailed.insert(&mut message);
 
             self.send_message(&self.sessions.conns[token], message);
 
@@ -347,7 +347,7 @@ impl<T> QueenInner<T> {
             if let Some(s) = s.as_bool() {
                 tmp_supe = s;
             } else {
-                ErrorCode::InvalidSuperFieldType.insert_message(&mut message);
+                ErrorCode::InvalidSuperFieldType.insert(&mut message);
 
                 self.send_message(&self.sessions.conns[token], message);
 
@@ -361,7 +361,7 @@ impl<T> QueenInner<T> {
             if let Some(label) = label.as_message() {
                 tmp_label = Some(label.clone());
             } else {
-                ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+                ErrorCode::InvalidLabelFieldType.insert(&mut message);
 
                 self.send_message(&self.sessions.conns[token], message);
 
@@ -376,7 +376,7 @@ impl<T> QueenInner<T> {
                 if let Some(other_token) = self.sessions.client_ids.get(client_id) {
                     // CLIENT ID 不能重复，且不能挤掉已存在的客户端
                     if *other_token != token {
-                        ErrorCode::DuplicateClientId.insert_message(&mut message);
+                        ErrorCode::DuplicateClientId.insert(&mut message);
 
                         self.send_message(&self.sessions.conns[token], message);
 
@@ -390,7 +390,7 @@ impl<T> QueenInner<T> {
                 conn.id = client_id.clone();
 
             } else {
-                ErrorCode::InvalidClientIdFieldType.insert_message(&mut message);
+                ErrorCode::InvalidClientIdFieldType.insert(&mut message);
 
                 self.send_message(&self.sessions.conns[token], message);
 
@@ -418,7 +418,7 @@ impl<T> QueenInner<T> {
 
         message.insert(NODE_ID, self.id.clone());
 
-        ErrorCode::OK.insert_message(&mut message);
+        ErrorCode::OK.insert(&mut message);
         
         // 这里发一个事件，表示有 CLIENT 认证成功，准备好接收消息了
         // 注意，只有在 CLIENT_READY 和 CLIENT_BREAK 这两个事件才会返回
@@ -448,7 +448,7 @@ impl<T> QueenInner<T> {
     fn attach(&mut self, token: usize, mut message: Message) {
         // check auth
         if !self.sessions.conns[token].auth {
-            ErrorCode::Unauthorized.insert_message(&mut message);
+            ErrorCode::Unauthorized.insert(&mut message);
 
             self.send_message(&self.sessions.conns[token], message);
 
@@ -461,7 +461,7 @@ impl<T> QueenInner<T> {
                 CLIENT_READY | CLIENT_BREAK | CLIENT_ATTACH | CLIENT_DETACH | CLIENT_SEND | CLIENT_RECV => {
 
                     if !self.sessions.conns[token].supe {
-                        ErrorCode::Unauthorized.insert_message(&mut message);
+                        ErrorCode::Unauthorized.insert(&mut message);
 
                         self.send_message(&self.sessions.conns[token], message);
 
@@ -480,7 +480,7 @@ impl<T> QueenInner<T> {
             };
 
             if !success {
-                ErrorCode::Unauthorized.insert_message(&mut message);
+                ErrorCode::Unauthorized.insert(&mut message);
 
                 self.send_message(&self.sessions.conns[token], message);
 
@@ -498,7 +498,7 @@ impl<T> QueenInner<T> {
                         if let Some(v) = v.as_str() {
                             labels.insert(v.to_string());
                         } else {
-                            ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+                            ErrorCode::InvalidLabelFieldType.insert(&mut message);
 
                             self.send_message(&self.sessions.conns[token], message);
 
@@ -506,7 +506,7 @@ impl<T> QueenInner<T> {
                         }
                     }
                 } else {
-                    ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+                    ErrorCode::InvalidLabelFieldType.insert(&mut message);
 
                     self.send_message(&self.sessions.conns[token], message);
 
@@ -543,9 +543,9 @@ impl<T> QueenInner<T> {
 
             self.relay_super_message(token, CLIENT_ATTACH, event_message);
 
-            ErrorCode::OK.insert_message(&mut message);
+            ErrorCode::OK.insert(&mut message);
         } else {
-            ErrorCode::CannotGetValueField.insert_message(&mut message);
+            ErrorCode::CannotGetValueField.insert(&mut message);
         }
 
         self.send_message(&self.sessions.conns[token], message);
@@ -554,7 +554,7 @@ impl<T> QueenInner<T> {
     fn detach(&mut self, token: usize, mut message: Message) {
         // check auth
         if !self.sessions.conns[token].auth {
-            ErrorCode::Unauthorized.insert_message(&mut message);
+            ErrorCode::Unauthorized.insert(&mut message);
 
             self.send_message(&self.sessions.conns[token], message);
 
@@ -577,7 +577,7 @@ impl<T> QueenInner<T> {
                         if let Some(v) = v.as_str() {
                             labels.insert(v.to_string());
                         } else {
-                            ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+                            ErrorCode::InvalidLabelFieldType.insert(&mut message);
 
                             self.send_message(&self.sessions.conns[token], message);
 
@@ -585,7 +585,7 @@ impl<T> QueenInner<T> {
                         }
                     }
                 } else {
-                    ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+                    ErrorCode::InvalidLabelFieldType.insert(&mut message);
 
                     self.send_message(&self.sessions.conns[token], message);
 
@@ -631,16 +631,16 @@ impl<T> QueenInner<T> {
 
             self.relay_super_message(token, CLIENT_DETACH, event_message);
         
-            ErrorCode::OK.insert_message(&mut message);
+            ErrorCode::OK.insert(&mut message);
         } else {
-            ErrorCode::CannotGetValueField.insert_message(&mut message);
+            ErrorCode::CannotGetValueField.insert(&mut message);
         }
 
         self.send_message(&self.sessions.conns[token], message);
     }
 
     fn ping(&self, token: usize, mut message: Message) {
-        ErrorCode::OK.insert_message(&mut message);
+        ErrorCode::OK.insert(&mut message);
 
         self.send_message(&self.sessions.conns[token], message);
     }
@@ -650,7 +650,7 @@ impl<T> QueenInner<T> {
             let conn = &self.sessions.conns[token];
 
             if !conn.auth || !conn.supe {
-                ErrorCode::Unauthorized.insert_message(&mut message);
+                ErrorCode::Unauthorized.insert(&mut message);
 
                 self.send_message(conn, message);
 
@@ -717,14 +717,14 @@ impl<T> QueenInner<T> {
                             message.remove(CLIENT_ID);
                         }
                     } else {
-                        ErrorCode::NotFound.insert_message(&mut message);
+                        ErrorCode::NotFound.insert(&mut message);
 
                         self.send_message(&self.sessions.conns[token], message);
 
                         return
                     }
                 } else {
-                    ErrorCode::InvalidClientIdFieldType.insert_message(&mut message);
+                    ErrorCode::InvalidClientIdFieldType.insert(&mut message);
 
                     self.send_message(&self.sessions.conns[token], message);
 
@@ -733,7 +733,7 @@ impl<T> QueenInner<T> {
             }
         }
 
-        ErrorCode::OK.insert_message(&mut message);
+        ErrorCode::OK.insert(&mut message);
 
         self.send_message(&self.sessions.conns[token], message);
     }
@@ -762,7 +762,7 @@ impl<T> QueenInner<T> {
             message.insert(VALUE, client);
         }
 
-        ErrorCode::OK.insert_message(&mut message);
+        ErrorCode::OK.insert(&mut message);
 
         self.send_message(&self.sessions.conns[token], message);
     } 
@@ -772,7 +772,7 @@ impl<T> QueenInner<T> {
             let conn = &self.sessions.conns[token];
 
             if !conn.auth {
-                ErrorCode::Unauthorized.insert_message(&mut message);
+                ErrorCode::Unauthorized.insert(&mut message);
 
                 self.send_message(conn, message);
 
@@ -790,7 +790,7 @@ impl<T> QueenInner<T> {
             let conn = &self.sessions.conns[token];
 
             if !conn.auth || !conn.supe {
-                ErrorCode::Unauthorized.insert_message(&mut message);
+                ErrorCode::Unauthorized.insert(&mut message);
 
                 self.send_message(conn, message);
 
@@ -805,7 +805,7 @@ impl<T> QueenInner<T> {
         };
 
         if !success {
-            ErrorCode::Unauthorized.insert_message(&mut message);
+            ErrorCode::Unauthorized.insert(&mut message);
 
             self.send_message(&self.sessions.conns[token], message);
 
@@ -820,21 +820,21 @@ impl<T> QueenInner<T> {
                     remove_id = Some(other_id);
                 }
             } else {
-                ErrorCode::InvalidClientIdFieldType.insert_message(&mut message);
+                ErrorCode::InvalidClientIdFieldType.insert(&mut message);
 
                 self.send_message(&self.sessions.conns[token], message);
 
                 return Ok(())
             }
         } else {
-            ErrorCode::CannotGetClientIdField.insert_message(&mut message);
+            ErrorCode::CannotGetClientIdField.insert(&mut message);
 
             self.send_message(&self.sessions.conns[token], message);
 
             return Ok(())
         }
 
-        ErrorCode::OK.insert_message(&mut message);
+        ErrorCode::OK.insert(&mut message);
 
         self.send_message(&self.sessions.conns[token], message);
 
@@ -849,7 +849,7 @@ impl<T> QueenInner<T> {
     fn relay_message(&mut self, token: usize, chan: String, mut message: Message) {
         // check auth
         if !self.sessions.conns[token].auth {
-            ErrorCode::Unauthorized.insert_message(&mut message);
+            ErrorCode::Unauthorized.insert(&mut message);
 
             self.send_message(&self.sessions.conns[token], message);
 
@@ -863,7 +863,7 @@ impl<T> QueenInner<T> {
         };
 
         if !success {
-            ErrorCode::Unauthorized.insert_message(&mut message);
+            ErrorCode::Unauthorized.insert(&mut message);
 
             self.send_message(&self.sessions.conns[token], message);
 
@@ -882,7 +882,7 @@ impl<T> QueenInner<T> {
                 reply_message.insert(ID, message_id);
             }
 
-            ErrorCode::OK.insert_message(&mut reply_message);
+            ErrorCode::OK.insert(&mut reply_message);
 
             message.remove(ACK);
 
@@ -899,7 +899,8 @@ impl<T> QueenInner<T> {
         if let Some(to) = message.remove(TO) {
             if let Some(to_id) = to.as_message_id() {
                 if !self.sessions.client_ids.contains_key(to_id) {
-                    ErrorCode::TargetClientIdNotExist.insert_message(&mut message);
+                    ErrorCode::TargetClientIdNotExist.insert(&mut message);
+                    message.insert(CLIENT_ID, to_id);
 
                     self.send_message(&self.sessions.conns[token], message);
 
@@ -911,7 +912,8 @@ impl<T> QueenInner<T> {
                 for to in to_array {
                     if let Some(to_id) = to.as_message_id() {
                         if !self.sessions.client_ids.contains_key(to_id) {
-                            ErrorCode::TargetClientIdNotExist.insert_message(&mut message);
+                            ErrorCode::TargetClientIdNotExist.insert(&mut message);
+                            message.insert(CLIENT_ID, to_id);
 
                             self.send_message(&self.sessions.conns[token], message);
 
@@ -920,7 +922,7 @@ impl<T> QueenInner<T> {
 
                         to_ids.push(to_id.clone());
                     } else {
-                        ErrorCode::InvalidToFieldType.insert_message(&mut message);
+                        ErrorCode::InvalidToFieldType.insert(&mut message);
 
                         self.send_message(&self.sessions.conns[token], message);
 
@@ -928,7 +930,7 @@ impl<T> QueenInner<T> {
                     }
                 }
             } else {
-                ErrorCode::InvalidToFieldType.insert_message(&mut message);
+                ErrorCode::InvalidToFieldType.insert(&mut message);
 
                 self.send_message(&self.sessions.conns[token], message);
 
@@ -947,7 +949,7 @@ impl<T> QueenInner<T> {
                     if let Some(v) = v.as_str() {
                         labels.insert(v.to_string());
                     } else {
-                        ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+                        ErrorCode::InvalidLabelFieldType.insert(&mut message);
 
                         self.send_message(&self.sessions.conns[token], message);
 
@@ -955,7 +957,7 @@ impl<T> QueenInner<T> {
                     }
                 }
             } else {
-                ErrorCode::InvalidLabelFieldType.insert_message(&mut message);
+                ErrorCode::InvalidLabelFieldType.insert(&mut message);
 
                 self.send_message(&self.sessions.conns[token], message);
 
@@ -1070,7 +1072,7 @@ impl<T> QueenInner<T> {
         if no_consumers {
             message.remove(FROM);
 
-            ErrorCode::NoConsumers.insert_message(&mut message);
+            ErrorCode::NoConsumers.insert(&mut message);
 
             self.send_message(&self.sessions.conns[token], message);
 

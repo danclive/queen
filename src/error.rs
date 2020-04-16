@@ -149,14 +149,9 @@ impl ErrorCode {
         }
     }
 
-    pub fn insert_message(self, message: &mut Message) {
+    pub fn insert(self, message: &mut Message) {
         let code = self.code();
         message.insert(OK, code);
-
-        #[cfg(debug_assertions)]
-        {if code > 0 {
-            message.insert(ERROR, self.to_str());
-        }}
     }
 
     pub fn has_error(message: &Message) -> Option<ErrorCode> {

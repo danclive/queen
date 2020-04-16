@@ -58,21 +58,24 @@ impl StreamExt {
                                         } else {
                                             let _ = sending_tx.send(Err(ErrorCode::from_i32(ok).into()));
                                         }
+
+                                        continue;
                                     }
                                 }
-                            } else {
-                                let session = stream_ext2.session.lock().unwrap();
-
-                                let handle = if let Some(handle) = &session.handle {
-                                    handle.clone()   
-                                } else {
-                                    continue;
-                                };
-
-                                drop(session);
-
-                                handle(chan.to_string(), message);
                             }
+                                
+                            let session = stream_ext2.session.lock().unwrap();
+
+                            let handle = if let Some(handle) = &session.handle {
+                                handle.clone()   
+                            } else {
+                                continue;
+                            };
+
+                            drop(session);
+
+                            handle(chan.to_string(), message);
+                            
                         }
                     }
                     Err(err) => {

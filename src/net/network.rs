@@ -338,7 +338,7 @@ impl NetConn {
 
                                             self.hand = true;
 
-                                            ErrorCode::OK.insert_message(&mut message);
+                                            ErrorCode::OK.insert(&mut message);
 
                                             self.push_data(epoll, message)?;
 
@@ -351,7 +351,7 @@ impl NetConn {
 
                                             self.hand = true;
 
-                                            ErrorCode::OK.insert_message(&mut message);
+                                            ErrorCode::OK.insert(&mut message);
 
                                             self.push_data(epoll, message)?;
                                         }
