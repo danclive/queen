@@ -146,6 +146,53 @@ fn auth() {
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
     assert!(recv.get_message(LABEL).unwrap() == &msg!{"cc": "dd"});
+
+    // stream2
+    let stream2 = queen.connect(msg!{}, None, None).unwrap();
+    let _ = stream2.send(&mut Some(msg!{
+        CHAN: AUTH,
+        CLIENT_ID: client_id.clone()
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream2.recv().unwrap();
+
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::DuplicateClientId));
+
+    let _ = stream2.send(&mut Some(msg!{
+        CHAN: MINE,
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream2.recv().unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+
+    let value = recv.get_message(VALUE).unwrap();
+
+    assert!(value.get_bool(AUTH).unwrap() == false);
+    assert!(value.get_bool(SUPER).unwrap() == false);
+    assert!(value.get_message(CHANS).unwrap().is_empty());
+    assert!(value.get_message_id(CLIENT_ID).unwrap() != &client_id);
+    assert!(value.get_u64(SEND_MESSAGES).unwrap() == 1);
+    assert!(value.get_u64(RECV_MESSAGES).unwrap() == 2);
+
+    drop(stream1);
+
+    // stream 2 auth again
+    let _ = stream2.send(&mut Some(msg!{
+        CHAN: AUTH,
+        CLIENT_ID: client_id.clone()
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream2.recv().unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &client_id);
 }
 
 #[test]
@@ -955,7 +1002,7 @@ fn share() {
 }
 
 #[test]
-fn client_id() {
+fn s2s() {
     let queen = Queen::new(MessageId::new(), (), None).unwrap();
 
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
@@ -1024,6 +1071,7 @@ fn client_id() {
     let recv = stream3.recv().unwrap();
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetClientIdNotExist));
+    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap());
 
     let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
@@ -1048,7 +1096,7 @@ fn client_id() {
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
-        TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap()]
+        TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c463").unwrap(), MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap()]
     }));
 
     thread::sleep(Duration::from_secs(1));
@@ -1056,6 +1104,10 @@ fn client_id() {
     let recv = stream3.recv().unwrap();
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetClientIdNotExist));
+    let array = recv.get_array(CLIENT_ID).unwrap();
+    assert!(array.len() == 2);
+    assert!(array.contains(&MessageId::with_string("016f9dd00d746c7f89ce342387e4c463").unwrap().into()));
+    assert!(array.contains(&MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap().into()));
 
     let _ = stream3.send(&mut Some(msg!{
         CHAN: "aaa",
@@ -1237,7 +1289,7 @@ fn client_event() {
 
     drop(stream2);
 
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(Duration::from_secs(1));
 
     let recv = stream1.recv().unwrap();
 
@@ -1282,8 +1334,20 @@ fn client_event() {
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_BREAK);
     assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
-    println!("{:?}", stream2.is_close());
-    println!("{:?}", stream2.recv());
+    assert!(stream2.is_close());
+    assert!(stream2.recv().is_err());
+
+    let _ = stream1.send(&mut Some(msg!{
+        CHAN: CLIENT_KILL,
+        CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924c").unwrap()
+    }));
+
+    thread::sleep(Duration::from_secs(1));
+
+    let recv = stream1.recv().unwrap();
+
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetClientIdNotExist));
+    assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924c").unwrap());
 }
 
 #[test]

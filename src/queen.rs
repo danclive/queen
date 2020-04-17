@@ -229,6 +229,10 @@ impl<T> QueenInner<T> {
                 }
             }
 
+            // 这里要记得移除 clinet_id，因为 stream 在一开始建立连接时就会默认分配一个
+            // 认证成功时可以修改
+            self.sessions.client_ids.remove(&conn.id);
+
             if let Some(remove_fn) = &self.callback.remove_fn {
                 remove_fn(&conn, &self.data);
             }
@@ -386,6 +390,8 @@ impl<T> QueenInner<T> {
 
                 // 认证时, 可以改变 CLIENT_ID
                 self.sessions.client_ids.remove(client_id);
+                // 认证成功时，设置
+                // 记得在 CLIENT 掉线时移除
                 self.sessions.client_ids.insert(client_id.clone(), token);
                 conn.id = client_id.clone();
 
@@ -399,6 +405,8 @@ impl<T> QueenInner<T> {
         } else {
             // 认证时，如果没有提供 CLIENT_ID, 可返回上次认证成功的 CLIENT_ID
             message.insert(CLIENT_ID, conn.id.clone());
+            // 认证成功时，设置
+            // 记得在 CLIENT 掉线时移除
             self.sessions.client_ids.insert(conn.id.clone(), token);
         }
 
@@ -812,12 +820,18 @@ impl<T> QueenInner<T> {
             return Ok(())
         }
 
-        let mut remove_id = None;
+        let remove_token;
 
         if let Some(client_id) = message.get(CLIENT_ID) {
             if let Some(client_id) = client_id.as_message_id() {
-                if let Some(other_id) = self.sessions.client_ids.get(client_id).cloned() {
-                    remove_id = Some(other_id);
+                if let Some(other_token) = self.sessions.client_ids.get(client_id).cloned() {
+                    remove_token = Some(other_token);
+                } else {
+                    ErrorCode::TargetClientIdNotExist.insert(&mut message);
+
+                    self.send_message(&self.sessions.conns[token], message);
+
+                    return Ok(())
                 }
             } else {
                 ErrorCode::InvalidClientIdFieldType.insert(&mut message);
@@ -838,8 +852,8 @@ impl<T> QueenInner<T> {
 
         self.send_message(&self.sessions.conns[token], message);
 
-        if let Some(remove_id) = remove_id {
-            self.remove_conn(remove_id)?;
+        if let Some(remove_token) = remove_token {
+            self.remove_conn(remove_token)?;
         }
 
         Ok(())
@@ -909,18 +923,15 @@ impl<T> QueenInner<T> {
 
                 to_ids.push(to_id.clone());
             } else if let Some(to_array) = to.as_array() {
+                let mut not_exist_ids = vec![];
+
                 for to in to_array {
                     if let Some(to_id) = to.as_message_id() {
-                        if !self.sessions.client_ids.contains_key(to_id) {
-                            ErrorCode::TargetClientIdNotExist.insert(&mut message);
-                            message.insert(CLIENT_ID, to_id);
-
-                            self.send_message(&self.sessions.conns[token], message);
-
-                            return
+                        if self.sessions.client_ids.contains_key(to_id) {
+                            to_ids.push(to_id.clone());
+                        } else {
+                            not_exist_ids.push(to_id.clone());
                         }
-
-                        to_ids.push(to_id.clone());
                     } else {
                         ErrorCode::InvalidToFieldType.insert(&mut message);
 
@@ -928,6 +939,15 @@ impl<T> QueenInner<T> {
 
                         return
                     }
+                }
+
+                if !not_exist_ids.is_empty() {
+                    ErrorCode::TargetClientIdNotExist.insert(&mut message);
+                    message.insert(CLIENT_ID, not_exist_ids);
+
+                    self.send_message(&self.sessions.conns[token], message);
+
+                    return
                 }
             } else {
                 ErrorCode::InvalidToFieldType.insert(&mut message);
