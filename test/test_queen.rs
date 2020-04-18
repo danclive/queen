@@ -1744,7 +1744,13 @@ fn self_send_recv() {
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     let recv = stream1.recv().unwrap();
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
+    assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get_message_id(FROM).is_ok());
+    assert!(recv.get_i32(OK).is_err());
+
+    let recv = stream1.recv().unwrap();
+    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_str(ACK).unwrap() == "123");
 
     assert!(stream1.recv().is_err());
 
@@ -1780,8 +1786,19 @@ fn self_send_recv() {
     thread::sleep(Duration::from_secs(1));
 
     let recv = stream1.recv().unwrap();
+    assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get_message_id(FROM).is_ok());
+    assert!(recv.get_i32(OK).is_err());
+
+    let recv = stream2.recv().unwrap();
+    assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get_message_id(FROM).is_ok());
+    assert!(recv.get_i32(OK).is_err());
+
+    let recv = stream1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_str(ACK).unwrap() == "123");
 
     assert!(stream1.recv().is_err());
+    assert!(stream2.recv().is_err());
 }

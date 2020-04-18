@@ -885,7 +885,12 @@ impl<T> QueenInner<T> {
         }
 
         // 如果消息中有 ACK 字段，就发送一条回复消息
-        // ACK 是可以支出的任意类型
+        // ACK 可以是任意支持的类型
+        // ACK 只是针对 CLIENT -> QUEEN，以便于某些情况下 CLIENT 控制自己的流速，
+        // 在目前的实现中，如果 CLIENT 发送过快，填满缓冲区，此时 QUEEN 已经没有
+        // 能力进行处理，会丢失溢出的消息。在 QUEEN -> CLIENT 时，如果缓冲区满了，也就
+        // 意味着 CLIENT 的网络拥堵，或者 CLIENT 处理能力不足，会丢失溢出的消息，但
+        // 不会断开连接
         let reply_message = if let Some(ack) = message.get(ACK) {
             let mut reply_message = msg!{
                 CHAN: &chan,
@@ -905,9 +910,13 @@ impl<T> QueenInner<T> {
             None
         };
 
+        // 两种模式下，自己都可以收到自己发送的消息，如果不想处理，可以利用 `FROM` 进行过滤，
+        // 也就是此时 FROM == 自己的 CLIENT_ID 
+
         // P2P 的优先级比较高
         // 不管 CLIENT 是否 ATTACH，都可给其发送消息
         // 忽略 LABEL 和 SHARE
+        // 自己可以收到自己发送的消息
         let mut to_ids = vec![];
 
         if let Some(to) = message.remove(TO) {
@@ -1035,7 +1044,9 @@ impl<T> QueenInner<T> {
             let mut array: Vec<usize> = Vec::new();
 
             if let Some(ids) = self.sessions.chans.get(&chan) {
-                for conn_id in ids.iter().filter(|id| **id != token ) {
+                // 这里没有进行过滤 `.filter(|id| **id != token )`
+                // 也就是自己可以收到自己发送的消息
+                for conn_id in ids.iter() {
                     if let Some(conn) = self.sessions.conns.get(*conn_id) {
                         // filter labels
                         if !labels.is_empty() {
@@ -1071,7 +1082,9 @@ impl<T> QueenInner<T> {
         // 给每个 CLIENT 发送消息
         // 会根据 LABEL 过滤
         } else if let Some(ids) = self.sessions.chans.get(&chan) {
-            for conn_id in ids.iter().filter(|id| **id != token ) {
+            // 这里没有进行过滤 `.filter(|id| **id != token )`
+            // 也就是自己可以收到自己发送的消息
+            for conn_id in ids.iter() {
                 if let Some(conn) = self.sessions.conns.get(*conn_id) {
                     // filter labels
                     if !labels.is_empty() {
