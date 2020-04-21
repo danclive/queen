@@ -1,4 +1,4 @@
-use std::io::ErrorKind::WouldBlock;
+use std::io::ErrorKind::{WouldBlock, Interrupted};
 use std::os::unix::io::AsRawFd;
 use std::thread;
 use std::time::Duration;
@@ -110,7 +110,16 @@ impl Node {
         }
 
         while self.run.load(Ordering::Relaxed) && self.queen.is_run() {
-            let size = self.epoll.wait(&mut self.events, Some(Duration::from_secs(10)))?;
+            let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
+                Ok(size) => size,
+                Err(err) => {
+                    if err.kind() == Interrupted {
+                        continue;
+                    } else {
+                        return Err(err.into())
+                    }
+                }
+            };
 
             for i in 0..size {
                 let event = self.events.get(i).unwrap();
@@ -121,7 +130,7 @@ impl Node {
                         let (socket, addr) = match listen.accept() {
                             Ok(socket) => socket,
                             Err(err) => {
-                                if let WouldBlock = err.kind() {
+                                if err.kind() == WouldBlock {
                                     break;
                                 } else {
                                     return Err(err.into())

@@ -18,10 +18,6 @@ use nson::Message;
 
 use crate::error::{Result, Error};
 
-pub use ext::StreamExt;
-
-mod ext;
-
 pub struct Stream<T: Send> {
     pub tx: StreamTx<T>,
     pub rx: StreamRx<T>

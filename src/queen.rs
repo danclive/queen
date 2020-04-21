@@ -6,6 +6,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering}
 };
 use std::cell::Cell;
+use std::io::ErrorKind::Interrupted;
 
 use queen_io::{
     epoll::{Epoll, Events, Token, Ready, EpollOpt},
@@ -153,7 +154,16 @@ impl<T> QueenInner<T> {
         self.epoll.add(&self.queue, Self::QUEUE_TOKEN, Ready::readable(), EpollOpt::level())?;
 
         while self.run.load(Ordering::Relaxed) {
-            let size = self.epoll.wait(&mut self.events, Some(Duration::from_secs(10)))?;
+            let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
+                Ok(size) => size,
+                Err(err) => {
+                    if err.kind() == Interrupted {
+                        continue;
+                    } else {
+                        return Err(err.into())
+                    }
+                }
+            };
 
             for i in 0..size {
                 let event = self.events.get(i).unwrap();

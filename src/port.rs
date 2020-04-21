@@ -46,6 +46,8 @@ impl Port {
             } else {
                 log::debug!("net thread exit");
             }
+
+            net_work.run.store(false, Ordering::Relaxed);
         }).unwrap();
 
         Ok(port)

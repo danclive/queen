@@ -7,7 +7,7 @@ use std::sync::{
 };
 use std::io::{
     Write,
-    ErrorKind::WouldBlock
+    ErrorKind::{WouldBlock, Interrupted}
 };
 
 use queen_io::{
@@ -71,13 +71,22 @@ impl NetWork {
         self.epoll.add(&self.queue, Token(Self::QUEUE_TOKEN), Ready::readable(), EpollOpt::level())?;
 
         while self.run.load(Ordering::Relaxed) {
-            let size = self.epoll.wait(&mut self.events, Some(Duration::from_secs(10)))?;
+            let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
+                Ok(size) => size,
+                Err(err) => {
+                    if err.kind() == Interrupted {
+                        continue;
+                    } else {
+                        return Err(err.into())
+                    }
+                }
+            };
 
             for i in 0..size {
                 let event = self.events.get(i).unwrap();
 
                 if event.token().0 == Self::QUEUE_TOKEN {
-                    self.dispatch_queue()?;       
+                    self.dispatch_queue()?;
                 } else {
                     self.dispatch_conn(event)?;
                 }
@@ -369,8 +378,10 @@ impl NetConn {
                     }
                 }
                 Err(err) => {
-                    if let WouldBlock = err.kind() {
+                    if err.kind() == WouldBlock {
                         break;
+                    } else if err.kind() == Interrupted {
+                        continue;
                     } else {
                         return Err(err.into())
                     }
@@ -395,8 +406,10 @@ impl NetConn {
                     }
                 }
                 Err(err) => {
-                    if let WouldBlock = err.kind() {
+                    if err.kind() == WouldBlock {
                         break;
+                    } else if err.kind() == Interrupted {
+                        continue;
                     } else {
                         return Err(err.into())
                     }
