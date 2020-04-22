@@ -42,26 +42,26 @@ fn connect() {
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
     let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: PING
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: PING
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         "aaa": "bbb"
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: 123
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -80,9 +80,9 @@ fn auth() {
 
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -90,9 +90,9 @@ fn auth() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -102,12 +102,12 @@ fn auth() {
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
     assert!(recv.get(LABEL).is_none());
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH,
         LABEL: msg!{
             "aa": "bb"
         }
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -119,10 +119,10 @@ fn auth() {
 
     let client_id = MessageId::new();
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH,
         CLIENT_ID: client_id.clone()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -132,12 +132,12 @@ fn auth() {
     assert!(recv.get_message_id(CLIENT_ID).unwrap() == &client_id);
     assert!(recv.get_message(LABEL).unwrap() == &msg!{"aa": "bb"});
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH,
         LABEL: msg!{
             "cc": "dd"
         }
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -149,10 +149,10 @@ fn auth() {
 
     // stream2
     let stream2 = queen.connect(msg!{}, None, None).unwrap();
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH,
         CLIENT_ID: client_id.clone()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -160,9 +160,9 @@ fn auth() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::DuplicateClientId));
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: MINE,
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -182,10 +182,10 @@ fn auth() {
     drop(stream1);
 
     // stream 2 auth again
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH,
         CLIENT_ID: client_id.clone()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -203,13 +203,13 @@ fn attach_detach() {
     let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -217,11 +217,11 @@ fn attach_detach() {
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // try send
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -231,19 +231,19 @@ fn attach_detach() {
     assert!(recv.get(FROM).is_none());
 
     // attach
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     // send
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -263,17 +263,17 @@ fn attach_detach() {
     assert!(recv.get(FROM).is_some());
 
     // detach
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa"
-    }));
+    });
 
     // send
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -295,17 +295,17 @@ fn label() {
     let stream3 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -314,23 +314,23 @@ fn label() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attach
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: "label1"
-    }));
+    });
 
     // send
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -352,12 +352,12 @@ fn label() {
     assert!(recv.get(FROM).is_some());
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -372,23 +372,23 @@ fn label() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: "label1"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -397,11 +397,11 @@ fn label() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // send
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -421,22 +421,22 @@ fn label() {
     let stream4 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     // attach
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: "label1"
-    }));
+    });
 
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: "label2"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -445,12 +445,12 @@ fn label() {
     assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -463,23 +463,23 @@ fn label() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: "label1"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label2",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -501,17 +501,17 @@ fn labels() {
     let stream3 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -520,24 +520,24 @@ fn labels() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attach
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: ["label1", "label2", "label3", "label1"]
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: ["label2", "label3", "label4"]
-    }));
+    });
 
     // send
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -559,12 +559,12 @@ fn labels() {
     assert!(recv.get(FROM).is_some());
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label5",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -573,12 +573,12 @@ fn labels() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label5", "label6"],
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -587,12 +587,12 @@ fn labels() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NoConsumers));
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -607,12 +607,12 @@ fn labels() {
     assert!(stream2.recv().is_err());
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label1"],
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -627,12 +627,12 @@ fn labels() {
     assert!(stream2.recv().is_err());
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label1", "label5"],
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -647,12 +647,12 @@ fn labels() {
     assert!(stream2.recv().is_err());
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label1", "label4"],
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -670,23 +670,23 @@ fn labels() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: "label1"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label1", "label4"],
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -701,23 +701,23 @@ fn labels() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: ["label2", "label3"]
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label2",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -732,12 +732,12 @@ fn labels() {
     assert!(stream2.recv().is_err());
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: ["label2", "label3"],
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -754,22 +754,22 @@ fn labels() {
     let stream4 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     // attach
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: ["label1", "label2"]
-    }));
+    });
 
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: ["label3", "label4"]
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -778,12 +778,12 @@ fn labels() {
     assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -796,23 +796,23 @@ fn labels() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // detach
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: ["label2", "label3"]
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with label
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         LABEL: "label1",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -835,21 +835,21 @@ fn share() {
     let stream4 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -859,15 +859,15 @@ fn share() {
     assert!(stream4.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attatch
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -875,11 +875,11 @@ fn share() {
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -898,12 +898,12 @@ fn share() {
     assert!(recv.get(FROM).is_some());
 
     // send with share
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         SHARE: true,
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -924,22 +924,22 @@ fn share() {
     // with label
 
     // attatch
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: "bbb",
         LABEL: "label1"
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: ATTACH,
         VALUE: "bbb",
         LABEL: "label1"
-    }));
+    });
 
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: ATTACH,
         VALUE: "bbb"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -948,12 +948,12 @@ fn share() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send with share
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: "bbb",
         "hello": "world",
         LABEL: "label1",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -974,13 +974,13 @@ fn share() {
     assert!(stream3.recv().is_err());
 
     // send with share
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: "bbb",
         "hello": "world",
         LABEL: "label1",
         SHARE: true,
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1010,21 +1010,21 @@ fn s2s() {
     let stream3 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
-    }));
+    });
 
     // duplicate
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1035,10 +1035,10 @@ fn s2s() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::DuplicateClientId));
 
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1047,10 +1047,10 @@ fn s2s() {
     // type
     let stream4 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: AUTH,
         CLIENT_ID: 123
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1059,12 +1059,12 @@ fn s2s() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::InvalidClientIdFieldType));
 
     // client to client
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
         TO: MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1073,12 +1073,12 @@ fn s2s() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::TargetClientIdNotExist));
     assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap());
 
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
         TO: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1092,12 +1092,12 @@ fn s2s() {
     assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
     // client to clients
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
         TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c463").unwrap(), MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap()]
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1109,12 +1109,12 @@ fn s2s() {
     assert!(array.contains(&MessageId::with_string("016f9dd00d746c7f89ce342387e4c463").unwrap().into()));
     assert!(array.contains(&MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap().into()));
 
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123",
         TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()]
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1136,9 +1136,9 @@ fn s2s() {
     // generate message id
     let stream4 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream4.send(&mut Some(msg!{
+    let _ = stream4.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1153,10 +1153,10 @@ fn client_event() {
 
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH,
         SUPER: 123
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1164,35 +1164,35 @@ fn client_event() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::InvalidSuperFieldType));
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH,
         SUPER: true
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // supe attach
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_READY
-    }));
+    });
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_BREAK
-    }));
+    });
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_ATTACH
-    }));
+    });
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_DETACH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1204,10 +1204,10 @@ fn client_event() {
     // auth
     let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH,
         SUPER: true
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1222,10 +1222,10 @@ fn client_event() {
     assert!(recv.get_message(ATTR).is_ok());
 
     // attach
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1237,11 +1237,11 @@ fn client_event() {
     assert!(recv.get_str(VALUE).unwrap() == "aaa");
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
         LABEL: "label1"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1255,11 +1255,11 @@ fn client_event() {
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
     // detach
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
         LABEL: "label1"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1272,10 +1272,10 @@ fn client_event() {
     assert!(recv.get_str(LABEL).unwrap() == "label1");
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1301,19 +1301,19 @@ fn client_event() {
     // auth
     let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: CLIENT_KILL,
         CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1337,10 +1337,10 @@ fn client_event() {
     assert!(stream2.is_close());
     assert!(stream2.recv().is_err());
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: CLIENT_KILL,
         CLIENT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924c").unwrap()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1357,10 +1357,10 @@ fn query() {
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "client_num": QUERY_CLIENT_NUM
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1368,19 +1368,19 @@ fn query() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH,
         CLIENT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "client_num": QUERY_CLIENT_NUM
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1388,18 +1388,18 @@ fn query() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "client_num": QUERY_CLIENT_NUM
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1408,19 +1408,19 @@ fn query() {
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // client num
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH,
         SUPER: true
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "client_num": QUERY_CLIENT_NUM
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1430,10 +1430,10 @@ fn query() {
 
     let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "client_num": QUERY_CLIENT_NUM
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1441,18 +1441,18 @@ fn query() {
 
     assert!(recv.get_u32("client_num").unwrap() == 1);
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "client_num": QUERY_CLIENT_NUM
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1462,10 +1462,10 @@ fn query() {
     assert!(recv.get_u32("client_num").unwrap() == 2);
 
     // chan num
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "chan_num": QUERY_CHAN_NUM
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1473,19 +1473,19 @@ fn query() {
 
     assert!(recv.get_u32("chan_num").unwrap() == 0);
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "chan_num": QUERY_CHAN_NUM
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1493,19 +1493,19 @@ fn query() {
 
     assert!(recv.get_u32("chan_num").unwrap() == 1);
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "chan_num": QUERY_CHAN_NUM
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1514,10 +1514,10 @@ fn query() {
     assert!(recv.get_u32("chan_num").unwrap() == 0);
 
     // clients
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "clients": QUERY_CLIENTS
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1526,11 +1526,11 @@ fn query() {
     assert!(recv.get_array("clients").unwrap().len() == 2);
 
     // client
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "client": QUERY_CLIENT,
         CLIENT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1538,11 +1538,11 @@ fn query() {
 
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::NotFound));
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: QUERY,
         "client": QUERY_CLIENT,
         CLIENT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1559,9 +1559,9 @@ fn mine() {
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
     // mine
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: MINE,
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1579,16 +1579,16 @@ fn mine() {
     assert!(value.get_u64(RECV_MESSAGES).unwrap() == 1);
 
     // auth
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH,
         SUPER: true
-    }));
+    });
 
     // attach
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: "hello",
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1596,9 +1596,9 @@ fn mine() {
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // mine
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: MINE,
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1625,18 +1625,18 @@ fn client_event_send_recv() {
     let stream3 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: AUTH,
         SUPER: true
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1645,15 +1645,15 @@ fn client_event_send_recv() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attach client event
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_SEND,
-    }));
+    });
 
-    let _ = stream3.send(&mut Some(msg!{
+    let _ = stream3.send(msg!{
         CHAN: ATTACH,
         VALUE: CLIENT_RECV,
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1661,11 +1661,11 @@ fn client_event_send_recv() {
     assert!(stream3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // try send
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1675,17 +1675,17 @@ fn client_event_send_recv() {
     assert!(stream3.recv().is_err());
 
     // attach
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
-    }));
+    });
 
     // send
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1717,26 +1717,26 @@ fn self_send_recv() {
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream1.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attach
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
-    }));
+    });
 
     // send
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -1758,30 +1758,30 @@ fn self_send_recv() {
     let stream2 = queen.connect(msg!{}, None, None).unwrap();
 
     // auth
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // attach
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
     assert!(stream2.recv().unwrap().get_i32(OK).unwrap() == 0);
 
     // send
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 

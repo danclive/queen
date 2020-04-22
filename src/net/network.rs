@@ -24,7 +24,7 @@ use crate::Stream;
 use crate::crypto::{Method, Crypto};
 use crate::util::message::read_nonblock;
 use crate::dict::*;
-use crate::error::{ErrorCode, Error, Result};
+use crate::error::{ErrorCode, Error, Result, RecvError};
 
 use super::CryptoOptions;
 
@@ -213,7 +213,7 @@ impl NetWork {
                     }
                 }
                 Err(err) => {
-                    if !matches!(err, Error::Empty(_)) {
+                    if !matches!(err, RecvError::Empty) {
                         remove = true
                     }
                 }
@@ -304,9 +304,7 @@ impl NetConn {
                     if let Some(bytes) = ret {
                         if self.hand {
                             let message = Crypto::decrypt_message(&self.crypto, bytes)?;
-                            if !stream.tx.is_full() {
-                                let _ = stream.send(&mut Some(message));
-                            }
+                            let _ = stream.send(message);
                         } else {
                             match Message::from_slice(&bytes) {
                                 Ok(mut message) => {

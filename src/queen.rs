@@ -7,6 +7,7 @@ use std::sync::{
 };
 use std::cell::Cell;
 use std::io::ErrorKind::Interrupted;
+use std::result;
 
 use queen_io::{
     epoll::{Epoll, Events, Token, Ready, EpollOpt},
@@ -24,7 +25,7 @@ use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
 use crate::stream::Stream;
 use crate::dict::*;
-use crate::error::{ErrorCode, Result, Error};
+use crate::error::{ErrorCode, Result, Error, SendError, RecvError};
 
 pub use callback::Callback;
 
@@ -193,7 +194,7 @@ impl<T> QueenInner<T> {
                        true
                     };
 
-                    if success && matches!(session.stream.send(&mut Some(msg!{OK: 0i32})), Ok(_)) {
+                    if success && matches!(session.stream.send(msg!{OK: 0i32}), Ok(_)) {
                         self.epoll.add(&session.stream, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
                         entry.insert(session);
                     } else {
@@ -213,7 +214,7 @@ impl<T> QueenInner<T> {
                     self.handle_message(token, message)?;
                 }
                 Err(err) => {
-                    if !matches!(err, Error::Empty(_)) {
+                    if !matches!(err, RecvError::Empty) {
                         self.remove_conn(token)?;
                     }
                 } 
@@ -326,8 +327,8 @@ impl<T> QueenInner<T> {
             true
         };
 
-        if success && !conn.stream.tx.is_full() {
-            let _ = conn.send(&mut Some(message));
+        if success {
+            let _ = conn.send(message);
         }
     }
 
@@ -1215,14 +1216,14 @@ impl Session {
         }
     }
 
-    pub fn send(&self, message: &mut Option<Message>) -> Result<()> {
+    pub fn send(&self, message: Message) -> result::Result<(), SendError<Message>> {
         self.stream.send(message).map(|m| {
             self.send_messages.set(self.send_messages.get() + 1);
             m
         })
     }
 
-    pub fn recv(&self) -> Result<Message> {
+    pub fn recv(&self) -> result::Result<Message, RecvError> {
         self.stream.recv().map(|m| {
             self.recv_messages.set(self.recv_messages.get() + 1);
             m

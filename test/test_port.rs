@@ -29,18 +29,18 @@ fn port() {
     // start stream
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     // start port
     let port = Port::new().unwrap();
 
     let stream2 = port.connect(addr, msg!{}, None, None).unwrap();
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(2));
 
@@ -53,10 +53,10 @@ fn port() {
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     // stream1 attach
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: "hello"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -64,11 +64,11 @@ fn port() {
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     // stream2 send
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: "hello",
         "hello": "world",
         ACK: true
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -106,9 +106,9 @@ fn port_secure() {
     // start stream
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     // start port
     let port = Port::new().unwrap();
@@ -121,9 +121,9 @@ fn port_secure() {
 
     let stream2 = port.connect(addr, msg!{}, Some(crypto_options), None).unwrap();
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -136,10 +136,10 @@ fn port_secure() {
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     // stream1 attach
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: ATTACH,
         VALUE: "hello"
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -147,11 +147,11 @@ fn port_secure() {
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     // stream2 send
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: "hello",
         "hello": "world",
         ACK: true
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 
@@ -189,18 +189,18 @@ fn port_secure2() {
     // start stream
     let stream1 = queen.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream1.send(&mut Some(msg!{
+    let _ = stream1.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     // start port
     let port = Port::new().unwrap();
 
     let stream2 = port.connect(addr, msg!{}, None, None).unwrap();
 
-    let _ = stream2.send(&mut Some(msg!{
+    let _ = stream2.send(msg!{
         CHAN: AUTH
-    }));
+    });
 
     thread::sleep(Duration::from_secs(1));
 

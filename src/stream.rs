@@ -6,6 +6,8 @@ use std::sync::{
 use std::time::Duration;
 use std::os::unix::io::AsRawFd;
 use std::marker::PhantomData;
+use std::result;
+
 
 use queen_io::{
     epoll::{Epoll, Token, Ready, EpollOpt, Evented},
@@ -16,7 +18,7 @@ use queen_io::poll;
 
 use nson::Message;
 
-use crate::error::{Result, Error};
+use crate::error::{Result, SendError, RecvError};
 
 pub struct Stream<T: Send> {
     pub tx: StreamTx<T>,
@@ -75,11 +77,11 @@ impl<T: Send> Stream<T> {
         &self.tx.attr
     }
 
-    pub fn send(&self, data: &mut Option<T>) -> Result<()> {
+    pub fn send(&self, data: T) -> result::Result<(), SendError<T>> {
         self.tx.send(data)
     }
 
-    pub fn recv(&self) -> Result<T> {
+    pub fn recv(&self) -> result::Result<T, RecvError> {
         self.rx.recv()
     }
 
@@ -91,7 +93,7 @@ impl<T: Send> Stream<T> {
         self.tx.is_close()
     }
 
-    pub fn wait(&self, timeout: Option<Duration>) -> Result<T> {
+    pub fn wait(&self, timeout: Option<Duration>) -> result::Result<T, RecvError> {
         self.rx.wait(timeout)
     }
 }
@@ -112,7 +114,7 @@ impl<T: Send> Evented for Stream<T> {
 
 pub struct StreamTx<T: Send> {
     capacity: usize,
-    tx: Queue<Result<T>>,
+    tx: Queue<result::Result<T, RecvError>>,
     close: Arc<AtomicBool>,
     attr: Message,
     _not_sync: PhantomData<*const ()>
@@ -127,17 +129,22 @@ impl<T: Send> StreamTx<T> {
         &self.attr
     }
 
-    pub fn send(&self, data: &mut Option<T>) -> Result<()> {
-        if !self.is_close() {
-            self.tx.push(Ok(data.take().expect("The data sent must not be None")));
-            return Ok(())
+    pub fn send(&self, data: T) -> result::Result<(), SendError<T>> {
+        if self.is_close() {
+            return Err(SendError::Disconnected(data))
         }
 
-        Err(Error::Disconnected("Stream::send".to_string()))
+        if self.is_full() {
+            return Err(SendError::Full(data))
+        }
+
+        self.tx.push(Ok(data));
+
+        Ok(())
     }
 
     pub fn close(&self) {
-        self.tx.push(Err(Error::Disconnected("Stream::close".to_string())));
+        self.tx.push(Err(RecvError::Disconnected));
         self.close.store(true, Ordering::Relaxed);
     }
 
@@ -162,7 +169,7 @@ impl<T: Send> Drop for StreamTx<T> {
 
 pub struct StreamRx<T: Send> {
     capacity: usize,
-    rx: Queue<Result<T>>,
+    rx: Queue<result::Result<T, RecvError>>,
     close: Arc<AtomicBool>,
     attr: Message,
     _not_sync: PhantomData<*const ()>
@@ -177,10 +184,10 @@ impl<T: Send> StreamRx<T> {
         &self.attr
     }
 
-    pub fn recv(&self) -> Result<T> {
+    pub fn recv(&self) -> result::Result<T, RecvError> {
         match self.rx.pop() {
             Some(data) => data,
-            None => Err(Error::Empty("Stream::recv".to_string()))
+            None => Err(RecvError::Empty)
         }
     }
 
@@ -200,12 +207,20 @@ impl<T: Send> StreamRx<T> {
         self.rx.pending()
     }
 
-    pub fn wait(&self, timeout: Option<Duration>) -> Result<T> {
-        if poll::wait(self.rx.as_raw_fd(), poll::Ready::readable(), timeout)?.is_readable() {
-            return self.recv()
-        }
+    pub fn wait(&self, timeout: Option<Duration>) -> result::Result<T, RecvError> {
+        match poll::wait(self.rx.as_raw_fd(), poll::Ready::readable(), timeout) {
+            Ok(event) => {
+                if event.is_readable() {
+                    return self.recv()
+                }
 
-        Err(Error::TimedOut("Stream::wait".to_string()))
+                return Err(RecvError::TimedOut)
+            },
+            Err(_) => {
+                self.close();
+                return Err(RecvError::Disconnected)
+            }
+        }
     }
 }
 
@@ -239,23 +254,25 @@ mod tests {
     use std::time::Duration;
 
     use nson::msg;
-    use crate::error::Error;
+    use crate::error::{RecvError, SendError};
 
     #[test]
     fn send() {
-        let (stream1, stream2) = Stream::<i32>::pipe(1, msg!{}).unwrap();
+        let (stream1, stream2) = Stream::<i32>::pipe(2, msg!{}).unwrap();
 
-        let mut data = Some(1);
-
-        assert!(stream1.send(&mut data).is_ok());
-        assert!(data.is_none());
+        assert!(stream1.send(1).is_ok());
 
         drop(stream2);
 
-        let mut data = Some(2);
+        assert!(stream1.send(2).err() == Some(SendError::Disconnected(2)));
+    }
 
-        assert!(stream1.send(&mut data).is_err());
-        assert!(data == Some(2));
+    #[test]
+    fn send_full() {
+        let (stream1, _stream2) = Stream::<i32>::pipe(1, msg!{}).unwrap();
+
+        assert!(stream1.send(1).is_ok());
+        assert!(stream1.send(2).err() == Some(SendError::Full(2)));
     }
 
     #[test]
@@ -264,7 +281,7 @@ mod tests {
 
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(2));
-            assert!(stream1.send(&mut Some(1)).is_ok());
+            assert!(stream1.send(1).is_ok());
             thread::sleep(Duration::from_secs(2));
         });
 
@@ -274,7 +291,7 @@ mod tests {
         match ret {
             Ok(_) => (),
             Err(err) => {
-                assert!(matches!(err, Error::TimedOut(_)));
+                assert!(matches!(err, RecvError::TimedOut));
             }
         }
 
@@ -290,7 +307,7 @@ mod tests {
         match ret {
             Ok(_) => (),
             Err(err) => {
-                assert!(matches!(err, Error::Disconnected(_)));
+                assert!(matches!(err, RecvError::Disconnected));
             }
         }
 
