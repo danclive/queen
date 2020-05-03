@@ -12,7 +12,7 @@ use super::get_free_addr;
 #[test]
 fn port() {
     // start node
-    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+    let queen = Queen::new(MessageId::new(), ()).unwrap();
 
     let addr = get_free_addr();
 
@@ -42,7 +42,7 @@ fn port() {
         CHAN: AUTH
     });
 
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(Duration::from_millis(100));
 
     // stream1 recv
     let recv = stream1.recv().unwrap();
@@ -58,7 +58,7 @@ fn port() {
         VALUE: "hello"
     });
 
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_millis(100));
 
     let recv = stream1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
@@ -70,7 +70,7 @@ fn port() {
         ACK: true
     });
 
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_millis(100));
 
     // stream1 recv
     let recv = stream1.recv().unwrap();
@@ -84,7 +84,7 @@ fn port() {
 #[test]
 fn port_secure() {
     // start node
-    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+    let queen = Queen::new(MessageId::new(), ()).unwrap();
 
     let addr = get_free_addr();
 
@@ -125,7 +125,7 @@ fn port_secure() {
         CHAN: AUTH
     });
 
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_millis(100));
 
     // stream1 recv
     let recv = stream1.recv().unwrap();
@@ -141,7 +141,7 @@ fn port_secure() {
         VALUE: "hello"
     });
 
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_millis(100));
 
     let recv = stream1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
@@ -153,7 +153,7 @@ fn port_secure() {
         ACK: true
     });
 
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_millis(100));
 
     // stream1 recv
     let recv = stream1.recv().unwrap();
@@ -167,7 +167,7 @@ fn port_secure() {
 #[test]
 fn port_secure2() {
     // start node
-    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+    let queen = Queen::new(MessageId::new(), ()).unwrap();
 
     let addr = get_free_addr();
 
@@ -202,7 +202,7 @@ fn port_secure2() {
         CHAN: AUTH
     });
 
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_millis(100));
 
     // stream1 recv
     let recv = stream1.recv().unwrap();

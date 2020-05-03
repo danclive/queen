@@ -3,7 +3,7 @@ use queen::{Queen, Node};
 use queen::nson::MessageId;
 
 fn main() {
-    let queen = Queen::new(MessageId::new(), (), None).unwrap();
+    let queen = Queen::new(MessageId::new(), ()).unwrap();
 
     let mut node = Node::new(
         queen.clone(),

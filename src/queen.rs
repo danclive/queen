@@ -15,7 +15,7 @@ use queen_io::{
 };
 
 use nson::{
-    Message, Value, Array, msg,
+    Message, msg,
     message_id::MessageId
 };
 
@@ -27,9 +27,9 @@ use crate::stream::Stream;
 use crate::dict::*;
 use crate::error::{ErrorCode, Result, Error, SendError, RecvError};
 
-pub use callback::Callback;
+pub use hook::Hook;
 
-mod callback;
+mod hook;
 
 #[derive(Clone)]
 pub struct Queen {
@@ -38,10 +38,9 @@ pub struct Queen {
 }
 
 impl Queen {
-    pub fn new<T: Send + 'static>(
+    pub fn new<H: Hook>(
         id: MessageId,
-        data: T,
-        callback: Option<Callback<T>>
+        hook: H
     ) -> Result<Queen> {
         let queue = Queue::new()?;
         let run = Arc::new(AtomicBool::new(true));
@@ -54,8 +53,7 @@ impl Queen {
         let mut inner = QueenInner::new(
             id,
             queue,
-            data,
-            callback.unwrap_or_default(),
+            hook,
             run
         )?;
 
@@ -112,15 +110,14 @@ impl Drop for Queen {
     }
 }
 
-struct QueenInner<T> {
+struct QueenInner<H> {
     id: MessageId,
     epoll: Epoll,
     events: Events,
     queue: Queue<Packet>,
     sessions: Sessions,
     rand: SmallRng,
-    data: T,
-    callback: Callback<T>,
+    hook: H,
     run: Arc<AtomicBool>
 }
 
@@ -128,16 +125,15 @@ enum Packet {
     NewConn(Stream<Message>)
 }
 
-impl<T> QueenInner<T> {
+impl<H: Hook> QueenInner<H> {
     const QUEUE_TOKEN: Token = Token(usize::max_value());
 
     fn new(
         id: MessageId,
         queue: Queue<Packet>,
-        data: T,
-        callback: Callback<T>,
+        hook: H,
         run: Arc<AtomicBool>
-    ) -> Result<QueenInner<T>> {
+    ) -> Result<QueenInner<H>> {
         Ok(QueenInner {
             id,
             epoll: Epoll::new()?,
@@ -145,8 +141,7 @@ impl<T> QueenInner<T> {
             queue,
             sessions: Sessions::new(),
             rand: SmallRng::from_entropy(),
-            callback,
-            data,
+            hook,
             run
         })
     }
@@ -188,11 +183,7 @@ impl<T> QueenInner<T> {
 
                     let session = Session::new(entry.key(), stream);
 
-                    let success = if let Some(accept_fn) = &self.callback.accept_fn {
-                       accept_fn(&session, &self.data)
-                    } else {
-                       true
-                    };
+                    let success = self.hook.accept(&session);
 
                     if success && matches!(session.stream.send(msg!{OK: 0i32}), Ok(_)) {
                         self.epoll.add(&session.stream, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
@@ -244,9 +235,7 @@ impl<T> QueenInner<T> {
             // 认证成功时可以修改
             self.sessions.client_ids.remove(&conn.id);
 
-            if let Some(remove_fn) = &self.callback.remove_fn {
-                remove_fn(&conn, &self.data);
-            }
+            self.hook.remove(&conn);
 
             // 这里发一个事件，表示有 CLIENT 断开
             // 注意，只有在 CLIENT_READY 和 CLIENT_BREAK 这两个事件才会返回
@@ -272,11 +261,7 @@ impl<T> QueenInner<T> {
     }
 
     fn handle_message(&mut self, token: usize, mut message: Message) -> Result<()> {
-        let success = if let Some(recv_fn) = &self.callback.recv_fn {
-            recv_fn(&self.sessions.conns[token], &mut message, &self.data)
-        } else {
-            true
-        };
+        let success = self.hook.recv(&self.sessions.conns[token], &mut message);
 
         if !success {
             ErrorCode::RefuseReceiveMessage.insert(&mut message);
@@ -321,11 +306,7 @@ impl<T> QueenInner<T> {
     }
 
     fn send_message(&self, conn: &Session, mut message: Message) {
-        let success = if let Some(send_fn) = &self.callback.send_fn {
-            send_fn(&conn, &mut message, &self.data)
-        } else {
-            true
-        };
+        let success = self.hook.send(conn, &mut message);
 
         if success {
             let _ = conn.send(message);
@@ -333,34 +314,28 @@ impl<T> QueenInner<T> {
     }
 
     fn auth(&mut self, token: usize, mut message: Message) {
-        let success = if let Some(auth_fn) = &self.callback.auth_fn {
-            // 这里应该验证自定义字段的合法性
-            // 这里应该验证超级用户的合法性
-            // 这里应该验证 CLIENT_ID 的合法性
-            auth_fn(&self.sessions.conns[token], &mut message, &self.data)
-        } else {
-            true
-        };
-
-        if !success {
-            ErrorCode::AuthenticationFailed.insert(&mut message);
-
-            self.send_message(&self.sessions.conns[token], message);
-
-            return
-        }
-
         let mut conn = &mut self.sessions.conns[token];
 
-        // 这两个临时变量是为了防止在认证失败时修改这两个属性值
-        let mut tmp_supe = false;
-        let mut tmp_label = None;
+        // 保存认证之前的状态
+        struct TempSession {
+            pub auth: bool,
+            pub supe: bool,
+            pub id: MessageId,
+            pub label: Message
+        }
+
+        let temp_session = TempSession {
+            auth: conn.auth,
+            supe: conn.supe,
+            id: conn.id.clone(),
+            label: conn.label.clone()
+        };
 
         // SUPER
         if let Some(s) = message.get(SUPER) {
             // SUPER 字段的值只能为 bool
             if let Some(s) = s.as_bool() {
-                tmp_supe = s;
+                conn.supe = s;
             } else {
                 ErrorCode::InvalidSuperFieldType.insert(&mut message);
 
@@ -374,8 +349,11 @@ impl<T> QueenInner<T> {
         if let Some(label) = message.get(LABEL) {
             // LABEL 字段的值只能为 Message
             if let Some(label) = label.as_message() {
-                tmp_label = Some(label.clone());
+                conn.label = label.clone();
             } else {
+                // 如果失败，记得恢复 SUPE
+                conn.supe = temp_session.supe;
+
                 ErrorCode::InvalidLabelFieldType.insert(&mut message);
 
                 self.send_message(&self.sessions.conns[token], message);
@@ -391,6 +369,10 @@ impl<T> QueenInner<T> {
                 if let Some(other_token) = self.sessions.client_ids.get(client_id) {
                     // CLIENT ID 不能重复，且不能挤掉已存在的客户端
                     if *other_token != token {
+                        // 如果失败，恢复 SUPE 和 LABEL
+                        conn.supe = temp_session.supe;
+                        conn.label = temp_session.label;
+
                         ErrorCode::DuplicateClientId.insert(&mut message);
 
                         self.send_message(&self.sessions.conns[token], message);
@@ -400,13 +382,17 @@ impl<T> QueenInner<T> {
                 }
 
                 // 认证时, 可以改变 CLIENT_ID
-                self.sessions.client_ids.remove(client_id);
+                self.sessions.client_ids.remove(&conn.id);
                 // 认证成功时，设置
                 // 记得在 CLIENT 掉线时移除
                 self.sessions.client_ids.insert(client_id.clone(), token);
                 conn.id = client_id.clone();
 
             } else {
+                // 如果失败，恢复 SUPE 和 LABEL
+                conn.supe = temp_session.supe;
+                conn.label = temp_session.label;
+
                 ErrorCode::InvalidClientIdFieldType.insert(&mut message);
 
                 self.send_message(&self.sessions.conns[token], message);
@@ -421,19 +407,39 @@ impl<T> QueenInner<T> {
             self.sessions.client_ids.insert(conn.id.clone(), token);
         }
 
-        conn.supe = tmp_supe;
+        // 这里可以验证自定义字段的合法性
+        // 这里可以验证超级用户的合法性
+        // 这里可以验证 CLIENT_ID 的合法性
+        let success = self.hook.auth(&conn, &mut message);
 
-        if let Some(label) = tmp_label {
-            conn.label = label;
-        } else {
-            // 认证时，如果没有提供 LABEL, 可返回上次认证成功的 LABEL
-            // 如果 LABEL 为空的话，就没必要返回了
-            if !conn.label.is_empty() {
-                message.insert(LABEL, conn.label.clone());
+        if !success {
+            // 认证失败时, 移除
+            self.sessions.client_ids.remove(&conn.id);
+
+            if temp_session.auth {
+                // 如果上次认证成功，就将原来的插入
+                self.sessions.client_ids.insert(temp_session.id.clone(), token);
             }
+
+            conn.auth = temp_session.auth;
+            conn.supe = temp_session.supe;
+            conn.id = temp_session.id;
+            conn.label = temp_session.label;
+
+            ErrorCode::AuthenticationFailed.insert(&mut message);
+
+            self.send_message(&self.sessions.conns[token], message);
+
+            return
         }
 
         conn.auth = true;
+
+        // 认证时，如果没有提供 LABEL, 可返回上次认证成功的 LABEL
+        // 如果 LABEL 为空的话，就没必要返回了
+        if !conn.label.is_empty() {
+            message.insert(LABEL, conn.label.clone());
+        }
 
         message.insert(NODE_ID, self.id.clone());
 
@@ -491,21 +497,6 @@ impl<T> QueenInner<T> {
                 _ => ()
             }
 
-            // can attach
-            let success = if let Some(attach_fn) = &self.callback.attach_fn {
-                attach_fn(&self.sessions.conns[token], &mut message, &self.data)
-            } else {
-                true
-            };
-
-            if !success {
-                ErrorCode::Unauthorized.insert(&mut message);
-
-                self.send_message(&self.sessions.conns[token], message);
-
-                return
-            }
-
             // label
             let mut labels = HashSet::new();
 
@@ -531,6 +522,17 @@ impl<T> QueenInner<T> {
 
                     return
                 }
+            }
+
+            // 这里可以验证该 CLIENT 是否有权限
+            let success = self.hook.attach(&self.sessions.conns[token], &mut message, &chan, &labels);
+
+            if !success {
+                ErrorCode::Unauthorized.insert(&mut message);
+
+                self.send_message(&self.sessions.conns[token], message);
+
+                return
             }
 
             // client event
@@ -581,10 +583,6 @@ impl<T> QueenInner<T> {
         }
 
         if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
-            if let Some(detach_fn) = &self.callback.detach_fn {
-                detach_fn(&self.sessions.conns[token], &mut message, &self.data);
-            }
-
             // label
             let mut labels = HashSet::new();
 
@@ -610,6 +608,18 @@ impl<T> QueenInner<T> {
 
                     return
                 }
+            }
+
+            // 这里可以验证该 CLIENT 是否有权限
+            // 可以让 CLIENT 不能 DETACH 某些 CHAN
+            let success = self.hook.detach(&self.sessions.conns[token], &mut message, &chan, &labels);
+
+            if !success {
+                ErrorCode::Unauthorized.insert(&mut message);
+
+                self.send_message(&self.sessions.conns[token], message);
+
+                return
             }
 
             // client event
@@ -658,7 +668,9 @@ impl<T> QueenInner<T> {
         self.send_message(&self.sessions.conns[token], message);
     }
 
-    fn ping(&self, token: usize, mut message: Message) {
+    fn ping(&mut self, token: usize, mut message: Message) {
+        self.hook.ping(&self.sessions.conns[token], &mut message);
+
         ErrorCode::OK.insert(&mut message);
 
         self.send_message(&self.sessions.conns[token], message);
@@ -677,82 +689,7 @@ impl<T> QueenInner<T> {
             }
         }
 
-        for (key, value) in message.clone() {
-            if value == Value::String(QUERY_CLIENT_NUM.to_string()) {
-                message.insert(key, self.sessions.client_ids.len() as u32);
-            } else if value == Value::String(QUERY_CHAN_NUM.to_string()) {
-                message.insert(key, self.sessions.chans.len() as u32);
-            } else if value == Value::String(QUERY_CLIENTS.to_string()) {
-                let mut array = Array::new();
-
-                for (_, conn) in self.sessions.conns.iter() {
-                    let mut chans = Message::new();
-
-                    for (chan, labels) in &conn.chans {
-                        let labels: Vec<&String> = labels.iter().collect();
-
-                        chans.insert(chan, labels);
-                    }
-
-                    let client = msg!{
-                        AUTH: conn.auth,
-                        SUPER: conn.supe,
-                        CHANS: chans,
-                        CLIENT_ID: conn.id.clone(),
-                        LABEL: conn.label.clone(),
-                        ATTR: conn.stream.attr().clone(),
-                        SEND_MESSAGES: conn.send_messages.get() as u64,
-                        RECV_MESSAGES: conn.recv_messages.get() as u64
-                    };
-
-                    array.push(client);
-                }
-
-                message.insert(key, array);
-            } else if value == Value::String(QUERY_CLIENT.to_string()) {
-                if let Ok(client_id) = message.get_message_id(CLIENT_ID) {
-                    if let Some(id) = self.sessions.client_ids.get(client_id) {
-                        if let Some(conn) = self.sessions.conns.get(*id) {
-                            let mut chans = Message::new();
-
-                            for (chan, labels) in &conn.chans {
-                                let labels: Vec<&String> = labels.iter().collect();
-
-                                chans.insert(chan, labels);
-                            }
-
-                            let client = msg!{
-                                AUTH: conn.auth,
-                                SUPER: conn.supe,
-                                CHANS: chans,
-                                CLIENT_ID: conn.id.clone(),
-                                LABEL: conn.label.clone(),
-                                ATTR: conn.stream.attr().clone(),
-                                SEND_MESSAGES: conn.send_messages.get() as u64,
-                                RECV_MESSAGES: conn.recv_messages.get() as u64
-                            };
-
-                            message.insert(key, client);
-                            message.remove(CLIENT_ID);
-                        }
-                    } else {
-                        ErrorCode::NotFound.insert(&mut message);
-
-                        self.send_message(&self.sessions.conns[token], message);
-
-                        return
-                    }
-                } else {
-                    ErrorCode::InvalidClientIdFieldType.insert(&mut message);
-
-                    self.send_message(&self.sessions.conns[token], message);
-
-                    return
-                }
-            }
-        }
-
-        ErrorCode::OK.insert(&mut message);
+        self.hook.query(&self.sessions, token, &mut message);
 
         self.send_message(&self.sessions.conns[token], message);
     }
@@ -799,9 +736,9 @@ impl<T> QueenInner<T> {
             }
         }
 
-        if let Some(custom_fn) = &self.callback.custom_fn {
-            custom_fn(&self.sessions, token, &mut message, &self.data);
-        }
+        self.hook.custom(&self.sessions, token, &mut message);
+
+        self.send_message(&self.sessions.conns[token], message);
     }
 
     fn kill(&mut self, token: usize, mut message: Message) -> Result<()> {
@@ -817,11 +754,7 @@ impl<T> QueenInner<T> {
             }
         }
 
-        let success = if let Some(kill_fn) = &self.callback.kill_fn {
-            kill_fn(&self.sessions.conns[token], &mut message, &self.data)
-        } else {
-            true
-        };
+        let success = self.hook.kill(&self.sessions.conns[token], &mut message);
 
         if !success {
             ErrorCode::Unauthorized.insert(&mut message);
@@ -881,11 +814,7 @@ impl<T> QueenInner<T> {
             return
         }
 
-        let success = if let Some(emit_fn) = &self.callback.emit_fn {
-            emit_fn(&self.sessions.conns[token], &mut message, &self.data)
-        } else {
-            true
-        };
+        let success = self.hook.emit(&self.sessions.conns[token], &mut message);
 
         if !success {
             ErrorCode::Unauthorized.insert(&mut message);
@@ -1009,11 +938,7 @@ impl<T> QueenInner<T> {
 
         macro_rules! send {
             ($self: ident, $conn: ident, $message: ident) => {
-                let success = if let Some(push_fn) = &$self.callback.push_fn {
-                    push_fn(&$conn, &mut $message, &$self.data)
-                } else {
-                    true
-                };
+                let success = self.hook.push(&$conn, &mut $message);
 
                 if success {
                     self.send_message($conn, $message.clone());
@@ -1151,11 +1076,7 @@ impl<T> QueenInner<T> {
                 if let Some(conn) = self.sessions.conns.get(*other_token) {
                     let mut message = message.clone();
 
-                    let success = if let Some(send_fn) = &self.callback.send_fn {
-                        send_fn(&conn, &mut message, &self.data)
-                    } else {
-                        true
-                    };
+                    let success = self.hook.send(&conn, &mut message);
 
                     if success {
                         self.send_message(conn, message);
@@ -1166,7 +1087,7 @@ impl<T> QueenInner<T> {
     }
 }
 
-impl<T> Drop for QueenInner<T> {
+impl<H> Drop for QueenInner<H> {
     fn drop(&mut self) {
         self.run.store(false, Ordering::Relaxed);
     }

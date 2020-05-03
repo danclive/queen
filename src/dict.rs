@@ -38,12 +38,7 @@ pub const CLIENT_KILL:   &str = "_ctki";
 pub const CLIENT_SEND:   &str = "_ctse";
 pub const CLIENT_RECV:   &str = "_ctrc";
 
-// query
-pub const QUERY_CLIENT_NUM: &str = "$client_num";
-pub const QUERY_CHAN_NUM:   &str = "$chan_num";
-pub const QUERY_CLIENTS:    &str = "$clients";
-pub const QUERY_CLIENT:     &str = "$client";
-
+// attr
 pub const SEND_MESSAGES:    &str = "send_msgs";
 pub const RECV_MESSAGES:    &str = "recv_msgs";
 
