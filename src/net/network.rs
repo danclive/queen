@@ -121,7 +121,7 @@ impl NetWork {
                         Ready::readable() | Ready::hup(),
                         EpollOpt::edge()
                     )?;
-                
+
                     entry1.insert(stream);
 
                     let mut conn = NetConn::new(id2, net_stream);

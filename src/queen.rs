@@ -217,7 +217,7 @@ impl<T> QueenInner<T> {
                     if !matches!(err, RecvError::Empty) {
                         self.remove_conn(token)?;
                     }
-                } 
+                }
             }
         }
 
@@ -280,9 +280,9 @@ impl<T> QueenInner<T> {
 
         if !success {
             ErrorCode::RefuseReceiveMessage.insert(&mut message);
-            
+
             self.send_message(&self.sessions.conns[token], message);
-        
+
             return Ok(())
         }
 
@@ -438,7 +438,7 @@ impl<T> QueenInner<T> {
         message.insert(NODE_ID, self.id.clone());
 
         ErrorCode::OK.insert(&mut message);
-        
+
         // 这里发一个事件，表示有 CLIENT 认证成功，准备好接收消息了
         // 注意，只有在 CLIENT_READY 和 CLIENT_BREAK 这两个事件才会返回
         // CLIENT 的 LABEL 和 ATTR
@@ -649,7 +649,7 @@ impl<T> QueenInner<T> {
             }
 
             self.relay_super_message(token, CLIENT_DETACH, event_message);
-        
+
             ErrorCode::OK.insert(&mut message);
         } else {
             ErrorCode::CannotGetValueField.insert(&mut message);
@@ -784,7 +784,7 @@ impl<T> QueenInner<T> {
         ErrorCode::OK.insert(&mut message);
 
         self.send_message(&self.sessions.conns[token], message);
-    } 
+    }
 
     fn custom(&self, token: usize, mut message: Message) {
         {
@@ -922,7 +922,7 @@ impl<T> QueenInner<T> {
         };
 
         // 两种模式下，自己都可以收到自己发送的消息，如果不想处理，可以利用 `FROM` 进行过滤，
-        // 也就是此时 FROM == 自己的 CLIENT_ID 
+        // 也就是此时 FROM == 自己的 CLIENT_ID
 
         // P2P 的优先级比较高
         // 不管 CLIENT 是否 ATTACH，都可给其发送消息

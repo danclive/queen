@@ -1328,7 +1328,7 @@ fn client_event() {
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_KILL);
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
-   
+
     let recv = stream1.recv().unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_BREAK);
