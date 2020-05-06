@@ -1,4 +1,5 @@
 pub mod queen;
+pub mod queen2;
 pub mod node;
 pub mod stream;
 pub mod net;
