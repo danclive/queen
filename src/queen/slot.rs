@@ -32,6 +32,27 @@ pub struct Slot {
     rand: SmallRng
 }
 
+pub struct Client {
+    // 客户端内部 ID
+    pub token: usize,
+    // 默认情况下会随机生成一个，可以在认证时修改
+    pub id: MessageId,
+    // 客户端的一些属性，可以在认证时设置
+    pub label: Message,
+    // 是否认证
+    pub auth: bool,
+    // 是否具有超级权限
+    pub root: bool,
+    // 客户端 ATTACH 的 CHAN，以及 LABEL
+    pub chans: HashMap<String, HashSet<String>>,
+    // 发送的消息数
+    pub send_messages: Cell<usize>,
+    // 接收的消息数
+    pub recv_messages: Cell<usize>,
+    // 双向流
+    pub stream: Stream<Message>,
+}
+
 impl Slot {
     pub fn new() -> Self {
         Self {
@@ -44,16 +65,16 @@ impl Slot {
 
     pub(crate) fn add_client(&mut self, epoll: &Epoll, hook: &impl Hook, stream: Stream<Message>) -> Result<()> {
         let entry = self.clients.vacant_entry();
+        let client = Client::new(entry.key(), stream);
 
-        let session = Client::new(entry.key(), stream);
+        // 此处可以验证一下客户端的属性，不过目前只能验证 stream.attr
+        let success = hook.accept(&client);
 
-        let success = hook.accept(&session);
-
-        if success && matches!(session.stream.send(msg!{OK: 0i32}), Ok(_)) {
-            epoll.add(&session.stream, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
-            entry.insert(session);
+        if success && matches!(client.stream.send(msg!{OK: 0i32}), Ok(_)) {
+            epoll.add(&client.stream, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
+            entry.insert(client);
         } else {
-            session.stream.close();
+            client.stream.close();
         }
 
         Ok(())
@@ -104,6 +125,51 @@ impl Slot {
         Ok(())
     }
 
+    pub(crate) fn recv_message(&mut self, epoll: &Epoll, hook: &impl Hook, queen_id: &MessageId, token: usize, mut message: Message) -> Result<()> {
+        let success = hook.recv(&self.clients[token], &mut message);
+
+        if !success {
+            ErrorCode::RefuseReceiveMessage.insert(&mut message);
+
+            self.send_message(hook, token, message);
+
+            return Ok(())
+        }
+
+        let chan = match message.get_str(CHAN) {
+            Ok(chan) => chan,
+            Err(_) => {
+                ErrorCode::CannotGetChanField.insert(&mut message);
+
+                self.send_message(hook, token, message);
+
+                return Ok(())
+            }
+        };
+
+        if chan.starts_with('_') {
+            match chan {
+                AUTH => self.auth(hook, queen_id, token, message),
+                ATTACH => self.attach(hook, token, message),
+                DETACH => self.detach(hook, token, message),
+                PING => self.ping(hook, token, message),
+                QUERY => self.query(hook, token, message),
+                MINE => self.mine(hook, token, message),
+                CUSTOM => self.custom(hook, token, message),
+                CLIENT_KILL => self.kill(epoll, hook, token, message)?,
+                _ => {
+                    ErrorCode::UnsupportedChan.insert(&mut message);
+
+                    self.send_message(hook, token, message);
+                }
+            }
+        } else {
+            self.relay_message(hook, token, chan.to_string(), message);
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn send_message(&self, hook: &impl Hook, token: usize, mut message: Message) {
         if let Some(client) = self.clients.get(token) {
             let success = hook.send(client, &mut message);
@@ -136,7 +202,7 @@ impl Slot {
 
     #[allow(clippy::cognitive_complexity)]
     pub(crate) fn relay_message(&mut self, hook: &impl Hook, token: usize, chan: String, mut message: Message) {
-        // check auth
+        // 认证之前，不能发送消息
         if !self.clients[token].auth {
             ErrorCode::Unauthorized.insert(&mut message);
 
@@ -886,27 +952,6 @@ impl Slot {
 
         Ok(())
     }
-}
-
-pub struct Client {
-    // 客户端内部 ID
-    pub token: usize,
-    // 默认情况下会随机生成一个，可以在认证时修改
-    pub id: MessageId,
-    // 客户端的一些属性，可以在认证时设置
-    pub label: Message,
-    // 是否认证
-    pub auth: bool,
-    // 是否具有超级权限
-    pub root: bool,
-    // 客户端 ATTACH 的 CHAN，以及 LABEL
-    pub chans: HashMap<String, HashSet<String>>,
-    // 发送的消息数
-    pub send_messages: Cell<usize>,
-    // 接收的消息数
-    pub recv_messages: Cell<usize>,
-    // 双向流
-    pub stream: Stream<Message>,
 }
 
 impl Client {

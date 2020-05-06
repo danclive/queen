@@ -18,8 +18,7 @@ use nson::{
 };
 
 use crate::stream::Stream;
-use crate::dict::*;
-use crate::error::{ErrorCode, Result, Error, RecvError};
+use crate::error::{Result, Error, RecvError};
 
 pub use hook::Hook;
 pub use slot::{Slot, Client};
@@ -83,7 +82,7 @@ impl Queen {
     ) -> Result<Stream<Message>> {
         let (stream1, stream2) = Stream::pipe(capacity.unwrap_or(64), attr)?;
 
-        let packet = Packet::NewConn(stream1);
+        let packet = Packet::NewClient(stream1);
 
         self.queue.push(packet);
 
@@ -117,7 +116,7 @@ struct QueenInner<H> {
 }
 
 enum Packet {
-    NewConn(Stream<Message>)
+    NewClient(Stream<Message>)
 }
 
 impl<H: Hook> QueenInner<H> {
@@ -172,7 +171,7 @@ impl<H: Hook> QueenInner<H> {
     fn dispatch_queue(&mut self) -> Result<()> {
         if let Some(packet) = self.queue.pop() {
             match packet {
-                Packet::NewConn(stream) => {
+                Packet::NewClient(stream) => {
                     self.slot.add_client(&self.epoll, &self.hook, stream)?;
                 }
             }
@@ -185,7 +184,7 @@ impl<H: Hook> QueenInner<H> {
         if let Some(conn) = self.slot.clients.get(token) {
             match conn.recv() {
                 Ok(message) => {
-                    self.handle_message(token, message)?;
+                    self.slot.recv_message(&self.epoll, &self.hook, &self.id, token, message)?;
                 }
                 Err(err) => {
                     if !matches!(err, RecvError::Empty) {
@@ -193,51 +192,6 @@ impl<H: Hook> QueenInner<H> {
                     }
                 }
             }
-        }
-
-        Ok(())
-    }
-
-    fn handle_message(&mut self, token: usize, mut message: Message) -> Result<()> {
-        let success = self.hook.recv(&self.slot.clients[token], &mut message);
-
-        if !success {
-            ErrorCode::RefuseReceiveMessage.insert(&mut message);
-
-            self.slot.send_message(&self.hook, token, message);
-
-            return Ok(())
-        }
-
-        let chan = match message.get_str(CHAN) {
-            Ok(chan) => chan,
-            Err(_) => {
-                ErrorCode::CannotGetChanField.insert(&mut message);
-
-                self.slot.send_message(&self.hook, token, message);
-
-                return Ok(())
-            }
-        };
-
-        if chan.starts_with('_') {
-            match chan {
-                AUTH => self.slot.auth(&self.hook, &self.id, token, message),
-                ATTACH => self.slot.attach(&self.hook, token, message),
-                DETACH => self.slot.detach(&self.hook, token, message),
-                PING => self.slot.ping(&self.hook, token, message),
-                QUERY => self.slot.query(&self.hook, token, message),
-                MINE => self.slot.mine(&self.hook, token, message),
-                CUSTOM => self.slot.custom(&self.hook, token, message),
-                CLIENT_KILL => self.slot.kill(&self.epoll, &self.hook, token, message)?,
-                _ => {
-                    ErrorCode::UnsupportedChan.insert(&mut message);
-
-                    self.slot.send_message(&self.hook, token, message);
-                }
-            }
-        } else {
-            self.slot.relay_message(&self.hook, token, chan.to_string(), message);
         }
 
         Ok(())
