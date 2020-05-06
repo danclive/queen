@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::thread;
 use std::collections::HashSet;
 
-use queen::{Queen, Hook, Sessions, Session};
+use queen::{Queen, Hook, Slot, Client};
 use queen::nson::{msg, MessageId, Message};
 use queen::dict::*;
 use queen::error::ErrorCode;
@@ -55,17 +55,17 @@ fn test_hook() {
     }
 
     impl Hook for MyHook {
-        fn accept(&self, _: &Session) -> bool {
+        fn accept(&self, _: &Client) -> bool {
             self.inner.clients.fetch_add(1, Ordering::SeqCst);
 
             true
         }
 
-        fn remove(&self, _: &Session) {
+        fn remove(&self, _: &Client) {
             self.inner.clients.fetch_sub(1, Ordering::SeqCst);
         }
 
-        fn recv(&self, conn: &Session, message: &mut Message) -> bool {
+        fn recv(&self, conn: &Client, message: &mut Message) -> bool {
             self.inner.recvs.fetch_add(1, Ordering::SeqCst);
 
             if !conn.auth {
@@ -79,13 +79,13 @@ fn test_hook() {
             true
         }
 
-        fn send(&self, _: &Session, _: &mut Message) -> bool {
+        fn send(&self, _: &Client, _: &mut Message) -> bool {
             self.inner.sends.fetch_add(1, Ordering::SeqCst);
 
             true
         }
 
-        fn auth(&self, _: &Session, message: &mut Message) -> bool {
+        fn auth(&self, _: &Client, message: &mut Message) -> bool {
             if let (Ok(user), Ok(pass)) = (message.get_str("user"), message.get_str("pass")) {
                 if user == "aaa" && pass == "bbb" {
                     return true
@@ -95,7 +95,7 @@ fn test_hook() {
             return false
         }
 
-        fn attach(&self, _: &Session, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
+        fn attach(&self, _: &Client, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
             if chan == "123" {
                 return false
             }
@@ -105,7 +105,7 @@ fn test_hook() {
             return true
         }
 
-        fn detach(&self, _: &Session, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
+        fn detach(&self, _: &Client, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
             if chan == "123" {
                 return false
             }
@@ -115,14 +115,14 @@ fn test_hook() {
             return true
         }
 
-        fn ping(&self, _: &Session, message: &mut Message) {
+        fn ping(&self, _: &Client, message: &mut Message) {
             self.inner.pings.fetch_add(1, Ordering::SeqCst);
             message.insert("hello", "world");
         }
 
-        fn custom(&self, sessions: &Sessions, _token: usize, message: &mut Message) {
+        fn custom(&self, slot: &Slot, _token: usize, message: &mut Message) {
             message.insert("hahaha", "wawawa");
-            message.insert("clients", sessions.client_ids.len() as u32);
+            message.insert("clients", slot.client_ids.len() as u32);
 
             ErrorCode::OK.insert(message);
         }

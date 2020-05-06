@@ -3,7 +3,7 @@ use std::thread;
 
 use nson::{msg, MessageId};
 
-use queen::{Queen, Hook, Session};
+use queen::{Queen, Hook, Client};
 use queen::dict::*;
 use queen::error::{ErrorCode, Error};
 
@@ -18,7 +18,7 @@ fn conn() {
     struct MyHook;
 
     impl Hook for MyHook {
-        fn accept(&self, _conn: &Session) -> bool {
+        fn accept(&self, _conn: &Client) -> bool {
             false
         }
     }
@@ -174,7 +174,7 @@ fn auth() {
     let value = recv.get_message(VALUE).unwrap();
 
     assert!(value.get_bool(AUTH).unwrap() == false);
-    assert!(value.get_bool(SUPER).unwrap() == false);
+    assert!(value.get_bool(ROOT).unwrap() == false);
     assert!(value.get_message(CHANS).unwrap().is_empty());
     assert!(value.get_message_id(CLIENT_ID).unwrap() != &client_id);
     assert!(value.get_u64(SEND_MESSAGES).unwrap() == 1);
@@ -1156,18 +1156,18 @@ fn client_event() {
 
     let _ = stream1.send(msg!{
         CHAN: AUTH,
-        SUPER: 123
+        ROOT: 123
     });
 
     thread::sleep(Duration::from_millis(100));
 
     let recv = stream1.recv().unwrap();
 
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::InvalidSuperFieldType));
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::InvalidRootFieldType));
 
     let _ = stream1.send(msg!{
         CHAN: AUTH,
-        SUPER: true
+        ROOT: true
     });
 
     thread::sleep(Duration::from_millis(100));
@@ -1207,7 +1207,7 @@ fn client_event() {
 
     let _ = stream2.send(msg!{
         CHAN: AUTH,
-        SUPER: true
+        ROOT: true
     });
 
     thread::sleep(Duration::from_millis(100));
@@ -1217,7 +1217,7 @@ fn client_event() {
     let recv = stream1.recv().unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_READY);
-    assert!(recv.get_bool(SUPER).unwrap() == true);
+    assert!(recv.get_bool(ROOT).unwrap() == true);
     assert!(recv.get_message_id(CLIENT_ID).is_ok());
     assert!(recv.get_message(LABEL).is_ok());
     assert!(recv.get_message(ATTR).is_ok());
@@ -1321,7 +1321,7 @@ fn client_event() {
     let recv = stream1.recv().unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == CLIENT_READY);
-    assert!(recv.get_bool(SUPER).unwrap() == false);
+    assert!(recv.get_bool(ROOT).unwrap() == false);
     assert!(recv.get_message_id(CLIENT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
     let recv = stream1.recv().unwrap();
@@ -1371,7 +1371,7 @@ fn mine() {
     let value = recv.get_message(VALUE).unwrap();
 
     assert!(value.get_bool(AUTH).unwrap() == false);
-    assert!(value.get_bool(SUPER).unwrap() == false);
+    assert!(value.get_bool(ROOT).unwrap() == false);
     assert!(value.get_message(CHANS).unwrap().is_empty());
     assert!(value.is_null(CLIENT_ID) == false);
     assert!(value.get_u64(SEND_MESSAGES).unwrap() == 0);
@@ -1380,7 +1380,7 @@ fn mine() {
     // auth
     let _ = stream1.send(msg!{
         CHAN: AUTH,
-        SUPER: true
+        ROOT: true
     });
 
     // attach
@@ -1408,7 +1408,7 @@ fn mine() {
     let value = recv.get_message(VALUE).unwrap();
 
     assert!(value.get_bool(AUTH).unwrap() == true);
-    assert!(value.get_bool(SUPER).unwrap() == true);
+    assert!(value.get_bool(ROOT).unwrap() == true);
     assert!(value.get_message(CHANS).unwrap().get_array("hello").is_ok());
     assert!(value.get_message_id(CLIENT_ID).is_ok());
     assert!(value.get_u64(SEND_MESSAGES).unwrap() == 3);
@@ -1434,7 +1434,7 @@ fn client_event_send_recv() {
 
     let _ = stream3.send(msg!{
         CHAN: AUTH,
-        SUPER: true
+        ROOT: true
     });
 
     thread::sleep(Duration::from_millis(100));

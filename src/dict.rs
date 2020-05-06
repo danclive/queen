@@ -10,7 +10,7 @@ pub const QUERY:     &str = "_quer";
 pub const MINE:      &str = "_mine";
 pub const CUSTOM:    &str = "_cust";
 
-pub const NODE_ID:   &str = "_noid";
+pub const QUEEN_ID:  &str = "_quid";
 pub const CLIENT_ID: &str = "_clid";
 pub const VALUE:     &str = "_valu";
 pub const LABEL:     &str = "_labe";
@@ -18,7 +18,7 @@ pub const TO:        &str = "_to";
 pub const FROM:      &str = "_from";
 pub const SHARE:     &str = "_shar";
 pub const ACK:       &str = "_ack";
-pub const SUPER:     &str = "_supe";
+pub const ROOT:      &str = "_root";
 pub const ATTR:      &str = "_attr";
 pub const ADDR:      &str = "_addr";
 
