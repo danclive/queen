@@ -21,8 +21,12 @@ use nson::Message;
 use crate::error::{Result, SendError, RecvError};
 
 pub struct Stream<T: Send> {
-    pub tx: StreamTx<T>,
-    pub rx: StreamRx<T>
+    capacity: usize,
+    tx: Queue<result::Result<T, RecvError>>,
+    rx: Queue<result::Result<T, RecvError>>,
+    close: Arc<AtomicBool>,
+    attr: Message,
+    _not_sync: PhantomData<*const ()>
 }
 
 impl<T: Send> Stream<T> {
@@ -33,114 +37,32 @@ impl<T: Send> Stream<T> {
         let close = Arc::new(AtomicBool::new(false));
 
         let stream1 = Stream {
-            tx: StreamTx {
-                capacity,
-                tx: queue1.clone(),
-                close: close.clone(),
-                attr: attr.clone(),
-                _not_sync: PhantomData
-            },
-            rx: StreamRx {
-                capacity,
-                rx: queue2.clone(),
-                close: close.clone(),
-                attr: attr.clone(),
-                _not_sync: PhantomData
-            }
+            capacity,
+            tx: queue1.clone(),
+            rx: queue2.clone(),
+            close: close.clone(),
+            attr: attr.clone(),
+            _not_sync: PhantomData
         };
 
         let stream2 = Stream {
-            tx: StreamTx {
-                capacity,
-                tx: queue2,
-                close: close.clone(),
-                attr: attr.clone(),
-                _not_sync: PhantomData
-            },
-            rx: StreamRx {
-                capacity,
-                rx: queue1,
-                close,
-                attr,
-                _not_sync: PhantomData
-            }
+            capacity,
+            tx: queue2,
+            rx: queue1,
+            close: close.clone(),
+            attr: attr.clone(),
+            _not_sync: PhantomData
         };
 
         Ok((stream1, stream2))
     }
 
-    pub fn split(self) -> (StreamTx<T>, StreamRx<T>) {
-        (self.tx, self.rx)
-    }
-
-    pub fn attr(&self) -> &Message {
-        &self.tx.attr
-    }
-
-    pub fn send(&self, data: T) -> result::Result<(), SendError<T>> {
-        self.tx.send(data)
-    }
-
-    pub fn recv(&self) -> result::Result<T, RecvError> {
-        self.rx.recv()
-    }
-
-    pub fn close(&self) {
-        self.tx.close()
-    }
-
-    pub fn is_close(&self) -> bool {
-        self.tx.is_close()
-    }
-
-    pub fn wait(&self, timeout: Option<Duration>) -> result::Result<T, RecvError> {
-        self.rx.wait(timeout)
-    }
-}
-
-impl<T: Send> Evented for Stream<T> {
-    fn add(&self, epoll: &Epoll, token: Token, interest: Ready, opts: EpollOpt) -> io::Result<()> {
-        self.rx.add(epoll, token, interest, opts)
-    }
-
-    fn modify(&self, epoll: &Epoll, token: Token, interest: Ready, opts: EpollOpt) -> io::Result<()> {
-        self.rx.modify(epoll, token, interest, opts)
-    }
-
-    fn delete(&self, epoll: &Epoll) -> io::Result<()> {
-       self.rx.delete(epoll)
-    }
-}
-
-pub struct StreamTx<T: Send> {
-    capacity: usize,
-    tx: Queue<result::Result<T, RecvError>>,
-    close: Arc<AtomicBool>,
-    attr: Message,
-    _not_sync: PhantomData<*const ()>
-}
-
-impl<T: Send> StreamTx<T> {
     pub fn capacity(&self) -> usize {
         self.capacity
     }
 
     pub fn attr(&self) -> &Message {
         &self.attr
-    }
-
-    pub fn send(&self, data: T) -> result::Result<(), SendError<T>> {
-        if self.is_close() {
-            return Err(SendError::Disconnected(data))
-        }
-
-        if self.is_full() {
-            return Err(SendError::Full(data))
-        }
-
-        self.tx.push(Ok(data));
-
-        Ok(())
     }
 
     pub fn close(&self) {
@@ -159,29 +81,19 @@ impl<T: Send> StreamTx<T> {
     pub fn pending(&self) -> usize {
         self.tx.pending()
     }
-}
 
-impl<T: Send> Drop for StreamTx<T> {
-    fn drop(&mut self) {
-        self.close()
-    }
-}
+    pub fn send(&self, data: T) -> result::Result<(), SendError<T>> {
+        if self.is_close() {
+            return Err(SendError::Disconnected(data))
+        }
 
-pub struct StreamRx<T: Send> {
-    capacity: usize,
-    rx: Queue<result::Result<T, RecvError>>,
-    close: Arc<AtomicBool>,
-    attr: Message,
-    _not_sync: PhantomData<*const ()>
-}
+        if self.is_full() {
+            return Err(SendError::Full(data))
+        }
 
-impl<T: Send> StreamRx<T> {
-    pub fn capacity(&self) -> usize {
-        self.capacity
-    }
+        self.tx.push(Ok(data));
 
-    pub fn attr(&self) -> &Message {
-        &self.attr
+        Ok(())
     }
 
     pub fn recv(&self) -> result::Result<T, RecvError> {
@@ -189,22 +101,6 @@ impl<T: Send> StreamRx<T> {
             Some(data) => data,
             None => Err(RecvError::Empty)
         }
-    }
-
-    pub fn close(&self) {
-        self.close.store(true, Ordering::Relaxed);
-    }
-
-    pub fn is_close(&self) -> bool {
-        self.close.load(Ordering::Relaxed)
-    }
-
-    pub fn is_full(&self) -> bool {
-        self.rx.pending() >= self.capacity
-    }
-
-    pub fn pending(&self) -> usize {
-        self.rx.pending()
     }
 
     pub fn wait(&self, timeout: Option<Duration>) -> result::Result<T, RecvError> {
@@ -224,7 +120,15 @@ impl<T: Send> StreamRx<T> {
     }
 }
 
-impl<T: Send> Evented for StreamRx<T> {
+impl<T: Send> Drop for Stream<T> {
+    fn drop(&mut self) {
+        self.close()
+    }
+}
+
+unsafe impl<T: Send> Send for Stream<T> {}
+
+impl<T: Send> Evented for Stream<T> {
     fn add(&self, epoll: &Epoll, token: Token, interest: Ready, opts: EpollOpt) -> io::Result<()> {
         self.rx.add(epoll, token, interest, opts)
     }
@@ -237,15 +141,6 @@ impl<T: Send> Evented for StreamRx<T> {
        self.rx.delete(epoll)
     }
 }
-
-impl<T: Send> Drop for StreamRx<T> {
-    fn drop(&mut self) {
-        self.close()
-    }
-}
-
-unsafe impl<T: Send> Send for StreamTx<T> {}
-unsafe impl<T: Send> Send for StreamRx<T> {}
 
 #[cfg(test)]
 mod tests {
