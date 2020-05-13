@@ -28,6 +28,10 @@ pub struct Slot {
     pub client_ids: HashMap<MessageId, usize>,
     // 保存客户端
     pub clients: Slab<Client>,
+    // 发送的消息数
+    pub send_messages: Cell<usize>,
+    // 接收的消息数
+    pub recv_messages: Cell<usize>,
     // 随机数，用于发送共享消息
     rand: SmallRng
 }
@@ -50,7 +54,7 @@ pub struct Client {
     // 接收的消息数
     pub recv_messages: Cell<usize>,
     // 双向流
-    pub stream: Stream<Message>,
+    pub stream: Stream<Message>
 }
 
 impl Slot {
@@ -59,11 +63,18 @@ impl Slot {
             chans: HashMap::new(),
             client_ids: HashMap::new(),
             clients: Slab::new(),
+            send_messages: Cell::new(0),
+            recv_messages: Cell::new(0),
             rand: SmallRng::from_entropy()
         }
     }
 
-    pub(crate) fn add_client(&mut self, epoll: &Epoll, hook: &impl Hook, stream: Stream<Message>) -> Result<()> {
+    pub(crate) fn add_client(
+        &mut self,
+        epoll: &Epoll,
+        hook: &impl Hook,
+        stream: Stream<Message>
+    ) -> Result<()> {
         let entry = self.clients.vacant_entry();
         let client = Client::new(entry.key(), stream);
 
@@ -80,7 +91,12 @@ impl Slot {
         Ok(())
     }
 
-    pub(crate) fn del_client(&mut self, epoll: &Epoll, hook: &impl Hook, token: usize) -> Result<()> {
+    pub(crate) fn del_client(
+        &mut self,
+        epoll: &Epoll,
+        hook: &impl Hook,
+        token: usize
+    ) -> Result<()> {
         if self.clients.contains(token) {
             let client = self.clients.remove(token);
             // client.stream.close();
@@ -125,7 +141,16 @@ impl Slot {
         Ok(())
     }
 
-    pub(crate) fn recv_message(&mut self, epoll: &Epoll, hook: &impl Hook, queen_id: &MessageId, token: usize, mut message: Message) -> Result<()> {
+    pub(crate) fn recv_message(
+        &mut self,
+        epoll: &Epoll,
+        hook: &impl Hook,
+        queen_id: &MessageId,
+        token: usize,
+        mut message: Message
+    ) -> Result<()> {
+        self.recv_messages.set(self.recv_messages.get() + 1);
+
         let success = hook.recv(&self.clients[token], &mut message);
 
         if !success {
@@ -153,8 +178,8 @@ impl Slot {
                 ATTACH => self.attach(hook, token, message),
                 DETACH => self.detach(hook, token, message),
                 PING => self.ping(hook, token, message),
-                QUERY => self.query(hook, token, message),
                 MINE => self.mine(hook, token, message),
+                QUERY => self.query(hook, token, message),
                 CUSTOM => self.custom(hook, token, message),
                 CLIENT_KILL => self.kill(epoll, hook, token, message)?,
                 _ => {
@@ -170,7 +195,14 @@ impl Slot {
         Ok(())
     }
 
-    pub(crate) fn send_message(&self, hook: &impl Hook, token: usize, mut message: Message) {
+    pub(crate) fn send_message(
+        &self,
+        hook: &impl Hook,
+        token: usize,
+        mut message: Message
+    ) {
+        self.send_messages.set(self.send_messages.get() + 1);
+
         if let Some(client) = self.clients.get(token) {
             let success = hook.send(client, &mut message);
 
@@ -180,7 +212,12 @@ impl Slot {
         }
     }
 
-    pub(crate) fn relay_root_message(&self, hook: &impl Hook, token: usize, chan: &str, message: Message) {
+    pub(crate) fn relay_root_message(
+        &self,
+        hook: &impl Hook,
+        token: usize,
+        chan: &str, message: Message
+    ) {
         if let Some(tokens) = self.chans.get(chan) {
             for other_token in tokens {
                 if token == *other_token {
@@ -201,7 +238,13 @@ impl Slot {
     }
 
     #[allow(clippy::cognitive_complexity)]
-    pub(crate) fn relay_message(&mut self, hook: &impl Hook, token: usize, chan: String, mut message: Message) {
+    pub(crate) fn relay_message(
+        &mut self,
+        hook: &impl Hook,
+        token: usize,
+        chan: String,
+        mut message: Message
+    ) {
         // 认证之前，不能发送消息
         if !self.clients[token].auth {
             ErrorCode::Unauthorized.insert(&mut message);
@@ -463,7 +506,13 @@ impl Slot {
         }
     }
 
-    pub(crate) fn auth(&mut self, hook: &impl Hook, queen_id: &MessageId, token: usize, mut message: Message) {
+    pub(crate) fn auth(
+        &mut self,
+        hook: &impl Hook,
+        queen_id: &MessageId,
+        token: usize,
+        mut message: Message
+    ) {
         let mut client = &mut self.clients[token];
 
         // 保存认证之前的状态
@@ -620,7 +669,13 @@ impl Slot {
         self.relay_root_message(hook, token, CLIENT_READY, event_message);
     }
 
-    pub(crate) fn attach(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
+    // ATTACH 的时候，可以附带自定义数据，可以通过 Hook.attach 或 CLIENT_ATTACH 事件获取
+    pub(crate) fn attach(
+        &mut self,
+        hook: &impl Hook,
+        token: usize,
+        mut message: Message
+    ) {
         // check auth
         if !self.clients[token].auth {
             ErrorCode::Unauthorized.insert(&mut message);
@@ -722,7 +777,13 @@ impl Slot {
         self.send_message(hook, token, message);
     }
 
-    pub(crate) fn detach(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
+    // DETACH 的时候，可以附带自定义数据，可以通过 Hook.detach 或 CLIENT_DETACH 事件获取
+    pub(crate) fn detach(
+        &mut self,
+        hook: &impl Hook,
+        token: usize,
+        mut message: Message
+    ) {
         // check auth
         if !self.clients[token].auth {
             ErrorCode::Unauthorized.insert(&mut message);
@@ -793,6 +854,8 @@ impl Slot {
             {
                 let client = &mut self.clients[token];
 
+                // 注意，DETACH 的时候，如果 LABEL 为空的话，会将 CHAN 移除掉
+                // 否则，只会移除掉对应的 LABEL
                 if labels.is_empty() {
                     client.chans.remove(&chan);
 
@@ -818,28 +881,12 @@ impl Slot {
         self.send_message(hook, token, message);
     }
 
+    // PING 的时候可以附带自定义数据，可以通过 Hook.ping 获取
     pub(crate) fn ping(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
         hook.ping(&self.clients[token], &mut message);
 
+        // PING 的时候，会插入 OK: 0
         ErrorCode::OK.insert(&mut message);
-
-        self.send_message(hook, token, message);
-    }
-
-    pub(crate) fn query(&self, hook: &impl Hook, token: usize, mut message: Message) {
-        {
-            let client = &self.clients[token];
-
-            if !client.auth || !client.root {
-                ErrorCode::Unauthorized.insert(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
-        }
-
-        hook.query(&self, token, &mut message);
 
         self.send_message(hook, token, message);
     }
@@ -873,6 +920,30 @@ impl Slot {
         self.send_message(hook, token, message);
     }
 
+    // 注意，QUERY 和 CUSTOM 的不同之处在于，前者必须具有 ROOT 权限，后者不需要
+    // 可以在 Hook.query 自行定制返回数据
+    pub(crate) fn query(&self, hook: &impl Hook, token: usize, mut message: Message) {
+        {
+            let client = &self.clients[token];
+
+            if !client.auth || !client.root {
+                ErrorCode::Unauthorized.insert(&mut message);
+
+                self.send_message(hook, token, message);
+
+                return
+            }
+        }
+
+        hook.query(&self, token, &mut message);
+
+        // QUERY 的时候，不会插入 OK: 0, 由 hook 函数决定
+
+        self.send_message(hook, token, message);
+    }
+
+    // 注意，QUERY 和 CUSTOM 的不同之处在于，前者必须具有 ROOT 权限，后者不需要
+    // 可以在 Hook.custom 自行定制返回数据
     pub(crate) fn custom(&self, hook: &impl Hook, token: usize, mut message: Message) {
         {
             let client = &self.clients[token];
@@ -888,10 +959,19 @@ impl Slot {
 
         hook.custom(&self, token, &mut message);
 
+        // CUSTOM 的时候，不会插入 OK: 0, 由 hook 函数决定
+
         self.send_message(hook, token, message);
     }
 
-    pub(crate) fn kill(&mut self, epoll: &Epoll, hook: &impl Hook, token: usize, mut message: Message) -> Result<()> {
+    // 具有 ROOT 权限的客户端可以 KILL 掉其他客户端（包括自己）
+    pub(crate) fn kill(
+        &mut self,
+        epoll: &Epoll,
+        hook: &impl Hook,
+        token: usize,
+        mut message: Message
+    ) -> Result<()> {
         {
             let client = &self.clients[token];
 

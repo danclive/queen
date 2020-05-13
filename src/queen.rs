@@ -87,7 +87,6 @@ impl Queen {
         self.queue.push(packet);
 
         let ret = stream2.wait(Some(timeout.unwrap_or(Duration::from_secs(60))));
-        log::debug!("Queen::connect: {:?}", ret);
 
         if ret.is_err() {
             return Err(Error::ConnectionRefused("Queen::connect".to_string()))

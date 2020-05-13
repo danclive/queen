@@ -18,7 +18,7 @@ fn conn() {
     struct MyHook;
 
     impl Hook for MyHook {
-        fn accept(&self, _conn: &Client) -> bool {
+        fn accept(&self, _: &Client) -> bool {
             false
         }
     }
