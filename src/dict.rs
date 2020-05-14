@@ -51,4 +51,5 @@ pub const CHACHA20_POLY1305: &str = "CHACHA20_POLY1305";
 pub const HAND: &str = "_hand";
 pub const METHOD:    &str = "_meth";
 pub const ACCESS:    &str = "_acce";
+pub const SECRET:    &str = "_secr";
 pub const SECURE:    &str = "_secu";

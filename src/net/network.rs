@@ -343,6 +343,12 @@ impl NetConn {
                                                 return Err(Error::PermissionDenied("access_fn".to_string()))
                                             };
 
+                                            {
+                                                let mut attr = stream.attr();
+                                                attr.insert(ACCESS, access);
+                                                attr.insert(SECRET, &secret);
+                                            }
+
                                             self.hand = true;
 
                                             ErrorCode::OK.insert(&mut message);

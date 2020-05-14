@@ -8,7 +8,6 @@ use std::os::unix::io::AsRawFd;
 use std::marker::PhantomData;
 use std::result;
 
-
 use queen_io::{
     epoll::{Epoll, Token, Ready, EpollOpt, Evented},
     queue::spsc::Queue
@@ -18,6 +17,7 @@ use queen_io::poll;
 
 use nson::Message;
 
+use crate::util::lock::{Lock, LockGuard};
 use crate::error::{Result, SendError, RecvError};
 
 pub struct Stream<T: Send> {
@@ -25,7 +25,7 @@ pub struct Stream<T: Send> {
     tx: Queue<result::Result<T, RecvError>>,
     rx: Queue<result::Result<T, RecvError>>,
     close: Arc<AtomicBool>,
-    attr: Message,
+    attr: Arc<Lock<Message>>,
     _not_sync: PhantomData<*const ()>
 }
 
@@ -35,6 +35,7 @@ impl<T: Send> Stream<T> {
         let queue2 = Queue::with_cache(capacity)?;
 
         let close = Arc::new(AtomicBool::new(false));
+        let attr = Arc::new(Lock::new(attr));
 
         let stream1 = Stream {
             capacity,
@@ -49,8 +50,8 @@ impl<T: Send> Stream<T> {
             capacity,
             tx: queue2,
             rx: queue1,
-            close: close.clone(),
-            attr: attr.clone(),
+            close: close,
+            attr: attr,
             _not_sync: PhantomData
         };
 
@@ -61,8 +62,12 @@ impl<T: Send> Stream<T> {
         self.capacity
     }
 
-    pub fn attr(&self) -> &Message {
-        &self.attr
+    pub fn attr(&self) -> LockGuard<Message> {
+        loop {
+            if let Some(attr) = self.attr.try_lock() {
+                return attr
+            }
+        }
     }
 
     pub fn close(&self) {
@@ -110,11 +115,11 @@ impl<T: Send> Stream<T> {
                     return self.recv()
                 }
 
-                return Err(RecvError::TimedOut)
+                Err(RecvError::TimedOut)
             },
             Err(_) => {
                 self.close();
-                return Err(RecvError::Disconnected)
+                Err(RecvError::Disconnected)
             }
         }
     }
@@ -207,5 +212,31 @@ mod tests {
         }
 
         assert!(stream2.is_close());
+    }
+
+    #[test]
+    fn test_modify_attr() {
+        let (stream1, stream2) = Stream::<i32>::pipe(1, msg!{"a": 0}).unwrap();
+
+        thread::spawn(move || {
+            for _ in 0..1000 {
+                let mut attr = stream1.attr();
+                let a = attr.get_i32("a").unwrap();
+                attr.insert("a", a + 1);
+                drop(attr);
+            }
+        });
+
+        for _ in 0..1000 {
+            let mut attr = stream2.attr();
+            let a = attr.get_i32("a").unwrap();
+            attr.insert("a", a + 1);
+            drop(attr);
+        }
+
+        thread::sleep(Duration::from_millis(100));
+
+        let attr = stream2.attr();
+        assert!(attr.get_i32("a").unwrap() == 2000);
     }
 }

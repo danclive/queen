@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::atomic::AtomicBool;
+use std::marker::PhantomData;
 
 #[derive(Debug)]
 pub struct Lock<T> {
@@ -9,8 +10,9 @@ pub struct Lock<T> {
     data: UnsafeCell<T>,
 }
 
-pub struct TryLock<'a, T: 'a> {
-    _ptr: &'a Lock<T>,
+pub struct LockGuard<'a, T> {
+    lock: &'a Lock<T>,
+    _p: PhantomData<std::rc::Rc<()>>,
 }
 
 unsafe impl<T: Send> Send for Lock<T> {}
@@ -24,31 +26,31 @@ impl<T> Lock<T> {
         }
     }
 
-    pub fn try_lock(&self) -> Option<TryLock<T>> {
-        if !self.locked.swap(true, SeqCst) {
-            Some(TryLock { _ptr: self })
-        } else {
-            None
+    pub fn try_lock(&self) -> Option<LockGuard<T>> {
+        if self.locked.compare_exchange(false, true, SeqCst, SeqCst).is_err() {
+            return None;
         }
+
+        Some(LockGuard { lock: self, _p: PhantomData })
     }
 }
 
-impl<'a, T> Deref for TryLock<'a, T> {
+impl<'a, T> Deref for LockGuard<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
-        unsafe { &*self._ptr.data.get() }
+        unsafe { &*self.lock.data.get() }
     }
 }
 
-impl<'a, T> DerefMut for TryLock<'a, T> {
+impl<'a, T> DerefMut for LockGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut *self._ptr.data.get() }
+        unsafe { &mut *self.lock.data.get() }
     }
 }
 
-impl<'a, T> Drop for TryLock<'a, T> {
+impl<'a, T> Drop for LockGuard<'a, T> {
     fn drop(&mut self) {
-        self._ptr.locked.store(false, SeqCst);
+        self.lock.locked.store(false, SeqCst);
     }
 }
 
