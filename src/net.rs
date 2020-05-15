@@ -3,7 +3,10 @@ use std::io::{self, Error, ErrorKind};
 
 use crate::crypto::Method;
 
+pub use codec::{Codec, NsonCodec};
 pub use network::{AccessFn, Packet, NetWork};
+
+mod codec;
 mod network;
 pub mod tcp_ext;
 

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use queen::{Queen, Node, Port};
 use queen::nson::{MessageId, msg};
-use queen::net::CryptoOptions;
+use queen::net::{CryptoOptions, NsonCodec};
 use queen::crypto::Method;
 use queen::dict::*;
 
@@ -16,7 +16,7 @@ fn port() {
 
     let addr = get_free_addr();
 
-    let mut node = Node::new(
+    let mut node = Node::new::<NsonCodec>(
         queen.clone(),
         2,
         vec![addr.parse().unwrap()]
@@ -34,7 +34,7 @@ fn port() {
     });
 
     // start port
-    let port = Port::new().unwrap();
+    let port = Port::new::<NsonCodec>().unwrap();
 
     let stream2 = port.connect(addr, msg!{}, None, None).unwrap();
 
@@ -88,7 +88,7 @@ fn port_secure() {
 
     let addr = get_free_addr();
 
-    let mut node = Node::new(
+    let mut node = Node::new::<NsonCodec>(
         queen.clone(),
         2,
         vec![addr.parse().unwrap()]
@@ -111,7 +111,7 @@ fn port_secure() {
     });
 
     // start port
-    let port = Port::new().unwrap();
+    let port = Port::new::<NsonCodec>().unwrap();
 
     let crypto_options = CryptoOptions {
         method: Method::Aes128Gcm,
@@ -171,7 +171,7 @@ fn port_secure2() {
 
     let addr = get_free_addr();
 
-    let mut node = Node::new(
+    let mut node = Node::new::<NsonCodec>(
         queen.clone(),
         2,
         vec![addr.parse().unwrap()]
@@ -194,7 +194,7 @@ fn port_secure2() {
     });
 
     // start port
-    let port = Port::new().unwrap();
+    let port = Port::new::<NsonCodec>().unwrap();
 
     let stream2 = port.connect(addr, msg!{}, None, None).unwrap();
 

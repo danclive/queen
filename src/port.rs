@@ -6,7 +6,7 @@ use std::sync::{
 use std::thread;
 use std::net::ToSocketAddrs;
 
-use crate::net::{NetWork, Packet, CryptoOptions};
+use crate::net::{NetWork, Packet, CryptoOptions, Codec};
 use crate::net::tcp_ext::TcpExt;
 use crate::Stream;
 use crate::dict::*;
@@ -27,7 +27,7 @@ pub struct Port {
 }
 
 impl Port {
-    pub fn new() -> Result<Port> {
+    pub fn new<C: Codec>() -> Result<Port> {
         let port = Port {
             queue: Queue::new()?,
             tcp_keep_alive: true,
@@ -37,7 +37,7 @@ impl Port {
             run: Arc::new(AtomicBool::new(true))
         };
 
-        let mut net_work = NetWork::new(port.queue.clone(), port.run.clone())?;
+        let mut net_work = NetWork::<C>::new(port.queue.clone(), port.run.clone())?;
 
         thread::Builder::new().name("port_net".to_string()).spawn(move || {
             let ret = net_work.run();

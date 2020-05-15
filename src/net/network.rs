@@ -27,6 +27,7 @@ use crate::dict::*;
 use crate::error::{ErrorCode, Error, Result, RecvError};
 
 use super::CryptoOptions;
+use super::Codec;
 
 pub type AccessFn = Arc<Box<dyn Fn(String) -> Option<String> + Send + Sync>>;
 
@@ -43,16 +44,16 @@ pub enum Packet {
     }
 }
 
-pub struct NetWork {
+pub struct NetWork<C: Codec> {
     epoll: Epoll,
     events: Events,
     pub queue: Queue<Packet>,
     streams: Slab<Stream<Message>>,
-    nets: Slab<NetConn>,
+    nets: Slab<NetConn<C>>,
     pub run: Arc<AtomicBool>
 }
 
-impl NetWork {
+impl<C: Codec> NetWork<C> {
     const START_TOKEN: usize = 2;
     const QUEUE_TOKEN: usize = 0;
 
@@ -268,19 +269,20 @@ impl NetWork {
     }
 }
 
-struct NetConn {
+struct NetConn<C: Codec> {
     id: usize,
     stream: TcpStream,
     interest: Ready,
     r_buffer: Vec<u8>,
     w_buffer: VecDeque<Vec<u8>>,
+    codec: C,
     hand: bool,
     is_server: bool,
     access_fn: Option<AccessFn>,
     crypto: Option<Crypto>
 }
 
-impl NetConn {
+impl<C: Codec> NetConn<C> {
     fn new(id: usize, stream: TcpStream) -> Self {
         Self {
             id,
@@ -288,6 +290,7 @@ impl NetConn {
             interest: Ready::readable() | Ready::hup() | Ready::error(),
             r_buffer: Vec::with_capacity(1024),
             w_buffer: VecDeque::new(),
+            codec: C::new(),
             hand: false,
             is_server: false,
             access_fn: None,
@@ -303,80 +306,75 @@ impl NetConn {
                 Ok(ret) => {
                     if let Some(bytes) = ret {
                         if self.hand {
-                            let message = Crypto::decrypt_message(&self.crypto, bytes)?;
+                            let message = self.codec.decode(&self.crypto, bytes)?;
                             let _ = stream.send(message);
                         } else {
-                            match Message::from_slice(&bytes) {
-                                Ok(mut message) => {
-                                    let chan = match message.get_str(CHAN) {
-                                        Ok(chan) => chan,
-                                        Err(_) => {
-                                            return Err(Error::InvalidData("message.get_str(CHAN)".to_string()))
-                                        }
+                            let mut message = self.codec.decode(&None, bytes)?;
+
+                            let chan = match message.get_str(CHAN) {
+                                Ok(chan) => chan,
+                                Err(_) => {
+                                    return Err(Error::InvalidData("message.get_str(CHAN)".to_string()))
+                                }
+                            };
+
+                            if chan != HAND {
+                                return Err(Error::InvalidData("chan != HAND".to_string()))
+                            }
+
+                            if self.is_server {
+                                if let Ok(method) = message.get_str(METHOD) {
+                                    let method = if let Ok(method) = Method::from_str(method) {
+                                        method
+                                    } else {
+                                        return Err(Error::InvalidData("Method::from_str(hand)".to_string()))
                                     };
 
-                                    if chan != HAND {
-                                        return Err(Error::InvalidData("chan != HAND".to_string()))
-                                    }
-
-                                    if self.is_server {
-                                        if let Ok(method) = message.get_str(METHOD) {
-                                            let method = if let Ok(method) = Method::from_str(method) {
-                                                method
-                                            } else {
-                                                return Err(Error::InvalidData("Method::from_str(hand)".to_string()))
-                                            };
-
-                                            let access = if let Ok(access) = message.get_str(ACCESS) {
-                                                access
-                                            } else {
-                                                return Err(Error::InvalidData("message.get_str(ACCESS)".to_string()))
-                                            };
-
-                                            let secret = if let Some(access_fn) = &self.access_fn {
-                                                if let Some(secret) = access_fn(access.to_string()) {
-                                                    secret
-                                                } else {
-                                                    return Err(Error::PermissionDenied("access_fn".to_string()))
-                                                }
-                                            } else {
-                                                return Err(Error::PermissionDenied("access_fn".to_string()))
-                                            };
-
-                                            {
-                                                let mut attr = stream.attr();
-                                                attr.insert(ACCESS, access);
-                                                attr.insert(SECRET, &secret);
-                                            }
-
-                                            self.hand = true;
-
-                                            ErrorCode::OK.insert(&mut message);
-
-                                            self.push_data(epoll, message)?;
-
-                                            let crypto = Crypto::new(&method, secret.as_bytes());
-                                            self.crypto = Some(crypto);
-                                        } else {
-                                            if self.access_fn.is_some() {
-                                                return Err(Error::PermissionDenied("access_fn".to_string()))
-                                            }
-
-                                            self.hand = true;
-
-                                            ErrorCode::OK.insert(&mut message);
-
-                                            self.push_data(epoll, message)?;
-                                        }
-                                    } else if message.get_i32(OK) == Ok(0) {
-                                        self.hand = true;
+                                    let access = if let Ok(access) = message.get_str(ACCESS) {
+                                        access
                                     } else {
-                                        return Err(Error::InvalidData("message.get_i32(OK) == Ok(0)".to_string()))
+                                        return Err(Error::InvalidData("message.get_str(ACCESS)".to_string()))
+                                    };
+
+                                    let secret = if let Some(access_fn) = &self.access_fn {
+                                        if let Some(secret) = access_fn(access.to_string()) {
+                                            secret
+                                        } else {
+                                            return Err(Error::PermissionDenied("access_fn".to_string()))
+                                        }
+                                    } else {
+                                        return Err(Error::PermissionDenied("access_fn".to_string()))
+                                    };
+
+                                    {
+                                        let mut attr = stream.attr();
+                                        attr.insert(ACCESS, access);
+                                        attr.insert(SECRET, &secret);
                                     }
-                                },
-                                Err(err) => {
-                                    return Err(Error::InvalidData(format!("Message::from_slice: {}", err)))
+
+                                    self.hand = true;
+
+                                    ErrorCode::OK.insert(&mut message);
+
+                                    self.push_data(epoll, message)?;
+
+                                    let crypto = Crypto::new(&method, secret.as_bytes());
+                                    self.crypto = Some(crypto);
+                                } else {
+                                    if self.access_fn.is_some() {
+                                        return Err(Error::PermissionDenied("access_fn".to_string()))
+                                    }
+
+                                    self.hand = true;
+
+                                    ErrorCode::OK.insert(&mut message);
+
+                                    self.push_data(epoll, message)?;
                                 }
+                            } else if message.get_i32(OK) == Ok(0) {
+                                self.hand = true;
+                            } else {
+                                 return Err(Error::InvalidData("message.get_i32(OK) == Ok(0)".to_string()))
                             }
                         }
                     }
@@ -433,9 +431,9 @@ impl NetConn {
     }
 
     fn push_data(&mut self, epoll: &Epoll, message: Message) -> Result<()> {
-        let data = Crypto::encrypt_message(&self.crypto, &message)?;
+        let bytes = self.codec.encode(&self.crypto, message)?;
 
-        self.w_buffer.push_back(data);
+        self.w_buffer.push_back(bytes);
 
         if !self.interest.contains(Ready::writable()) {
             self.interest.insert(Ready::writable());

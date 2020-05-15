@@ -19,7 +19,7 @@ use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 use nson::msg;
 
 use crate::Queen;
-use crate::net::{NetWork, Packet, AccessFn};
+use crate::net::{NetWork, Packet, AccessFn, Codec};
 use crate::net::tcp_ext::TcpExt;
 use crate::dict::*;
 use crate::error::Result;
@@ -40,7 +40,7 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(
+    pub fn new<C: Codec>(
         queen: Queen,
         works: usize,
         addrs: Vec<SocketAddr>
@@ -60,7 +60,7 @@ impl Node {
 
             queues.push(queue.clone());
 
-            let mut net_work = NetWork::new(queue, run.clone())?;
+            let mut net_work = NetWork::<C>::new(queue, run.clone())?;
 
             thread::Builder::new().name("node_net".to_string()).spawn(move || {
                 let ret = net_work.run();
@@ -143,9 +143,13 @@ impl Node {
                             SECURE: self.access_fn.is_some()
                         };
 
+                        // 开启keepalive属性
                         socket.set_keep_alive(self.tcp_keep_alive)?;
+                        // 如该连接在30秒内没有任何数据往来,则进行探测
                         socket.set_keep_idle(self.tcp_keep_idle as i32)?;
+                        // 探测时发包的时间间隔为5秒
                         socket.set_keep_intvl(self.tcp_keep_intvl as i32)?;
+                        // 探测尝试的次数.如果第1次探测包就收到响应了,则后2次的不再发
                         socket.set_keep_cnt(self.tcp_keep_cnt as i32)?;
 
                         match self.queen.connect(attr, None, None) {
