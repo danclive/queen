@@ -7,7 +7,6 @@ use queen::nson::{MessageId, msg};
 use queen::net::{CryptoOptions, NsonCodec};
 use queen::crypto::Method;
 use queen::dict::*;
-use queen::error::{Error, Result};
 
 use super::get_free_addr;
 
@@ -98,12 +97,12 @@ fn port_secure() {
             true
         }
 
-        fn access(&self, access: &str) -> Result<String> {
+        fn access(&self, access: &str) -> Option<String> {
             if access == "12d3eaf5e9effffb14fb213e" {
-                return Ok("99557df09590ad6043ceefd1".to_string())
+                return Some("99557df09590ad6043ceefd1".to_string())
             }
 
-            Err(Error::PermissionDenied("".to_string()))
+            None
         }
     }
 
@@ -193,12 +192,12 @@ fn port_secure2() {
             true
         }
 
-        fn access(&self, access: &str) -> Result<String> {
+        fn access(&self, access: &str) -> Option<String> {
             if access == "12d3eaf5e9effffb14fb213e" {
-                return Ok("99557df09590ad6043ceefd1".to_string())
+                return Some("99557df09590ad6043ceefd1".to_string())
             }
 
-            Err(Error::PermissionDenied("".to_string()))
+            None
         }
     }
 
