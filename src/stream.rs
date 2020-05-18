@@ -50,8 +50,8 @@ impl<T: Send> Stream<T> {
             capacity,
             tx: queue2,
             rx: queue1,
-            close: close,
-            attr: attr,
+            close,
+            attr,
             _not_sync: PhantomData
         };
 

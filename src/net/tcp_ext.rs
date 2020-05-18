@@ -4,8 +4,6 @@ use std::io;
 use queen_io::sys::socket::{setsockopt, getsockopt};
 use queen_io::tcp::TcpStream;
 
-use libc;
-
 pub trait TcpExt: AsRawFd {
     fn set_keep_alive(&self, enabled: bool) -> io::Result<()> {
         let en: i32 = if enabled { 1 } else { 0 };

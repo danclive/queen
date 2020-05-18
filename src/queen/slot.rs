@@ -58,6 +58,7 @@ pub struct Client {
 }
 
 impl Slot {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             chans: HashMap::new(),
