@@ -242,7 +242,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
                 return Err(Error::InvalidData("message.get_str(ACCESS)".to_string()))
             };
 
-            let secret = hook.access(access)?;
+            let secret = hook.access(access).ok_or_else(|| Error::PermissionDenied("".to_string()))?;
 
             let attr = msg!{
                 ADDR: addr.to_string(),
