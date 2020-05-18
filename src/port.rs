@@ -2,23 +2,26 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering}
 };
-
 use std::thread;
 use std::net::ToSocketAddrs;
-
-use crate::net::{NetWork, Packet, CryptoOptions, Codec};
-use crate::net::tcp_ext::TcpExt;
-use crate::Stream;
-use crate::dict::*;
-use crate::nson::{msg, Message};
-use crate::error::Result;
+use std::time::Duration;
+use std::io::Write;
 
 use queen_io::tcp::TcpStream;
 use queen_io::queue::mpsc::Queue;
 
+use crate::net::{NetWork, Packet, CryptoOptions, Codec};
+use crate::net::tcp_ext::TcpExt;
+use crate::Stream;
+use crate::crypto::Crypto;
+use crate::dict::*;
+use crate::nson::{msg, Message};
+use crate::error::{Result, Error};
+use crate::util::message::read_block;
+
 #[derive(Clone)]
-pub struct Port {
-    queue: Queue<Packet>,
+pub struct Port<C: Codec> {
+    queue: Queue<Packet<C>>,
     pub tcp_keep_alive: bool,
     pub tcp_keep_idle: u32,
     pub tcp_keep_intvl: u32,
@@ -26,8 +29,8 @@ pub struct Port {
     run: Arc<AtomicBool>
 }
 
-impl Port {
-    pub fn new<C: Codec>() -> Result<Port> {
+impl<C: Codec> Port<C> {
+    pub fn new() -> Result<Self> {
         let port = Port {
             queue: Queue::new()?,
             tcp_keep_alive: true,
@@ -68,28 +71,68 @@ impl Port {
         crypto_options: Option<CryptoOptions>,
         capacity: Option<usize>
     ) -> Result<Stream<Message>> {
-        let socket = TcpStream::connect(addr)?;
+        let mut socket = TcpStream::connect(addr)?;
 
-        socket.set_keep_alive(self.tcp_keep_alive)?;
-        socket.set_keep_idle(self.tcp_keep_idle as i32)?;
-        socket.set_keep_intvl(self.tcp_keep_intvl as i32)?;
-        socket.set_keep_cnt(self.tcp_keep_cnt as i32)?;
+        // 握手开始
+        socket.set_nonblocking(false)?;
+        socket.set_read_timeout(Some(Duration::from_secs(10)))?;
+        socket.set_write_timeout(Some(Duration::from_secs(10)))?;
+
+        let mut hand = msg!{
+            CHAN: HAND
+        };
 
         let mut attr2 = msg!{
             ADDR: socket.peer_addr()?.to_string(),
-            SECURE: crypto_options.is_some()
+            SECURE: false
         };
 
-        attr2.extend(attr);
+        let crypto = crypto_options.map(|options| {
+            hand.insert(METHOD, options.method.as_str());
+            hand.insert(ACCESS, &options.access);
 
-        let (stream1, stream2) = Stream::pipe(capacity.unwrap_or(64), attr2).unwrap();
+            attr2.insert(SECURE, true);
+            attr2.insert(ACCESS, &options.access);
+            attr2.insert(SECURE, &options.secret);
 
-        self.queue.push(Packet::NewConn {
-            net_stream: socket,
-            stream: stream1,
-            options: crypto_options
+            Crypto::new(&options.method, options.secret.as_bytes())
         });
 
-        Ok(stream2)
+        let mut codec = C::new();
+
+        let bytes = codec.encode(&None, hand)?;
+
+        socket.write_all(&bytes)?;
+
+        let bytes = read_block(&mut socket)?;
+        let message = codec.decode(&None, bytes)?;
+
+        if message.get_i32(OK) == Ok(0) {
+            socket.set_nonblocking(true)?;
+            socket.set_read_timeout(None)?;
+            socket.set_write_timeout(None)?;
+            // 握手结束
+
+            socket.set_keep_alive(self.tcp_keep_alive)?;
+            socket.set_keep_idle(self.tcp_keep_idle as i32)?;
+            socket.set_keep_intvl(self.tcp_keep_intvl as i32)?;
+            socket.set_keep_cnt(self.tcp_keep_cnt as i32)?;
+
+            attr2.extend(attr);
+
+            let (stream1, stream2) = Stream::pipe(capacity.unwrap_or(64), attr2)?;
+
+            self.queue.push(Packet::NewConn {
+                net_stream: socket,
+                stream: stream1,
+                codec,
+                crypto
+
+            });
+
+            return Ok(stream2)
+        }
+
+        Err(Error::InvalidInput(format!("{}", message)))
     }
 }
