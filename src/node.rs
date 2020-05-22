@@ -197,7 +197,8 @@ impl<C: Codec, H: Hook> Node<C, H> {
     ) -> Result<(Stream<Message>, C, Option<Crypto>)> {
         let mut codec = C::new();
 
-        let bytes = read_block(socket)?;
+        // 握手时的消息，不能超过 1024 字节
+        let bytes = read_block(socket, Some(1024))?;
         let mut message = codec.decode(&None, bytes)?;
 
         let chan = match message.get_str(CHAN) {
@@ -209,6 +210,10 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
         if chan != HAND {
             return Err(Error::InvalidData("chan != HAND".to_string()))
+        }
+
+        if !hook.hand(&mut message) {
+            return Err(Error::PermissionDenied("hook.hand".to_string()));
         }
 
         if !hook.enable_secure() {
@@ -242,7 +247,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
                 return Err(Error::InvalidData("message.get_str(ACCESS)".to_string()))
             };
 
-            let secret = hook.access(access).ok_or_else(|| Error::PermissionDenied("".to_string()))?;
+            let secret = hook.access(access).ok_or_else(|| Error::PermissionDenied("hook.access".to_string()))?;
 
             let attr = msg!{
                 ADDR: addr.to_string(),

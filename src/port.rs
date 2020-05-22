@@ -104,7 +104,8 @@ impl<C: Codec> Port<C> {
 
         socket.write_all(&bytes)?;
 
-        let bytes = read_block(&mut socket)?;
+        // 握手时的消息，不能超过 1024 字节
+        let bytes = read_block(&mut socket, Some(1024))?;
         let message = codec.decode(&None, bytes)?;
 
         if message.get_i32(OK) == Ok(0) {
@@ -127,7 +128,6 @@ impl<C: Codec> Port<C> {
                 stream: stream1,
                 codec,
                 crypto
-
             });
 
             return Ok(stream2)

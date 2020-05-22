@@ -89,13 +89,13 @@ pub fn read_nonblock(reader: &mut impl Read, buffer: &mut Vec<u8>) -> io::Result
     }
 }
 
-pub fn read_block(reader: &mut impl Read) -> io::Result<Vec<u8>> {
+pub fn read_block(reader: &mut impl Read, max_len: Option<usize>) -> io::Result<Vec<u8>> {
     let mut len_bytes = [0u8; 4];
     reader.read_exact(&mut len_bytes)?;
 
     let len = u32::from_le_bytes(len_bytes) as usize;
 
-    if len < 5 || len > MAX_MESSAGE_LEN {
+    if len < 5 || len > max_len.unwrap_or(MAX_MESSAGE_LEN) {
         return Err(io::Error::new(InvalidData, format!("Invalid length of {}", len)))
     }
 
@@ -237,7 +237,7 @@ mod test {
         let vec = message.to_vec().unwrap();
         let mut reader = Cursor::new(&vec);
 
-        let ret = read_block(&mut reader).unwrap();
+        let ret = read_block(&mut reader, None).unwrap();
 
         assert!(ret == vec);
     }

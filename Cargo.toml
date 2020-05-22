@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.10.1"
+version       = "0.10.2"
 license       = "MIT"
 authors       = ["danclive <dangcheng@hotmail.com>"]
 description   = "message queue"
@@ -19,7 +19,7 @@ edition       = "2018"
 autobins      = false
 
 [dependencies]
-queen-io = "0.4"
+queen-io = "0.5"
 nson = "0.8"
 libc = "0.2"
 log = "0.4"
