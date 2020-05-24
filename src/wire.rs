@@ -20,7 +20,7 @@ use nson::Message;
 use crate::util::lock::{Lock, LockGuard};
 use crate::error::{Result, SendError, RecvError};
 
-pub struct Stream<T: Send> {
+pub struct Wire<T: Send> {
     capacity: usize,
     tx: Queue<result::Result<T, RecvError>>,
     rx: Queue<result::Result<T, RecvError>>,
@@ -29,15 +29,15 @@ pub struct Stream<T: Send> {
     _not_sync: PhantomData<*const ()>
 }
 
-impl<T: Send> Stream<T> {
-    pub fn pipe(capacity: usize, attr: Message) -> Result<(Stream<T>, Stream<T>)> {
+impl<T: Send> Wire<T> {
+    pub fn pipe(capacity: usize, attr: Message) -> Result<(Wire<T>, Wire<T>)> {
         let queue1 = Queue::with_cache(capacity)?;
         let queue2 = Queue::with_cache(capacity)?;
 
         let close = Arc::new(AtomicBool::new(false));
         let attr = Arc::new(Lock::new(attr));
 
-        let stream1 = Stream {
+        let wire1 = Wire {
             capacity,
             tx: queue1.clone(),
             rx: queue2.clone(),
@@ -46,7 +46,7 @@ impl<T: Send> Stream<T> {
             _not_sync: PhantomData
         };
 
-        let stream2 = Stream {
+        let wire2 = Wire {
             capacity,
             tx: queue2,
             rx: queue1,
@@ -55,7 +55,7 @@ impl<T: Send> Stream<T> {
             _not_sync: PhantomData
         };
 
-        Ok((stream1, stream2))
+        Ok((wire1, wire2))
     }
 
     pub fn capacity(&self) -> usize {
@@ -125,15 +125,15 @@ impl<T: Send> Stream<T> {
     }
 }
 
-impl<T: Send> Drop for Stream<T> {
+impl<T: Send> Drop for Wire<T> {
     fn drop(&mut self) {
         self.close()
     }
 }
 
-unsafe impl<T: Send> Send for Stream<T> {}
+unsafe impl<T: Send> Send for Wire<T> {}
 
-impl<T: Send> Evented for Stream<T> {
+impl<T: Send> Evented for Wire<T> {
     fn add(&self, epoll: &Epoll, token: Token, interest: Ready, opts: EpollOpt) -> io::Result<()> {
         self.rx.add(epoll, token, interest, opts)
     }
@@ -149,7 +149,7 @@ impl<T: Send> Evented for Stream<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::Stream;
+    use super::Wire;
     use std::thread;
     use std::time::Duration;
 
@@ -158,34 +158,34 @@ mod tests {
 
     #[test]
     fn send() {
-        let (stream1, stream2) = Stream::<i32>::pipe(2, msg!{}).unwrap();
+        let (wire1, wire2) = Wire::<i32>::pipe(2, msg!{}).unwrap();
 
-        assert!(stream1.send(1).is_ok());
+        assert!(wire1.send(1).is_ok());
 
-        drop(stream2);
+        drop(wire2);
 
-        assert!(stream1.send(2).err() == Some(SendError::Disconnected(2)));
+        assert!(wire1.send(2).err() == Some(SendError::Disconnected(2)));
     }
 
     #[test]
     fn send_full() {
-        let (stream1, _stream2) = Stream::<i32>::pipe(1, msg!{}).unwrap();
+        let (wire1, _wire2) = Wire::<i32>::pipe(1, msg!{}).unwrap();
 
-        assert!(stream1.send(1).is_ok());
-        assert!(stream1.send(2).err() == Some(SendError::Full(2)));
+        assert!(wire1.send(1).is_ok());
+        assert!(wire1.send(2).err() == Some(SendError::Full(2)));
     }
 
     #[test]
     fn test_wait_timeout() {
-        let (stream1, stream2) = Stream::<i32>::pipe(1, msg!{}).unwrap();
+        let (wire1, wire2) = Wire::<i32>::pipe(1, msg!{}).unwrap();
 
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(2));
-            assert!(stream1.send(1).is_ok());
+            assert!(wire1.send(1).is_ok());
             thread::sleep(Duration::from_secs(2));
         });
 
-        let ret = stream2.wait(Some(Duration::from_secs(1)));
+        let ret = wire2.wait(Some(Duration::from_secs(1)));
 
         assert!(ret.is_err());
         match ret {
@@ -195,13 +195,13 @@ mod tests {
             }
         }
 
-        let ret = stream2.wait(Some(Duration::from_secs(2)));
+        let ret = wire2.wait(Some(Duration::from_secs(2)));
 
         assert!(ret.is_ok());
 
         thread::sleep(Duration::from_secs(2));
 
-        let ret = stream2.wait(Some(Duration::from_secs(2)));
+        let ret = wire2.wait(Some(Duration::from_secs(2)));
 
         assert!(ret.is_err());
         match ret {
@@ -211,16 +211,16 @@ mod tests {
             }
         }
 
-        assert!(stream2.is_close());
+        assert!(wire2.is_close());
     }
 
     #[test]
     fn test_modify_attr() {
-        let (stream1, stream2) = Stream::<i32>::pipe(1, msg!{"a": 0}).unwrap();
+        let (wire1, wire2) = Wire::<i32>::pipe(1, msg!{"a": 0}).unwrap();
 
         thread::spawn(move || {
             for _ in 0..1000 {
-                let mut attr = stream1.attr();
+                let mut attr = wire1.attr();
                 let a = attr.get_i32("a").unwrap();
                 attr.insert("a", a + 1);
                 drop(attr);
@@ -228,7 +228,7 @@ mod tests {
         });
 
         for _ in 0..1000 {
-            let mut attr = stream2.attr();
+            let mut attr = wire2.attr();
             let a = attr.get_i32("a").unwrap();
             attr.insert("a", a + 1);
             drop(attr);
@@ -236,7 +236,7 @@ mod tests {
 
         thread::sleep(Duration::from_millis(100));
 
-        let attr = stream2.attr();
+        let attr = wire2.attr();
         assert!(attr.get_i32("a").unwrap() == 2000);
     }
 }

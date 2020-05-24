@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::thread;
 use std::collections::HashSet;
 
-use queen::{Queen, Hook, Slot, Client};
+use queen::{Socket, Hook, Slot, Client};
 use queen::nson::{msg, MessageId, Message};
 use queen::dict::*;
 use queen::error::ErrorCode;
@@ -130,36 +130,36 @@ fn test_hook() {
 
     let hook = MyHook::new();
 
-    let queen = Queen::new(MessageId::new(), hook.clone()).unwrap();
+    let socket = Socket::new(MessageId::new(), hook.clone()).unwrap();
 
-    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
 
     assert!(hook.clients() == 1);
 
     // ping
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: PING
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::RefuseReceiveMessage));
 
     assert!(hook.recvs() == 1);
     assert!(hook.sends() == 1);
 
     // auth
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: AUTH
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::AuthenticationFailed));
 
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: AUTH,
         "user": "aaa",
         "pass": "bbb"
@@ -167,84 +167,84 @@ fn test_hook() {
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     assert!(hook.recvs() == 3);
     assert!(hook.sends() == 3);
 
     // ping
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: PING
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_str("hello").unwrap() == "world");
 
     assert!(hook.pings() == 1);
 
     // attach
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: ATTACH,
         VALUE: "123"
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // attach
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: ATTACH,
         VALUE: "456"
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_str("123").unwrap() == "456");
 
     // detach
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: DETACH,
         VALUE: "123"
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
 
     // detach
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: DETACH,
         VALUE: "456"
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_str("456").unwrap() == "789");
 
     // custom
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: CUSTOM,
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_str("hahaha").unwrap() == "wawawa");
     assert!(recv.get_u32("clients").unwrap() == 1);
 
-    drop(stream1);
+    drop(wire1);
 
     thread::sleep(Duration::from_millis(100));
 

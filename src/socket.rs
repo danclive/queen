@@ -17,7 +17,7 @@ use nson::{
     message_id::MessageId
 };
 
-use crate::stream::Stream;
+use crate::Wire;
 use crate::error::{Result, Error, RecvError};
 
 pub use hook::Hook;
@@ -27,20 +27,20 @@ mod hook;
 mod slot;
 
 #[derive(Clone)]
-pub struct Queen {
+pub struct Socket {
     queue: Queue<Packet>,
     run: Arc<AtomicBool>
 }
 
-impl Queen {
+impl Socket {
     pub fn new<H: Hook>(
         id: MessageId,
         hook: H
-    ) -> Result<Queen> {
+    ) -> Result<Self> {
         let queue = Queue::new()?;
         let run = Arc::new(AtomicBool::new(true));
 
-        let queen = Queen {
+        let socket = Socket {
             queue: queue.clone(),
             run: run.clone()
         };
@@ -52,7 +52,7 @@ impl Queen {
             run
         )?;
 
-        thread::Builder::new().name("queen".to_string()).spawn(move || {
+        thread::Builder::new().name("socket".to_string()).spawn(move || {
             let ret = inner.run();
             if ret.is_err() {
                 log::error!("relay thread exit: {:?}", ret);
@@ -63,7 +63,7 @@ impl Queen {
             inner.run.store(false, Ordering::Relaxed);
         }).unwrap();
 
-        Ok(queen)
+        Ok(socket)
     }
 
     pub fn stop(&self) {
@@ -79,24 +79,24 @@ impl Queen {
         attr: Message,
         capacity: Option<usize>,
         timeout: Option<Duration>
-    ) -> Result<Stream<Message>> {
-        let (stream1, stream2) = Stream::pipe(capacity.unwrap_or(64), attr)?;
+    ) -> Result<Wire<Message>> {
+        let (wire1, wire2) = Wire::pipe(capacity.unwrap_or(64), attr)?;
 
-        let packet = Packet::NewClient(stream1);
+        let packet = Packet::NewClient(wire1);
 
         self.queue.push(packet);
 
-        let ret = stream2.wait(Some(timeout.unwrap_or(Duration::from_secs(60))));
+        let ret = wire2.wait(Some(timeout.unwrap_or(Duration::from_secs(60))));
 
         if ret.is_err() {
             return Err(Error::ConnectionRefused("Queen::connect".to_string()))
         }
 
-        Ok(stream2)
+        Ok(wire2)
     }
 }
 
-impl Drop for Queen {
+impl Drop for Socket {
     fn drop(&mut self) {
         if Arc::strong_count(&self.run) == 1 {
             self.run.store(false, Ordering::Relaxed);
@@ -115,7 +115,7 @@ struct QueenInner<H> {
 }
 
 enum Packet {
-    NewClient(Stream<Message>)
+    NewClient(Wire<Message>)
 }
 
 impl<H: Hook> QueenInner<H> {
@@ -170,8 +170,8 @@ impl<H: Hook> QueenInner<H> {
     fn dispatch_queue(&mut self) -> Result<()> {
         if let Some(packet) = self.queue.pop() {
             match packet {
-                Packet::NewClient(stream) => {
-                    self.slot.add_client(&self.epoll, &self.hook, stream)?;
+                Packet::NewClient(wire) => {
+                    self.slot.add_client(&self.epoll, &self.hook, wire)?;
                 }
             }
         }

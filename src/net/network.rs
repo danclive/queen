@@ -19,7 +19,7 @@ use nson::Message;
 
 use slab::Slab;
 
-use crate::Stream;
+use crate::Wire;
 use crate::crypto::Crypto;
 use crate::util::message::read_nonblock;
 use crate::error::{Error, Result, RecvError};
@@ -28,8 +28,8 @@ use super::Codec;
 
 pub enum Packet<C: Codec> {
     NewConn {
-        stream: Stream<Message>,
-        net_stream: TcpStream,
+        wire: Wire<Message>,
+        stream: TcpStream,
         codec: C,
         crypto: Option<Crypto>
     }
@@ -39,7 +39,7 @@ pub struct NetWork<C: Codec> {
     epoll: Epoll,
     events: Events,
     pub queue: Queue<Packet<C>>,
-    streams: Slab<Stream<Message>>,
+    wires: Slab<Wire<Message>>,
     nets: Slab<NetConn<C>>,
     pub run: Arc<AtomicBool>
 }
@@ -53,7 +53,7 @@ impl<C: Codec> NetWork<C> {
             epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
             queue,
-            streams: Slab::new(),
+            wires: Slab::new(),
             nets: Slab::new(),
             run
         })
@@ -91,8 +91,8 @@ impl<C: Codec> NetWork<C> {
     fn dispatch_queue(&mut self) -> Result<()> {
         if let Some(packet) = self.queue.pop() {
             match packet {
-                Packet::NewConn { stream, net_stream, codec, crypto } => {
-                    let entry1 = self.streams.vacant_entry();
+                Packet::NewConn { wire, stream, codec, crypto } => {
+                    let entry1 = self.wires.vacant_entry();
                     let entry2 = self.nets.vacant_entry();
 
                     assert_eq!(entry1.key(), entry2.key());
@@ -101,22 +101,22 @@ impl<C: Codec> NetWork<C> {
                     let id2 = Self::START_TOKEN + entry2.key() * 2 + 1;
 
                     self.epoll.add(
-                        &stream,
+                        &wire,
                         Token(id),
                         Ready::readable(),
                         EpollOpt::level()
                     )?;
 
                     self.epoll.add(
-                        &net_stream,
+                        &stream,
                         Token(id2),
                         Ready::readable() | Ready::hup(),
                         EpollOpt::edge()
                     )?;
 
-                    entry1.insert(stream);
+                    entry1.insert(wire);
 
-                    let conn = NetConn::new(id2, net_stream, codec, crypto);
+                    let conn = NetConn::new(id2, stream, codec, crypto);
 
                     entry2.insert(conn);
                 }
@@ -130,19 +130,19 @@ impl<C: Codec> NetWork<C> {
         let token = event.token().0 - Self::START_TOKEN;
 
         if token % 2 == 0 {
-            self.dispatch_stream(token / 2)?;
+            self.dispatch_wire(token / 2)?;
         } else {
-            self.dispatch_net_stream(token / 2, event.readiness())?;
+            self.dispatch_stream(token / 2, event.readiness())?;
         }
 
         Ok(())
     }
 
-    fn dispatch_stream(&mut self, index: usize) -> Result<()> {
+    fn dispatch_wire(&mut self, index: usize) -> Result<()> {
         let mut remove = false;
 
-        if let Some(stream) = self.streams.get(index) {
-            match stream.recv() {
+        if let Some(wire) = self.wires.get(index) {
+            match wire.recv() {
                 Ok(message) => {
                     if let Some(net_conn) = self.nets.get_mut(index) {
                         net_conn.push_data(&self.epoll, message)?;
@@ -163,12 +163,12 @@ impl<C: Codec> NetWork<C> {
         Ok(())
     }
 
-    fn dispatch_net_stream(&mut self, index: usize, ready: Ready) -> Result<()> {
+    fn dispatch_stream(&mut self, index: usize, ready: Ready) -> Result<()> {
         let mut remove = ready.is_hup() || ready.is_error();
 
         if ready.is_readable() {
             if let Some(net_conn) = self.nets.get_mut(index) {
-                let ret = net_conn.read(&self.streams[index]);
+                let ret = net_conn.read(&self.wires[index]);
                 if ret.is_err() {
                     log::debug!("net_conn.read: {:?}", ret);
                     remove = true;
@@ -194,8 +194,8 @@ impl<C: Codec> NetWork<C> {
     }
 
     fn remove_conn(&mut self, index: usize) -> Result<()> {
-        let stream = self.streams.remove(index);
-        self.epoll.delete(&stream)?;
+        let wire = self.wires.remove(index);
+        self.epoll.delete(&wire)?;
 
         let net = self.nets.remove(index);
         self.epoll.delete(&net.stream)?;
@@ -227,7 +227,7 @@ impl<C: Codec> NetConn<C> {
         }
     }
 
-    fn read(&mut self, stream: &Stream<Message>) -> Result<()> {
+    fn read(&mut self, wire: &Wire<Message>) -> Result<()> {
         loop {
             let ret = read_nonblock(&mut self.stream, &mut self.r_buffer);
 
@@ -235,7 +235,7 @@ impl<C: Codec> NetConn<C> {
                 Ok(ret) => {
                     if let Some(bytes) = ret {
                         let message = self.codec.decode(&self.crypto, bytes)?;
-                        let _ = stream.send(message);
+                        let _ = wire.send(message);
                     }
                 }
                 Err(err) => {

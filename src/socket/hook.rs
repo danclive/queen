@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use nson::Message;
 
-use crate::queen::{Slot, Client};
+use super::{Slot, Client};
 
 pub trait Hook: Send + 'static {
     fn accept(&self, _: &Client) -> bool { true }

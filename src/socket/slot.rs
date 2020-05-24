@@ -15,7 +15,7 @@ use slab::Slab;
 
 use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
-use crate::stream::Stream;
+use crate::Wire;
 use crate::dict::*;
 use crate::error::{ErrorCode, Result, SendError, RecvError};
 
@@ -53,8 +53,8 @@ pub struct Client {
     pub send_messages: Cell<usize>,
     // 接收的消息数
     pub recv_messages: Cell<usize>,
-    // 双向流
-    pub stream: Stream<Message>
+    // 线
+    pub wire: Wire<Message>
 }
 
 impl Slot {
@@ -74,19 +74,19 @@ impl Slot {
         &mut self,
         epoll: &Epoll,
         hook: &impl Hook,
-        stream: Stream<Message>
+        wire: Wire<Message>
     ) -> Result<()> {
         let entry = self.clients.vacant_entry();
-        let client = Client::new(entry.key(), stream);
+        let client = Client::new(entry.key(), wire);
 
-        // 此处可以验证一下客户端的属性，不过目前只能验证 stream.attr
+        // 此处可以验证一下客户端的属性，不过目前只能验证 wire.attr
         let success = hook.accept(&client);
 
-        if success && matches!(client.stream.send(msg!{OK: 0i32}), Ok(_)) {
-            epoll.add(&client.stream, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
+        if success && matches!(client.wire.send(msg!{OK: 0i32}), Ok(_)) {
+            epoll.add(&client.wire, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
             entry.insert(client);
         } else {
-            client.stream.close();
+            client.wire.close();
         }
 
         Ok(())
@@ -100,8 +100,8 @@ impl Slot {
     ) -> Result<()> {
         if self.clients.contains(token) {
             let client = self.clients.remove(token);
-            // client.stream.close();
-            epoll.delete(&client.stream)?;
+            // client.wire.close();
+            epoll.delete(&client.wire)?;
 
             for chan in client.chans.keys() {
                 if let Some(ids) = self.chans.get_mut(chan) {
@@ -113,7 +113,7 @@ impl Slot {
                 }
             }
 
-            // 这里要记得移除 clinet_id，因为 stream 在一开始建立连接时就会默认分配一个
+            // 这里要记得移除 clinet_id，因为 wire 在一开始建立连接时就会默认分配一个
             // 认证成功时可以修改
             self.client_ids.remove(&client.id);
 
@@ -133,7 +133,7 @@ impl Slot {
                 CHAN: CLIENT_BREAK,
                 CLIENT_ID: client.id,
                 LABEL: client.label.clone(),
-                ATTR: client.stream.attr().clone()
+                ATTR: client.wire.attr().clone()
             };
 
             self.relay_root_message(hook, token, CLIENT_BREAK, event_message);
@@ -146,7 +146,7 @@ impl Slot {
         &mut self,
         epoll: &Epoll,
         hook: &impl Hook,
-        queen_id: &MessageId,
+        socket_id: &MessageId,
         token: usize,
         mut message: Message
     ) -> Result<()> {
@@ -175,7 +175,7 @@ impl Slot {
 
         if chan.starts_with('_') {
             match chan {
-                AUTH => self.auth(hook, queen_id, token, message),
+                AUTH => self.auth(hook, socket_id, token, message),
                 ATTACH => self.attach(hook, token, message),
                 DETACH => self.detach(hook, token, message),
                 PING => self.ping(hook, token, message),
@@ -510,7 +510,7 @@ impl Slot {
     pub(crate) fn auth(
         &mut self,
         hook: &impl Hook,
-        queen_id: &MessageId,
+        socket_id: &MessageId,
         token: usize,
         mut message: Message
     ) {
@@ -641,7 +641,7 @@ impl Slot {
             message.insert(LABEL, client.label.clone());
         }
 
-        message.insert(QUEEN_ID, queen_id.clone());
+        message.insert(SOCKET_ID, socket_id.clone());
 
         ErrorCode::OK.insert(&mut message);
 
@@ -661,7 +661,7 @@ impl Slot {
             ROOT: client.root,
             CLIENT_ID: client.id.clone(),
             LABEL: client.label.clone(),
-            ATTR: client.stream.attr().clone()
+            ATTR: client.wire.attr().clone()
         };
 
         // 之所以在这里才发送，是因为上面使用了 client 的几个字段
@@ -908,7 +908,7 @@ impl Slot {
                 CHANS: chans,
                 CLIENT_ID: client.id.clone(),
                 LABEL: client.label.clone(),
-                ATTR: client.stream.attr().clone(),
+                ATTR: client.wire.attr().clone(),
                 SEND_MESSAGES: client.send_messages.get() as u64,
                 RECV_MESSAGES: client.recv_messages.get() as u64
             };
@@ -1036,7 +1036,7 @@ impl Slot {
 }
 
 impl Client {
-    pub fn new(token: usize, stream: Stream<Message>) -> Self {
+    pub fn new(token: usize, wire: Wire<Message>) -> Self {
         Self {
             token,
             id: MessageId::new(),
@@ -1046,19 +1046,19 @@ impl Client {
             chans: HashMap::new(),
             send_messages: Cell::new(0),
             recv_messages: Cell::new(0),
-            stream
+            wire
         }
     }
 
     pub fn send(&self, message: Message) -> result::Result<(), SendError<Message>> {
-        self.stream.send(message).map(|m| {
+        self.wire.send(message).map(|m| {
             self.send_messages.set(self.send_messages.get() + 1);
             m
         })
     }
 
     pub fn recv(&self) -> result::Result<Message, RecvError> {
-        self.stream.recv().map(|m| {
+        self.wire.recv().map(|m| {
             self.recv_messages.set(self.recv_messages.get() + 1);
             m
         })

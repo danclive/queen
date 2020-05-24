@@ -1,7 +1,7 @@
 use std::thread;
 use std::time::Duration;
 
-use queen::{Queen, Node, Port};
+use queen::{Socket, Node, Port};
 use queen::node::Hook;
 use queen::nson::{MessageId, msg};
 use queen::net::{CryptoOptions, NsonCodec};
@@ -13,12 +13,12 @@ use super::get_free_addr;
 #[test]
 fn port() {
     // start node
-    let queen = Queen::new(MessageId::new(), ()).unwrap();
+    let socket = Socket::new(MessageId::new(), ()).unwrap();
 
     let addr = get_free_addr();
 
     let mut node = Node::<NsonCodec, ()>::new(
-        queen.clone(),
+        socket.clone(),
         2,
         vec![addr.parse().unwrap()],
         ()
@@ -28,45 +28,45 @@ fn port() {
         node.run().unwrap();
     });
 
-    // start stream
-    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    // start wire
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: AUTH
     });
 
     // start port
     let port = Port::<NsonCodec>::new().unwrap();
 
-    let stream2 = port.connect(addr, msg!{}, None, None).unwrap();
+    let wire2 = port.connect(addr, msg!{}, None, None).unwrap();
 
-    let _ = stream2.send(msg!{
+    let _ = wire2.send(msg!{
         CHAN: AUTH
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    // stream1 recv
-    let recv = stream1.recv().unwrap();
+    // wire1 recv
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
-    // stream2 recv
-    let recv = stream2.recv().unwrap();
+    // wire2 recv
+    let recv = wire2.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
-    // stream1 attach
-    let _ = stream1.send(msg!{
+    // wire1 attach
+    let _ = wire1.send(msg!{
         CHAN: ATTACH,
         VALUE: "hello"
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
-    // stream2 send
-    let _ = stream2.send(msg!{
+    // wire2 send
+    let _ = wire2.send(msg!{
         CHAN: "hello",
         "hello": "world",
         ACK: true
@@ -74,19 +74,19 @@ fn port() {
 
     thread::sleep(Duration::from_millis(100));
 
-    // stream1 recv
-    let recv = stream1.recv().unwrap();
+    // wire1 recv
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_str("hello").unwrap() == "world");
 
-    // stream2 recv
-    let recv = stream2.recv().unwrap();
+    // wire2 recv
+    let recv = wire2.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 }
 
 #[test]
 fn port_secure() {
     // start node
-    let queen = Queen::new(MessageId::new(), ()).unwrap();
+    let socket = Socket::new(MessageId::new(), ()).unwrap();
 
     let addr = get_free_addr();
 
@@ -107,7 +107,7 @@ fn port_secure() {
     }
 
     let mut node = Node::<NsonCodec, MyHook>::new(
-        queen.clone(),
+        socket.clone(),
         2,
         vec![addr.parse().unwrap()],
         MyHook
@@ -117,10 +117,10 @@ fn port_secure() {
         node.run().unwrap();
     });
 
-    // start stream
-    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    // start wire
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: AUTH
     });
 
@@ -133,35 +133,35 @@ fn port_secure() {
         secret: "99557df09590ad6043ceefd1".to_string()
     };
 
-    let stream2 = port.connect(addr, msg!{}, Some(crypto_options), None).unwrap();
+    let wire2 = port.connect(addr, msg!{}, Some(crypto_options), None).unwrap();
 
-    let _ = stream2.send(msg!{
+    let _ = wire2.send(msg!{
         CHAN: AUTH
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    // stream1 recv
-    let recv = stream1.recv().unwrap();
+    // wire1 recv
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
-    // stream2 recv
-    let recv = stream2.recv().unwrap();
+    // wire2 recv
+    let recv = wire2.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
-    // stream1 attach
-    let _ = stream1.send(msg!{
+    // wire1 attach
+    let _ = wire1.send(msg!{
         CHAN: ATTACH,
         VALUE: "hello"
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = stream1.recv().unwrap();
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
-    // stream2 send
-    let _ = stream2.send(msg!{
+    // wire2 send
+    let _ = wire2.send(msg!{
         CHAN: "hello",
         "hello": "world",
         ACK: true
@@ -169,19 +169,19 @@ fn port_secure() {
 
     thread::sleep(Duration::from_millis(100));
 
-    // stream1 recv
-    let recv = stream1.recv().unwrap();
+    // wire1 recv
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_str("hello").unwrap() == "world");
 
-    // stream2 recv
-    let recv = stream2.recv().unwrap();
+    // wire2 recv
+    let recv = wire2.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 }
 
 #[test]
 fn port_secure2() {
     // start node
-    let queen = Queen::new(MessageId::new(), ()).unwrap();
+    let socket = Socket::new(MessageId::new(), ()).unwrap();
 
     let addr = get_free_addr();
 
@@ -202,7 +202,7 @@ fn port_secure2() {
     }
 
     let mut node = Node::<NsonCodec, MyHook>::new(
-        queen.clone(),
+        socket.clone(),
         2,
         vec![addr.parse().unwrap()],
         MyHook
@@ -212,22 +212,22 @@ fn port_secure2() {
         node.run().unwrap();
     });
 
-    // start stream
-    let stream1 = queen.connect(msg!{}, None, None).unwrap();
+    // start wire
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
 
-    let _ = stream1.send(msg!{
+    let _ = wire1.send(msg!{
         CHAN: AUTH
     });
 
     // start port
     let port = Port::<NsonCodec>::new().unwrap();
 
-    let stream2 = port.connect(addr, msg!{}, None, None);
-    assert!(stream2.is_err());
+    let wire2 = port.connect(addr, msg!{}, None, None);
+    assert!(wire2.is_err());
 
     thread::sleep(Duration::from_millis(100));
 
-    // stream1 recv
-    let recv = stream1.recv().unwrap();
+    // wire1 recv
+    let recv = wire1.recv().unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 }

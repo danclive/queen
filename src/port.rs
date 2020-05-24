@@ -12,7 +12,7 @@ use queen_io::queue::mpsc::Queue;
 
 use crate::net::{NetWork, Packet, CryptoOptions, Codec};
 use crate::net::tcp_ext::TcpExt;
-use crate::Stream;
+use crate::Wire;
 use crate::crypto::Crypto;
 use crate::dict::*;
 use crate::nson::{msg, Message};
@@ -70,20 +70,20 @@ impl<C: Codec> Port<C> {
         attr: Message,
         crypto_options: Option<CryptoOptions>,
         capacity: Option<usize>
-    ) -> Result<Stream<Message>> {
-        let mut socket = TcpStream::connect(addr)?;
+    ) -> Result<Wire<Message>> {
+        let mut stream = TcpStream::connect(addr)?;
 
         // 握手开始
-        socket.set_nonblocking(false)?;
-        socket.set_read_timeout(Some(Duration::from_secs(10)))?;
-        socket.set_write_timeout(Some(Duration::from_secs(10)))?;
+        stream.set_nonblocking(false)?;
+        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(10)))?;
 
         let mut hand = msg!{
             CHAN: HAND
         };
 
         let mut attr2 = msg!{
-            ADDR: socket.peer_addr()?.to_string(),
+            ADDR: stream.peer_addr()?.to_string(),
             SECURE: false
         };
 
@@ -102,35 +102,35 @@ impl<C: Codec> Port<C> {
 
         let bytes = codec.encode(&None, hand)?;
 
-        socket.write_all(&bytes)?;
+        stream.write_all(&bytes)?;
 
         // 握手时的消息，不能超过 1024 字节
-        let bytes = read_block(&mut socket, Some(1024))?;
+        let bytes = read_block(&mut stream, Some(1024))?;
         let message = codec.decode(&None, bytes)?;
 
         if message.get_i32(OK) == Ok(0) {
-            socket.set_nonblocking(true)?;
-            socket.set_read_timeout(None)?;
-            socket.set_write_timeout(None)?;
+            stream.set_nonblocking(true)?;
+            stream.set_read_timeout(None)?;
+            stream.set_write_timeout(None)?;
             // 握手结束
 
-            socket.set_keep_alive(self.tcp_keep_alive)?;
-            socket.set_keep_idle(self.tcp_keep_idle as i32)?;
-            socket.set_keep_intvl(self.tcp_keep_intvl as i32)?;
-            socket.set_keep_cnt(self.tcp_keep_cnt as i32)?;
+            stream.set_keep_alive(self.tcp_keep_alive)?;
+            stream.set_keep_idle(self.tcp_keep_idle as i32)?;
+            stream.set_keep_intvl(self.tcp_keep_intvl as i32)?;
+            stream.set_keep_cnt(self.tcp_keep_cnt as i32)?;
 
             attr2.extend(attr);
 
-            let (stream1, stream2) = Stream::pipe(capacity.unwrap_or(64), attr2)?;
+            let (wire1, wire2) = Wire::pipe(capacity.unwrap_or(64), attr2)?;
 
             self.queue.push(Packet::NewConn {
-                net_stream: socket,
-                stream: stream1,
+                wire: wire1,
+                stream,
                 codec,
                 crypto
             });
 
-            return Ok(stream2)
+            return Ok(wire2)
         }
 
         Err(Error::InvalidInput(format!("{}", message)))

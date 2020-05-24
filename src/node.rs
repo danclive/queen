@@ -20,8 +20,8 @@ use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
 use nson::{msg, Message};
 
-use crate::Queen;
-use crate::Stream;
+use crate::Socket;
+use crate::Wire;
 use crate::net::{NetWork, Packet, Codec};
 use crate::net::tcp_ext::TcpExt;
 use crate::crypto::{Crypto, Method};
@@ -34,7 +34,7 @@ pub use hook::Hook;
 mod hook;
 
 pub struct Node<C: Codec, H: Hook> {
-    queen: Queen,
+    socket: Socket,
     epoll: Epoll,
     events: Events,
     queues: Vec<Queue<Packet<C>>>,
@@ -50,7 +50,7 @@ pub struct Node<C: Codec, H: Hook> {
 
 impl<C: Codec, H: Hook> Node<C, H> {
     pub fn new(
-        queen: Queen,
+        socket: Socket,
         works: usize,
         addrs: Vec<SocketAddr>,
         hook: H
@@ -85,7 +85,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
         }
 
         Ok(Node {
-            queen,
+            socket,
             epoll: Epoll::new()?,
             events: Events::with_capacity(16),
             queues,
@@ -113,7 +113,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
             self.epoll.add(&listen.as_raw_fd(), Token(id), Ready::readable(), EpollOpt::edge())?;
         }
 
-        while self.run.load(Ordering::Relaxed) && self.queen.is_run() {
+        while self.run.load(Ordering::Relaxed) && self.socket.is_run() {
             let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
                 Ok(size) => size,
                 Err(err) => {
@@ -131,8 +131,8 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
                 if let Some(listen) = self.listens.get(token.0) {
                     loop {
-                        let (mut socket, addr) = match listen.accept() {
-                            Ok(socket) => socket,
+                        let (mut stream, addr) = match listen.accept() {
+                            Ok(stream) => stream,
                             Err(err) => {
                                 if err.kind() == WouldBlock {
                                     break;
@@ -142,16 +142,16 @@ impl<C: Codec, H: Hook> Node<C, H> {
                             }
                         };
 
-                        if !self.hook.accept(&mut socket) {
+                        if !self.hook.accept(&mut stream) {
                             continue;
                         }
 
                         // 握手开始
-                        socket.set_nonblocking(false)?;
-                        socket.set_read_timeout(Some(Duration::from_secs(10)))?;
-                        socket.set_write_timeout(Some(Duration::from_secs(10)))?;
+                        stream.set_nonblocking(false)?;
+                        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+                        stream.set_write_timeout(Some(Duration::from_secs(10)))?;
 
-                        let (stream, codec, crypto) = match Self::hand(&self.hook, &self.queen, &mut socket, &addr) {
+                        let (wire, codec, crypto) = match Self::hand(&self.hook, &self.socket, &mut stream, &addr) {
                             Ok(ret) => ret,
                             Err(err) => {
                                 log::debug!("{}", err);
@@ -159,24 +159,24 @@ impl<C: Codec, H: Hook> Node<C, H> {
                             }
                         };
 
-                        socket.set_nonblocking(true)?;
-                        socket.set_read_timeout(None)?;
-                        socket.set_write_timeout(None)?;
+                        stream.set_nonblocking(true)?;
+                        stream.set_read_timeout(None)?;
+                        stream.set_write_timeout(None)?;
                         // 握手结束
 
                         // 开启keepalive属性
-                        socket.set_keep_alive(self.tcp_keep_alive)?;
+                        stream.set_keep_alive(self.tcp_keep_alive)?;
                         // 如该连接在30秒内没有任何数据往来,则进行探测
-                        socket.set_keep_idle(self.tcp_keep_idle as i32)?;
+                        stream.set_keep_idle(self.tcp_keep_idle as i32)?;
                         // 探测时发包的时间间隔为5秒
-                        socket.set_keep_intvl(self.tcp_keep_intvl as i32)?;
+                        stream.set_keep_intvl(self.tcp_keep_intvl as i32)?;
                         // 探测尝试的次数.如果第1次探测包就收到响应了,则后2次的不再发
-                        socket.set_keep_cnt(self.tcp_keep_cnt as i32)?;
+                        stream.set_keep_cnt(self.tcp_keep_cnt as i32)?;
 
                         if let Some(queue) = self.queues.choose(&mut self.rand) {
                             queue.push(Packet::NewConn {
+                                wire,
                                 stream,
-                                net_stream: socket,
                                 codec,
                                 crypto
                             })
@@ -191,14 +191,14 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
     fn hand(
         hook: &H,
-        queen: &Queen,
-        socket: &mut TcpStream,
+        socket: &Socket,
+        stream: &mut TcpStream,
         addr: &SocketAddr
-    ) -> Result<(Stream<Message>, C, Option<Crypto>)> {
+    ) -> Result<(Wire<Message>, C, Option<Crypto>)> {
         let mut codec = C::new();
 
         // 握手时的消息，不能超过 1024 字节
-        let bytes = read_block(socket, Some(1024))?;
+        let bytes = read_block(stream, Some(1024))?;
         let mut message = codec.decode(&None, bytes)?;
 
         let chan = match message.get_str(CHAN) {
@@ -223,15 +223,15 @@ impl<C: Codec, H: Hook> Node<C, H> {
                 SECURE: false
             };
 
-            let stream = queen.connect(attr, None, Some(Duration::from_secs(10)))?;
+            let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
 
             ErrorCode::OK.insert(&mut message);
 
             let bytes = codec.encode(&None, message)?;
 
-            socket.write_all(&bytes)?;
+            stream.write_all(&bytes)?;
 
-            return Ok((stream, codec, None))
+            return Ok((wire, codec, None))
         }
 
         if let Ok(method) = message.get_str(METHOD) {
@@ -256,17 +256,17 @@ impl<C: Codec, H: Hook> Node<C, H> {
                 SECRET: &secret
             };
 
-            let stream = queen.connect(attr, None, Some(Duration::from_secs(10)))?;
+            let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
 
             ErrorCode::OK.insert(&mut message);
 
             let bytes = codec.encode(&None, message)?;
 
-            socket.write_all(&bytes)?;
+            stream.write_all(&bytes)?;
 
             let crypto = Crypto::new(&method, secret.as_bytes());
 
-            return Ok((stream, codec, Some(crypto)))
+            return Ok((wire, codec, Some(crypto)))
         }
 
         Err(Error::InvalidInput(format!("{}", message)))

@@ -1,6 +1,6 @@
-pub mod queen;
+pub mod socket;
+pub mod wire;
 pub mod node;
-pub mod stream;
 pub mod net;
 pub mod port;
 pub mod crypto;
@@ -12,7 +12,7 @@ pub use nson;
 
 pub const MAX_MESSAGE_LEN: usize = 64 * 1024 * 1024; // 64 MB
 
-pub use crate::queen::{Queen, Slot, Client, Hook};
-pub use crate::stream::Stream;
+pub use crate::socket::{Socket, Slot, Client, Hook};
+pub use crate::wire::Wire;
 pub use crate::node::Node;
 pub use crate::port::Port;

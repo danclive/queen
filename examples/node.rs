@@ -1,10 +1,10 @@
-use queen::{Queen, Node};
+use queen::{Socket, Node};
 use queen::net::NsonCodec;
 
 use queen::nson::MessageId;
 
 fn main() {
-    let queen = Queen::new(MessageId::new(), ()).unwrap();
+    let queen = Socket::new(MessageId::new(), ()).unwrap();
 
     let mut node = Node::<NsonCodec, ()>::new(
         queen.clone(),
