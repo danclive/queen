@@ -296,12 +296,14 @@ impl Slot {
 
         // P2P 的优先级比较高
         // 不管 CLIENT 是否 ATTACH，都可给其发送消息
-        // 忽略 LABEL 和 SHARE
+        // 忽略 LABEL
         // 自己可以收到自己发送的消息
         let mut to_ids = vec![];
 
-        if let Some(to) = message.remove(TO) {
+        if let Some(to) = message.get(TO).cloned() {
             if let Some(to_id) = to.as_message_id() {
+                // TO 可以是单个 CLIENT_ID，如果 CLIENT_ID 不存在，应当反馈错误
+                // 错误信息中应当包含不存在的 CLIENT_ID
                 if !self.client_ids.contains_key(to_id) {
                     ErrorCode::TargetClientIdNotExist.insert(&mut message);
                     message.insert(CLIENT_ID, to_id);
@@ -313,6 +315,9 @@ impl Slot {
 
                 to_ids.push(to_id.clone());
             } else if let Some(to_array) = to.as_array() {
+                // TO 也可以是一个数组，但是只要其中一个 CLIENT_ID 不存在，应当反馈错误
+                // 错误信息中应当包含不存在的 CLIENT_ID
+                // 注意: 如果 TO 为数组，且为空，会按照常规消息发送
                 let mut not_exist_ids = vec![];
 
                 for to in to_array {
@@ -405,17 +410,35 @@ impl Slot {
         let mut no_consumers = true;
 
         // 发送 P2P 消息
+        // 注意: 如果 TO 为数组，且为空，会按照常规消息发送
         if !to_ids.is_empty() {
             no_consumers = false;
 
-            for to in &to_ids {
-                if let Some(client_id) = self.client_ids.get(to) {
-                    if let Some(client) = self.clients.get(*client_id) {
-                        send!(self, hook, client, message);
+            // 如果存在 SHARE 字段，且值为 true，则只会随机给其中一个 CLIENT 发送消息
+            if message.get_bool(SHARE).ok().unwrap_or(false) {
+                if to_ids.len() == 1 {
+                    if let Some(client_id) = self.client_ids.get(&to_ids[0]) {
+                        if let Some(client) = self.clients.get(*client_id) {
+                            send!(self, hook, client, message);
+                        }
+                    }
+                } else if let Some(to) = to_ids.choose(&mut self.rand) {
+                    if let Some(client_id) = self.client_ids.get(to) {
+                        if let Some(client) = self.clients.get(*client_id) {
+                            send!(self, hook, client, message);
+                        }
+                    }
+                }
+            } else {
+                for to in &to_ids {
+                    if let Some(client_id) = self.client_ids.get(to) {
+                        if let Some(client) = self.clients.get(*client_id) {
+                            send!(self, hook, client, message);
+                        }
                     }
                 }
             }
-        // 如果存在 SHARE 字段，且值为 false，则只会随机给其中一个 CLIENT 发送消息
+        // 如果存在 SHARE 字段，且值为 true，则只会随机给其中一个 CLIENT 发送消息
         // 会根据 LABEL 过滤
         } else if message.get_bool(SHARE).ok().unwrap_or(false) {
             let mut array: Vec<usize> = Vec::new();

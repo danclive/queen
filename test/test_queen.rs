@@ -1003,7 +1003,7 @@ fn share() {
 }
 
 #[test]
-fn s2s() {
+fn wire_to_wire() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
     let wire1 = socket.connect(msg!{}, None, None).unwrap();
@@ -1134,18 +1134,31 @@ fn s2s() {
     assert!(recv.get_str("hello").unwrap() == "world");
     assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
 
-    // generate message id
-    let wire4 = socket.connect(msg!{}, None, None).unwrap();
-
-    let _ = wire4.send(msg!{
-        CHAN: AUTH
+    // share
+    let _ = wire3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        ACK: "123",
+        SHARE: true,
+        TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()]
     });
 
     thread::sleep(Duration::from_millis(100));
 
-    let recv = wire4.recv().unwrap();
+    assert!(wire3.recv().unwrap().get_i32(OK).unwrap() == 0);
 
-    assert!(recv.get_message_id(CLIENT_ID).is_ok());
+    // recv
+    let mut num = 0;
+
+    if wire1.recv().is_ok() {
+        num += 1;
+    }
+
+    if wire2.recv().is_ok() {
+        num += 1;
+    }
+
+    assert_eq!(num, 1);
 }
 
 #[test]

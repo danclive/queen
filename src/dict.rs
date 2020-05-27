@@ -10,7 +10,7 @@ pub const QUERY:     &str = "_quer";
 pub const MINE:      &str = "_mine";
 pub const CUSTOM:    &str = "_cust";
 
-pub const SOCKET_ID:  &str = "_quid";
+pub const SOCKET_ID:  &str = "_soid";
 pub const CLIENT_ID: &str = "_clid";
 pub const VALUE:     &str = "_valu";
 pub const LABEL:     &str = "_labe";
