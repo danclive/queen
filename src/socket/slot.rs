@@ -202,13 +202,13 @@ impl Slot {
         token: usize,
         mut message: Message
     ) {
-        self.send_messages.set(self.send_messages.get() + 1);
-
         if let Some(client) = self.clients.get(token) {
             let success = hook.send(client, &mut message);
 
             if success {
-                let _ = client.send(message);
+                if client.send(message).is_ok() {
+                    self.send_messages.set(self.send_messages.get() + 1);
+                }
             }
         }
     }

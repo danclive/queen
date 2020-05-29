@@ -148,8 +148,9 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
                         // 握手开始
                         stream.set_nonblocking(false)?;
-                        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
-                        stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+                        // 连接成功后，5秒内收不到握手消息应当断开
+                        stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+                        stream.set_write_timeout(Some(Duration::from_secs(5)))?;
 
                         let (wire, codec, crypto) = match Self::hand(&self.hook, &self.socket, &mut stream, &addr) {
                             Ok(ret) => ret,
