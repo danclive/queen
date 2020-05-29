@@ -258,7 +258,7 @@ impl Slot {
         let success = hook.emit(&self.clients[token], &mut message);
 
         if !success {
-            ErrorCode::Unauthorized.insert(&mut message);
+            ErrorCode::PermissionDenied.insert(&mut message);
 
             self.send_message(hook, token, message);
 
@@ -715,7 +715,7 @@ impl Slot {
                 CLIENT_READY | CLIENT_BREAK | CLIENT_ATTACH | CLIENT_DETACH | CLIENT_SEND | CLIENT_RECV => {
 
                     if !self.clients[token].root {
-                        ErrorCode::Unauthorized.insert(&mut message);
+                        ErrorCode::PermissionDenied.insert(&mut message);
 
                         self.send_message(hook, token, message);
 
@@ -757,7 +757,7 @@ impl Slot {
             let success = hook.attach(&self.clients[token], &mut message, &chan, &labels);
 
             if !success {
-                ErrorCode::Unauthorized.insert(&mut message);
+                ErrorCode::PermissionDenied.insert(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -850,7 +850,7 @@ impl Slot {
             let success = hook.detach(&self.clients[token], &mut message, &chan, &labels);
 
             if !success {
-                ErrorCode::Unauthorized.insert(&mut message);
+                ErrorCode::PermissionDenied.insert(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -950,8 +950,16 @@ impl Slot {
         {
             let client = &self.clients[token];
 
-            if !client.auth || !client.root {
+            if !client.auth {
                 ErrorCode::Unauthorized.insert(&mut message);
+
+                self.send_message(hook, token, message);
+
+                return
+            }
+
+            if !client.root {
+                ErrorCode::PermissionDenied.insert(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -999,8 +1007,16 @@ impl Slot {
         {
             let client = &self.clients[token];
 
-            if !client.auth || !client.root {
+            if !client.auth {
                 ErrorCode::Unauthorized.insert(&mut message);
+
+                self.send_message(hook, token, message);
+
+                return Ok(())
+            }
+
+            if !client.root {
+                ErrorCode::PermissionDenied.insert(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -1011,7 +1027,7 @@ impl Slot {
         let success = hook.kill(&self.clients[token], &mut message);
 
         if !success {
-            ErrorCode::Unauthorized.insert(&mut message);
+            ErrorCode::PermissionDenied.insert(&mut message);
 
             self.send_message(hook, token, message);
 

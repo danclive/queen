@@ -63,11 +63,7 @@ impl<T: Send> Wire<T> {
     }
 
     pub fn attr(&self) -> LockGuard<Message> {
-        loop {
-            if let Some(attr) = self.attr.try_lock() {
-                return attr
-            }
-        }
+        self.attr.lock()
     }
 
     pub fn close(&self) {

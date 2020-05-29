@@ -195,7 +195,7 @@ fn test_hook() {
     thread::sleep(Duration::from_millis(100));
 
     let recv = wire1.recv().unwrap();
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::PermissionDenied));
 
     // attach
     let _ = wire1.send(msg!{
@@ -218,7 +218,7 @@ fn test_hook() {
     thread::sleep(Duration::from_millis(100));
 
     let recv = wire1.recv().unwrap();
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::Unauthorized));
+    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::PermissionDenied));
 
     // detach
     let _ = wire1.send(msg!{

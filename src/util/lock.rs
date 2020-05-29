@@ -33,6 +33,12 @@ impl<T> Lock<T> {
 
         Some(LockGuard { lock: self, _p: PhantomData })
     }
+
+    pub fn lock(&self) -> LockGuard<T> {
+        while self.locked.compare_and_swap(false, true, SeqCst) {}
+
+        LockGuard { lock: self, _p: PhantomData }
+    }
 }
 
 impl<'a, T> Deref for LockGuard<'a, T> {
