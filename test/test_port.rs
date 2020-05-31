@@ -3,12 +3,14 @@ use std::time::Duration;
 
 use queen::{Socket, Node, Port};
 use queen::node::Hook;
-use queen::nson::{MessageId, msg};
+use queen::nson::{MessageId, msg, Message};
 use queen::net::{CryptoOptions, NsonCodec};
 use queen::crypto::Method;
 use queen::dict::*;
 
 use super::get_free_addr;
+
+const ACCESS:    &str = "_acce";
 
 #[test]
 fn port() {
@@ -97,9 +99,19 @@ fn port_secure() {
             true
         }
 
-        fn access(&self, access: &str) -> Option<String> {
-            if access == "12d3eaf5e9effffb14fb213e" {
-                return Some("99557df09590ad6043ceefd1".to_string())
+        fn hand(&self, message: &mut Message) -> bool {
+            message.insert("lalala", 123);
+
+            true
+        }
+
+        fn access(&self, message: &mut Message) -> Option<String> {
+            message.insert("hello", "world");
+
+            if let Ok(access) = message.get_str(ACCESS) {
+                if access == "12d3eaf5e9effffb14fb213e" {
+                    return Some("99557df09590ad6043ceefd1".to_string())
+                }
             }
 
             None
@@ -129,11 +141,16 @@ fn port_secure() {
 
     let crypto_options = CryptoOptions {
         method: Method::Aes128Gcm,
-        access: "12d3eaf5e9effffb14fb213e".to_string(),
         secret: "99557df09590ad6043ceefd1".to_string()
     };
 
-    let wire2 = port.connect(addr, msg!{}, Some(crypto_options), None).unwrap();
+    let attr = msg!{
+        ACCESS: "12d3eaf5e9effffb14fb213e"
+    };
+
+    let wire2 = port.connect(addr, attr, Some(crypto_options), None).unwrap();
+    assert!(wire2.attr().get_i32("lalala").unwrap() == 123);
+    assert!(wire2.attr().get_str("hello").unwrap() == "world");
 
     let _ = wire2.send(msg!{
         CHAN: AUTH
@@ -192,9 +209,19 @@ fn port_secure2() {
             true
         }
 
-        fn access(&self, access: &str) -> Option<String> {
-            if access == "12d3eaf5e9effffb14fb213e" {
-                return Some("99557df09590ad6043ceefd1".to_string())
+        fn hand(&self, message: &mut Message) -> bool {
+            message.insert("lalala", 123);
+
+            true
+        }
+
+        fn access(&self, message: &mut Message) -> Option<String> {
+            message.insert("hello", "world");
+
+            if let Ok(access) = message.get_str(ACCESS) {
+                if access == "12d3eaf5e9effffb14fb213e" {
+                    return Some("99557df09590ad6043ceefd1".to_string())
+                }
             }
 
             None

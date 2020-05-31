@@ -80,6 +80,8 @@ impl Slot {
         let client = Client::new(entry.key(), wire);
 
         // 此处可以验证一下客户端的属性，不过目前只能验证 wire.attr
+        // 并且，wire.attr 是可以修改的
+        // 但是，为了避免不必要的问题，Client 的属性是不能在这里修改的
         let success = hook.accept(&client);
 
         if success && matches!(client.wire.send(msg!{OK: 0i32}), Ok(_)) {

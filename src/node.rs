@@ -213,15 +213,21 @@ impl<C: Codec, H: Hook> Node<C, H> {
             return Err(Error::InvalidData("chan != HAND".to_string()))
         }
 
+        // 握手消息是可以修改的，修改后的消息会发回客户端，因此可以携带自定义数据
+        // 但是对于一些握手必备的属性，请谨慎修改，比如加密方式（METHOD）
         if !hook.hand(&mut message) {
             return Err(Error::PermissionDenied("hook.hand".to_string()));
         }
 
         if !hook.enable_secure() {
             // 没有开启加密
+
+            // 这里会将原始的握手消息传入。
+            // 但是要注意，握手消息是没有加密的，不能传递敏感数据
             let attr = msg!{
                 ADDR: addr.to_string(),
-                SECURE: false
+                SECURE: false,
+                ORIGIN: message.clone()
             };
 
             let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
@@ -242,25 +248,24 @@ impl<C: Codec, H: Hook> Node<C, H> {
                 return Err(Error::InvalidData("Method::from_str(hand)".to_string()))
             };
 
-            let access = if let Ok(access) = message.get_str(ACCESS) {
-                access
-            } else {
-                return Err(Error::InvalidData("message.get_str(ACCESS)".to_string()))
-            };
+            // 握手消息是可以修改的，修改后的消息会发回客户端，因此可以携带自定义数据
+            // 但是对于一些握手必备的属性，请谨慎修改
+            // 这里需要根据传递的自定义数据，返回一个加密密钥
+            let secret = hook.access(&mut message).ok_or_else(|| Error::PermissionDenied("hook.access".to_string()))?;
 
-            let secret = hook.access(access).ok_or_else(|| Error::PermissionDenied("hook.access".to_string()))?;
-
+            // 这里会将原始的握手消息传入。
+            // 但是要注意，握手消息是没有加密的，不能传递敏感数据
             let attr = msg!{
                 ADDR: addr.to_string(),
                 SECURE: true,
-                ACCESS: access,
-                SECRET: &secret
+                ORIGIN: message.clone()
             };
 
             let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
 
             ErrorCode::OK.insert(&mut message);
 
+            // 握手消息发回
             let bytes = codec.encode(&None, message)?;
 
             stream.write_all(&bytes)?;

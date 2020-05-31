@@ -139,7 +139,7 @@ impl<T: Send> Evented for Wire<T> {
     }
 
     fn delete(&self, epoll: &Epoll) -> io::Result<()> {
-       self.rx.delete(epoll)
+        self.rx.delete(epoll)
     }
 }
 

@@ -9,7 +9,7 @@ pub trait Hook {
 
     fn hand(&self, _: &mut Message) -> bool { true }
 
-    fn access(&self, _: &str) -> Option<String> { None }
+    fn access(&self, _: &mut Message) -> Option<String> { None }
 }
 
 impl Hook for () {}

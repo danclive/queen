@@ -48,8 +48,7 @@ pub const AES_256_GCM:       &str = "AES_256_GCM";
 pub const CHACHA20_POLY1305: &str = "CHACHA20_POLY1305";
 
 // network
-pub const HAND: &str = "_hand";
+pub const HAND:      &str = "_hand";
 pub const METHOD:    &str = "_meth";
-pub const ACCESS:    &str = "_acce";
-pub const SECRET:    &str = "_secr";
 pub const SECURE:    &str = "_secu";
+pub const ORIGIN:    &str = "_orig";

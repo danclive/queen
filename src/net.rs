@@ -13,7 +13,7 @@ pub mod tcp_ext;
 #[derive(Debug, Clone)]
 pub struct CryptoOptions {
     pub method: Method,
-    pub access: String,
+    // pub access: String,
     pub secret: String
 }
 

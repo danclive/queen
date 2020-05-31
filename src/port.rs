@@ -15,7 +15,7 @@ use crate::net::tcp_ext::TcpExt;
 use crate::Wire;
 use crate::crypto::Crypto;
 use crate::dict::*;
-use crate::nson::{msg, Message};
+use crate::nson::Message;
 use crate::error::{Result, Error};
 use crate::util::message::read_block;
 
@@ -67,7 +67,7 @@ impl<C: Codec> Port<C> {
     pub fn connect<A: ToSocketAddrs>(
         &self,
         addr: A,
-        attr: Message,
+        mut attr: Message,
         crypto_options: Option<CryptoOptions>,
         capacity: Option<usize>
     ) -> Result<Wire<Message>> {
@@ -78,37 +78,30 @@ impl<C: Codec> Port<C> {
         stream.set_read_timeout(Some(Duration::from_secs(10)))?;
         stream.set_write_timeout(Some(Duration::from_secs(10)))?;
 
-        let mut hand = msg!{
-            CHAN: HAND
-        };
-
-        let mut attr2 = msg!{
-            ADDR: stream.peer_addr()?.to_string(),
-            SECURE: false
-        };
+        attr.insert(CHAN, HAND);
+        attr.insert(ADDR, stream.peer_addr()?.to_string());
+        attr.insert(SECURE, false);
 
         let crypto = crypto_options.map(|options| {
-            hand.insert(METHOD, options.method.as_str());
-            hand.insert(ACCESS, &options.access);
-
-            attr2.insert(SECURE, true);
-            attr2.insert(ACCESS, &options.access);
-            attr2.insert(SECURE, &options.secret);
+            attr.insert(SECURE, true);
+            attr.insert(METHOD, options.method.as_str());
 
             Crypto::new(&options.method, options.secret.as_bytes())
         });
 
         let mut codec = C::new();
 
-        let bytes = codec.encode(&None, hand)?;
+        let bytes = codec.encode(&None, attr)?;
 
         stream.write_all(&bytes)?;
 
         // 握手时的消息，不能超过 1024 字节
         let bytes = read_block(&mut stream, Some(1024))?;
-        let message = codec.decode(&None, bytes)?;
+        let mut message = codec.decode(&None, bytes)?;
 
         if message.get_i32(OK) == Ok(0) {
+            message.remove(OK);
+
             stream.set_nonblocking(true)?;
             stream.set_read_timeout(None)?;
             stream.set_write_timeout(None)?;
@@ -119,9 +112,8 @@ impl<C: Codec> Port<C> {
             stream.set_keep_intvl(self.tcp_keep_intvl as i32)?;
             stream.set_keep_cnt(self.tcp_keep_cnt as i32)?;
 
-            attr2.extend(attr);
-
-            let (wire1, wire2) = Wire::pipe(capacity.unwrap_or(64), attr2)?;
+            // 握手消息可以被对端修改，这里将修改后的出入，以便能够携带一些自定义数据
+            let (wire1, wire2) = Wire::pipe(capacity.unwrap_or(64), message)?;
 
             self.queue.push(Packet::NewConn {
                 wire: wire1,

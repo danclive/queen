@@ -88,8 +88,8 @@ impl Socket {
 
         let ret = wire2.wait(Some(timeout.unwrap_or(Duration::from_secs(60))));
 
-        if ret.is_err() {
-            return Err(Error::ConnectionRefused("Queen::connect".to_string()))
+        if let Err(err) = ret {
+            return Err(Error::ConnectionRefused(err.to_string()))
         }
 
         Ok(wire2)
