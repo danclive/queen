@@ -46,14 +46,12 @@ fn port() {
         CHAN: AUTH
     });
 
-    thread::sleep(Duration::from_millis(100));
-
     // wire1 recv
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     // wire2 recv
-    let recv = wire2.recv().unwrap();
+    let recv = wire2.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     // wire1 attach
@@ -62,9 +60,7 @@ fn port() {
         VALUE: "hello"
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     // wire2 send
@@ -74,14 +70,12 @@ fn port() {
         ACK: true
     });
 
-    thread::sleep(Duration::from_millis(100));
-
     // wire1 recv
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // wire2 recv
-    let recv = wire2.recv().unwrap();
+    let recv = wire2.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 }
 
@@ -156,14 +150,12 @@ fn port_secure() {
         CHAN: AUTH
     });
 
-    thread::sleep(Duration::from_millis(100));
-
     // wire1 recv
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     // wire2 recv
-    let recv = wire2.recv().unwrap();
+    let recv = wire2.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     // wire1 attach
@@ -172,9 +164,7 @@ fn port_secure() {
         VALUE: "hello"
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     // wire2 send
@@ -184,14 +174,12 @@ fn port_secure() {
         ACK: true
     });
 
-    thread::sleep(Duration::from_millis(100));
-
     // wire1 recv
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_str("hello").unwrap() == "world");
 
     // wire2 recv
-    let recv = wire2.recv().unwrap();
+    let recv = wire2.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 }
 
@@ -252,9 +240,7 @@ fn port_secure2() {
     let wire2 = port.connect(addr, msg!{}, None, None);
     assert!(wire2.is_err());
 
-    thread::sleep(Duration::from_millis(100));
-
     // wire1 recv
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 }

@@ -141,9 +141,7 @@ fn test_hook() {
         CHAN: PING
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::RefuseReceiveMessage));
 
     assert!(hook.recvs() == 1);
@@ -154,9 +152,7 @@ fn test_hook() {
         CHAN: AUTH
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::AuthenticationFailed));
 
     let _ = wire1.send(msg!{
@@ -165,9 +161,7 @@ fn test_hook() {
         "pass": "bbb"
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
 
     assert!(hook.recvs() == 3);
@@ -178,9 +172,7 @@ fn test_hook() {
         CHAN: PING
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_str("hello").unwrap() == "world");
 
@@ -192,9 +184,7 @@ fn test_hook() {
         VALUE: "123"
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::PermissionDenied));
 
     // attach
@@ -203,9 +193,7 @@ fn test_hook() {
         VALUE: "456"
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_str("123").unwrap() == "456");
 
@@ -215,9 +203,7 @@ fn test_hook() {
         VALUE: "123"
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::PermissionDenied));
 
     // detach
@@ -226,9 +212,7 @@ fn test_hook() {
         VALUE: "456"
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_str("456").unwrap() == "789");
 
@@ -237,9 +221,7 @@ fn test_hook() {
         CHAN: CUSTOM,
     });
 
-    thread::sleep(Duration::from_millis(100));
-
-    let recv = wire1.recv().unwrap();
+    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_str("hahaha").unwrap() == "wawawa");
     assert!(recv.get_u32("clients").unwrap() == 1);
