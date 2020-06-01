@@ -1,18 +1,16 @@
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::Ordering::SeqCst;
-use std::sync::atomic::AtomicBool;
-use std::marker::PhantomData;
+use std::sync::atomic::{AtomicBool, Ordering, spin_loop_hint};
 
 #[derive(Debug)]
-pub struct Lock<T> {
-    locked: AtomicBool,
+pub struct Lock<T: ?Sized> {
+    lock: AtomicBool,
     data: UnsafeCell<T>,
 }
 
-pub struct LockGuard<'a, T> {
-    lock: &'a Lock<T>,
-    _p: PhantomData<std::rc::Rc<()>>,
+pub struct LockGuard<'a, T: ?Sized + 'a> {
+    lock: &'a AtomicBool,
+    data: &'a mut T
 }
 
 unsafe impl<T: Send> Send for Lock<T> {}
@@ -21,42 +19,62 @@ unsafe impl<T: Send> Sync for Lock<T> {}
 impl<T> Lock<T> {
     pub fn new(t: T) -> Lock<T> {
         Lock {
-            locked: AtomicBool::new(false),
+            lock: AtomicBool::new(false),
             data: UnsafeCell::new(t),
         }
     }
 
     pub fn try_lock(&self) -> Option<LockGuard<T>> {
-        if self.locked.compare_exchange(false, true, SeqCst, SeqCst).is_err() {
-            return None;
+        if self.lock.compare_and_swap(false, true, Ordering::Acquire) {
+            return None
         }
 
-        Some(LockGuard { lock: self, _p: PhantomData })
+        Some(LockGuard {
+            lock: &self.lock,
+            data: unsafe { &mut *self.data.get() }
+        })
     }
 
     pub fn lock(&self) -> LockGuard<T> {
-        while self.locked.compare_and_swap(false, true, SeqCst) {}
+        while self.lock.compare_and_swap(false, true, Ordering::Acquire) {
+            while self.lock.load(Ordering::Relaxed) {
+                spin_loop_hint();
+            }
+        }
 
-        LockGuard { lock: self, _p: PhantomData }
+        LockGuard {
+            lock: &self.lock,
+            data: unsafe { &mut *self.data.get() }
+        }
+    }
+
+    pub unsafe fn force_unlock(&self) {
+        self.lock.store(false, Ordering::Release);
     }
 }
 
-impl<'a, T> Deref for LockGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for LockGuard<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
-        unsafe { &*self.lock.data.get() }
+        self.data
     }
 }
 
-impl<'a, T> DerefMut for LockGuard<'a, T> {
+impl<'a, T: ?Sized> DerefMut for LockGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.lock.data.get() }
+        self.data
     }
 }
 
-impl<'a, T> Drop for LockGuard<'a, T> {
+impl<'a, T: ?Sized> Drop for LockGuard<'a, T> {
     fn drop(&mut self) {
-        self.lock.locked.store(false, SeqCst);
+        self.lock.store(false, Ordering::Release);
+    }
+}
+
+impl<T: ?Sized + Default> Default for Lock<T> {
+    fn default() -> Lock<T> {
+        Lock::new(Default::default())
     }
 }
 
