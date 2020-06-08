@@ -61,6 +61,7 @@ impl Socket {
             }
 
             inner.run.store(false, Ordering::Relaxed);
+            inner.hook.stop(&inner.slot);
         }).unwrap();
 
         Ok(socket)

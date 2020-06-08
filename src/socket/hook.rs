@@ -30,6 +30,8 @@ pub trait Hook: Send + 'static {
     fn query(&self, _: &Slot, _token: usize, _: &mut Message) {}
 
     fn custom(&self, _: &Slot, _token: usize, _: &mut Message) {}
+
+    fn stop(&self, _: &Slot) {}
 }
 
 impl Hook for () {}

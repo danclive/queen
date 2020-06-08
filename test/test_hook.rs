@@ -1,6 +1,6 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering}
+    atomic::{AtomicUsize, AtomicBool, Ordering}
 };
 use std::time::Duration;
 use std::thread;
@@ -22,7 +22,8 @@ fn test_hook() {
         pings: AtomicUsize,
         clients: AtomicUsize,
         recvs: AtomicUsize,
-        sends: AtomicUsize
+        sends: AtomicUsize,
+        run: AtomicBool
     }
 
     impl MyHook {
@@ -32,7 +33,8 @@ fn test_hook() {
                     pings: AtomicUsize::new(0),
                     clients: AtomicUsize::new(0),
                     recvs: AtomicUsize::new(0),
-                    sends: AtomicUsize::new(0)
+                    sends: AtomicUsize::new(0),
+                    run: AtomicBool::new(true)
                 })
             }
         }
@@ -51,6 +53,10 @@ fn test_hook() {
 
         fn sends(&self) -> usize {
             self.inner.recvs.load(Ordering::SeqCst)
+        }
+
+        fn run(&self) -> bool {
+            !self.inner.run.load(Ordering::SeqCst)
         }
     }
 
@@ -125,6 +131,10 @@ fn test_hook() {
             message.insert("clients", slot.client_ids.len() as u32);
 
             ErrorCode::OK.insert(message);
+        }
+
+        fn stop(&self, _slot: &Slot) {
+            self.inner.run.store(false, Ordering::SeqCst);
         }
     }
 
@@ -231,4 +241,10 @@ fn test_hook() {
     thread::sleep(Duration::from_millis(100));
 
     assert!(hook.clients() == 0);
+
+    socket.stop();
+
+    thread::sleep(Duration::from_millis(100));
+
+    assert!(hook.run() == false);
 }

@@ -543,14 +543,12 @@ impl Slot {
 
         // 保存认证之前的状态
         struct TempSession {
-            pub auth: bool,
             pub root: bool,
             pub id: MessageId,
             pub label: Message
         }
 
         let temp_session = TempSession {
-            auth: client.auth,
             root: client.root,
             id: client.id.clone(),
             label: client.label.clone()
@@ -641,12 +639,11 @@ impl Slot {
             // 认证失败时, 移除
             self.client_ids.remove(&client.id);
 
-            if temp_session.auth {
-                // 如果上次认证成功，就将原来的插入
+            if client.auth {
+                // 如果上次是认证成功的，就将原来的插入
                 self.client_ids.insert(temp_session.id.clone(), token);
             }
 
-            client.auth = temp_session.auth;
             client.root = temp_session.root;
             client.id = temp_session.id;
             client.label = temp_session.label;
