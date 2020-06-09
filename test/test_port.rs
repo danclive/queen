@@ -1,7 +1,7 @@
 use std::thread;
 use std::time::Duration;
 
-use queen::{Socket, Node, Port};
+use queen::{Socket, Node, Port, Wire};
 use queen::node::Hook;
 use queen::nson::{MessageId, msg, Message};
 use queen::net::{CryptoOptions, NsonCodec};
@@ -93,7 +93,7 @@ fn port_secure() {
             true
         }
 
-        fn hand(&self, message: &mut Message) -> bool {
+        fn start(&self, message: &mut Message) -> bool {
             message.insert("lalala", 123);
 
             true
@@ -109,6 +109,11 @@ fn port_secure() {
             }
 
             None
+        }
+
+        fn finish(&self, message: &mut Message, wire: &Wire<Message>) {
+            message.insert("wawawa", 456);
+            wire.attr().insert("aaa", "bbb");
         }
     }
 
@@ -144,6 +149,7 @@ fn port_secure() {
 
     let wire2 = port.connect(addr, attr, Some(crypto_options), None).unwrap();
     assert!(wire2.attr().get_i32("lalala").unwrap() == 123);
+    assert!(wire2.attr().get_i32("wawawa").unwrap() == 456);
     assert!(wire2.attr().get_str("hello").unwrap() == "world");
 
     let _ = wire2.send(msg!{
@@ -197,7 +203,7 @@ fn port_secure2() {
             true
         }
 
-        fn hand(&self, message: &mut Message) -> bool {
+        fn start(&self, message: &mut Message) -> bool {
             message.insert("lalala", 123);
 
             true

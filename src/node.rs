@@ -215,7 +215,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
         // 握手消息是可以修改的，修改后的消息会发回客户端，因此可以携带自定义数据
         // 但是对于一些握手必备的属性，请谨慎修改，比如加密方式（METHOD）
-        if !hook.hand(&mut message) {
+        if !hook.start(&mut message) {
             return Err(Error::PermissionDenied("hook.hand".to_string()));
         }
 
@@ -264,6 +264,8 @@ impl<C: Codec, H: Hook> Node<C, H> {
             let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
 
             ErrorCode::OK.insert(&mut message);
+
+            hook.finish(&mut message, &wire);
 
             // 握手消息发回
             let bytes = codec.encode(&None, message)?;
