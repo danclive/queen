@@ -263,9 +263,10 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
             let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
 
-            ErrorCode::OK.insert(&mut message);
-
+            // 这里可以修改 Wire 的属性
             hook.finish(&mut message, &wire);
+
+            ErrorCode::OK.insert(&mut message);
 
             // 握手消息发回
             let bytes = codec.encode(&None, message)?;

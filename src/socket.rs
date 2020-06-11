@@ -55,9 +55,9 @@ impl Socket {
         thread::Builder::new().name("socket".to_string()).spawn(move || {
             let ret = inner.run();
             if ret.is_err() {
-                log::error!("relay thread exit: {:?}", ret);
+                log::error!("socket thread exit: {:?}", ret);
             } else {
-                log::trace!("relay thread exit");
+                log::trace!("socket thread exit");
             }
 
             inner.run.store(false, Ordering::Relaxed);
@@ -87,7 +87,7 @@ impl Socket {
 
         self.queue.push(packet);
 
-        let ret = wire2.wait(Some(timeout.unwrap_or(Duration::from_secs(60))));
+        let ret = wire2.wait(Some(timeout.unwrap_or(Duration::from_secs(10))));
 
         if let Err(err) = ret {
             return Err(Error::ConnectionRefused(err.to_string()))
