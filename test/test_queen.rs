@@ -212,6 +212,10 @@ fn attach_detach() {
         VALUE: "aaa"
     });
 
+    let recv = wire2.wait(Some(Duration::from_secs(2))).unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+
     // send
     let _ = wire1.send(msg!{
         CHAN: "aaa",
@@ -220,10 +224,6 @@ fn attach_detach() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(2))).unwrap();
-
-    assert!(recv.get_i32(OK).unwrap() == 0);
-
-    let recv = wire2.wait(Some(Duration::from_secs(2))).unwrap();
 
     assert!(recv.get_i32(OK).unwrap() == 0);
 
@@ -480,6 +480,9 @@ fn labels() {
         LABEL: ["label2", "label3", "label4"]
     });
 
+    assert!(wire1.wait(Some(Duration::from_secs(2))).unwrap().get_i32(OK).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_secs(2))).unwrap().get_i32(OK).unwrap() == 0);
+
     // send
     let _ = wire3.send(msg!{
         CHAN: "aaa",
@@ -487,8 +490,6 @@ fn labels() {
         ACK: "123"
     });
 
-    assert!(wire1.wait(Some(Duration::from_secs(2))).unwrap().get_i32(OK).unwrap() == 0);
-    assert!(wire2.wait(Some(Duration::from_secs(2))).unwrap().get_i32(OK).unwrap() == 0);
     assert!(wire3.wait(Some(Duration::from_secs(2))).unwrap().get_i32(OK).unwrap() == 0);
 
     // recv

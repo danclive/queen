@@ -1,4 +1,3 @@
-use std::cmp;
 use std::str::FromStr;
 
 use ring::aead::{Algorithm, LessSafeKey, Nonce, UnboundKey, Aad};
@@ -8,10 +7,7 @@ use ring::error;
 
 use rand::{self, thread_rng, Rng};
 
-use nson::Message;
-
 use crate::dict;
-use crate::error::{Result as QueenResult, Error as QueenError};
 
 #[derive(Debug, Clone)]
 pub enum Method {
@@ -79,6 +75,10 @@ impl Crypto {
     }
 
     pub fn encrypt(&self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
+        if in_out.len() <= 4 {
+            return Err(error::Unspecified)
+        }
+
         let nonce_bytes = Self::rand_nonce();
         let nonce = Nonce::assume_unique_for_key(nonce_bytes);
 
@@ -93,20 +93,11 @@ impl Crypto {
         Ok(())
     }
 
-    pub fn encrypt_message(crypto: &Option<Crypto>, message: &Message) -> QueenResult<Vec<u8>> {
-        let mut data = message.to_vec()
-            .map_err(|err| QueenError::InvalidData(format!("{}", err)) )?;
-
-        if let Some(crypto) = &crypto {
-            crypto.encrypt(&mut data).map_err(|err|
-                QueenError::InvalidData(format!("{}", err))
-            )?;
+    pub fn decrypt(&self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
+        if in_out.len() <= 4 + Self::NONCE_LEN + self.inner.algorithm().tag_len() {
+            return Err(error::Unspecified)
         }
 
-        Ok(data)
-    }
-
-    pub fn decrypt(&self, in_out: &mut Vec<u8>) -> Result<(), error::Unspecified> {
         let nonce = Nonce::try_assume_unique_for_key(&in_out[(in_out.len() - Self::NONCE_LEN)..])?;
 
         let end = in_out.len() - Self::NONCE_LEN;
@@ -121,45 +112,30 @@ impl Crypto {
         Ok(())
     }
 
-    pub fn decrypt_message(crypto: &Option<Crypto>, mut data: Vec<u8>) -> QueenResult<Message> {
-        if let Some(crypto) = &crypto {
-            crypto.decrypt(&mut data).map_err(|err|
-                QueenError::InvalidData(format!("{}", err))
-            )?;
-        }
-
-        let recv = Message::from_slice(&data);
-
-        recv.map_err(|err| QueenError::InvalidData(format!("{}", err)))
-    }
-
-    pub fn init_nonce() -> [u8; Self::NONCE_LEN] {
-        let mut nonce = [0u8; Self::NONCE_LEN];
-        nonce[..5].clone_from_slice(&[113, 117, 101, 101, 110]);
-
-        nonce
-    }
-
     pub fn rand_nonce() -> [u8; Self::NONCE_LEN] {
         let mut buf = [0u8; Self::NONCE_LEN];
         thread_rng().fill(&mut buf);
 
         buf
     }
+}
 
-    pub fn increase_nonce(nonce: &mut [u8; Self::NONCE_LEN]) {
-        for i in nonce {
-            if std::u8::MAX == *i {
-                *i = 0;
-            } else {
-                *i += 1;
-                return;
-            }
-        }
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    pub fn set_nonce(nonce: &mut [u8; Self::NONCE_LEN], bytes: &[u8]) {
-        let min = cmp::min(nonce.len(), bytes.len());
-        nonce[..min].clone_from_slice(&bytes[..min]);
+    #[test]
+    fn empty_data() {
+        let mut data: Vec<u8> = vec![];
+        let key = "key123";
+
+        let crypto = Crypto::new(&Method::Aes128Gcm, key.as_bytes());
+        assert!(crypto.encrypt(&mut data).is_err());
+
+        let mut data: Vec<u8> = vec![5, 0, 0, 0, 0];
+        assert!(crypto.encrypt(&mut data).is_ok());
+
+        assert!(crypto.decrypt(&mut data).is_ok());
+        assert!(data == vec![5, 0, 0, 0, 0]);
     }
 }

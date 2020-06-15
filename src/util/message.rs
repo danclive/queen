@@ -111,7 +111,7 @@ pub fn read_block(reader: &mut impl Read, max_len: Option<usize>) -> io::Result<
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use std::io::Cursor;
 
     use crate::nson::msg;
