@@ -146,6 +146,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
                             continue;
                         }
 
+                        stream.set_nodelay(true)?;
                         // 握手开始
                         stream.set_nonblocking(false)?;
                         // 连接成功后，5秒内收不到握手消息应当断开

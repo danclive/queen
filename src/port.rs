@@ -73,6 +73,7 @@ impl<C: Codec> Port<C> {
     ) -> Result<Wire<Message>> {
         let mut stream = TcpStream::connect(addr)?;
 
+        stream.set_nodelay(true)?;
         // 握手开始
         stream.set_nonblocking(false)?;
         stream.set_read_timeout(Some(Duration::from_secs(10)))?;
