@@ -181,8 +181,8 @@ impl<H: Hook> QueenInner<H> {
     }
 
     fn dispatch_conn(&mut self, token: usize) -> Result<()> {
-        if let Some(conn) = self.slot.clients.get(token) {
-            match conn.recv() {
+        if let Some(client) = self.slot.clients.get(token) {
+            match client.wire.recv() {
                 Ok(message) => {
                     self.slot.recv_message(&self.epoll, &self.hook, &self.id, token, message)?;
                 }

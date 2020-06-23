@@ -7,6 +7,7 @@ use std::time::Duration;
 use std::os::unix::io::AsRawFd;
 use std::marker::PhantomData;
 use std::result;
+use std::cell::Cell;
 
 use queen_io::{
     epoll::{Epoll, Token, Ready, EpollOpt, Evented},
@@ -26,6 +27,8 @@ pub struct Wire<T: Send> {
     rx: Queue<result::Result<T, RecvError>>,
     close: Arc<AtomicBool>,
     attr: Arc<Lock<Message>>,
+    send_num: Cell<usize>,
+    recv_num: Cell<usize>,
     _not_sync: PhantomData<*const ()>
 }
 
@@ -43,6 +46,8 @@ impl<T: Send> Wire<T> {
             rx: queue2.clone(),
             close: close.clone(),
             attr: attr.clone(),
+            send_num: Cell::new(0),
+            recv_num: Cell::new(0),
             _not_sync: PhantomData
         };
 
@@ -52,6 +57,8 @@ impl<T: Send> Wire<T> {
             rx: queue1,
             close,
             attr,
+            send_num: Cell::new(0),
+            recv_num: Cell::new(0),
             _not_sync: PhantomData
         };
 
@@ -94,14 +101,29 @@ impl<T: Send> Wire<T> {
 
         self.tx.push(Ok(data));
 
+        self.send_num.set(self.send_num.get() + 1);
+
         Ok(())
+    }
+
+    pub fn send_num(&self) -> usize {
+        self.send_num.get()
     }
 
     pub fn recv(&self) -> result::Result<T, RecvError> {
         match self.rx.pop() {
-            Some(data) => data,
+            Some(data) => {
+                if data.is_ok() {
+                    self.recv_num.set(self.recv_num.get() + 1);
+                }
+                data
+            },
             None => Err(RecvError::Empty)
         }
+    }
+
+    pub fn recv_num(&self) -> usize {
+        self.recv_num.get()
     }
 
     pub fn wait(&self, timeout: Option<Duration>) -> result::Result<T, RecvError> {

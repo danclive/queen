@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use std::cell::Cell;
-use std::result;
 
 use queen_io::{
     epoll::{Epoll, Token, Ready, EpollOpt}
@@ -17,7 +16,7 @@ use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
 use crate::Wire;
 use crate::dict::*;
-use crate::error::{ErrorCode, Result, SendError, RecvError};
+use crate::error::{ErrorCode, Result};
 
 use super::Hook;
 
@@ -49,10 +48,6 @@ pub struct Client {
     pub root: bool,
     // 客户端 ATTACH 的 CHAN，以及 LABEL
     pub chans: HashMap<String, HashSet<String>>,
-    // 发送的消息数
-    pub send_messages: Cell<usize>,
-    // 接收的消息数
-    pub recv_messages: Cell<usize>,
     // 线
     pub wire: Wire<Message>
 }
@@ -208,7 +203,7 @@ impl Slot {
             let success = hook.send(client, &mut message);
 
             if success {
-                if client.send(message).is_ok() {
+                if client.wire.send(message).is_ok() {
                     self.send_messages.set(self.send_messages.get() + 1);
                 }
             }
@@ -219,7 +214,8 @@ impl Slot {
         &self,
         hook: &impl Hook,
         token: usize,
-        chan: &str, message: Message
+        chan: &str,
+        message: Message
     ) {
         if let Some(tokens) = self.chans.get(chan) {
             for other_token in tokens {
@@ -931,8 +927,8 @@ impl Slot {
                 CLIENT_ID: client.id.clone(),
                 LABEL: client.label.clone(),
                 ATTR: client.wire.attr().clone(),
-                SEND_MESSAGES: client.send_messages.get() as u64,
-                RECV_MESSAGES: client.recv_messages.get() as u64
+                SEND_NUM: client.wire.send_num() as u64,
+                RECV_NUM: client.wire.recv_num() as u64
             };
 
             message.insert(VALUE, client);
@@ -1082,23 +1078,21 @@ impl Client {
             auth: false,
             root: false,
             chans: HashMap::new(),
-            send_messages: Cell::new(0),
-            recv_messages: Cell::new(0),
             wire
         }
     }
 
-    pub fn send(&self, message: Message) -> result::Result<(), SendError<Message>> {
-        self.wire.send(message).map(|m| {
-            self.send_messages.set(self.send_messages.get() + 1);
-            m
-        })
-    }
+    // pub fn send(&self, message: Message) -> result::Result<(), SendError<Message>> {
+    //     self.wire.send(message).map(|m| {
+    //         self.send_messages.set(self.send_messages.get() + 1);
+    //         m
+    //     })
+    // }
 
-    pub fn recv(&self) -> result::Result<Message, RecvError> {
-        self.wire.recv().map(|m| {
-            self.recv_messages.set(self.recv_messages.get() + 1);
-            m
-        })
-    }
+    // pub fn recv(&self) -> result::Result<Message, RecvError> {
+    //     self.wire.recv().map(|m| {
+    //         self.recv_messages.set(self.recv_messages.get() + 1);
+    //         m
+    //     })
+    // }
 }

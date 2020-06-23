@@ -39,8 +39,8 @@ pub const CLIENT_SEND:   &str = "_ctse";
 pub const CLIENT_RECV:   &str = "_ctrc";
 
 // attr
-pub const SEND_MESSAGES:    &str = "send_msgs";
-pub const RECV_MESSAGES:    &str = "recv_msgs";
+pub const SEND_NUM:    &str = "send_num";
+pub const RECV_NUM:    &str = "recv_num";
 
 // crypto
 pub const AES_128_GCM:       &str = "AES_128_GCM";

@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.12.6"
+version       = "0.12.7"
 license       = "MIT"
 authors       = ["danclive <dangcheng@hotmail.com>"]
 description   = "message queue"
@@ -8,7 +8,7 @@ documentation = "https://docs.rs/queen"
 homepage      = "https://github.com/danclive/queen"
 repository    = "https://github.com/danclive/queen"
 readme        = "README.md"
-keywords      = ["message-queue", "rpc"]
+keywords      = ["message-queue", "messaging"]
 exclude       = [
   ".gitignore",
   ".travis.yml",

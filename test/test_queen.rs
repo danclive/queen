@@ -158,8 +158,8 @@ fn auth() {
     assert!(value.get_bool(ROOT).unwrap() == false);
     assert!(value.get_message(CHANS).unwrap().is_empty());
     assert!(value.get_message_id(CLIENT_ID).unwrap() != &client_id);
-    assert!(value.get_u64(SEND_MESSAGES).unwrap() == 1);
-    assert!(value.get_u64(RECV_MESSAGES).unwrap() == 2);
+    assert!(value.get_u64(SEND_NUM).unwrap() == 2);
+    assert!(value.get_u64(RECV_NUM).unwrap() == 2);
 
     drop(wire1);
 
@@ -240,16 +240,16 @@ fn attach_detach() {
         VALUE: "aaa"
     });
 
+    let recv = wire2.wait(Some(Duration::from_secs(2))).unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+
     // send
     let _ = wire1.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         ACK: "123"
     });
-
-    let recv = wire2.wait(Some(Duration::from_secs(2))).unwrap();
-
-    assert!(recv.get_i32(OK).unwrap() == 0);
 
     let recv = wire1.wait(Some(Duration::from_secs(2))).unwrap();
 
@@ -1247,8 +1247,8 @@ fn mine() {
     assert!(value.get_bool(ROOT).unwrap() == false);
     assert!(value.get_message(CHANS).unwrap().is_empty());
     assert!(value.is_null(CLIENT_ID) == false);
-    assert!(value.get_u64(SEND_MESSAGES).unwrap() == 0);
-    assert!(value.get_u64(RECV_MESSAGES).unwrap() == 1);
+    assert!(value.get_u64(SEND_NUM).unwrap() == 1);
+    assert!(value.get_u64(RECV_NUM).unwrap() == 1);
 
     // auth
     let _ = wire1.send(msg!{
@@ -1280,8 +1280,8 @@ fn mine() {
     assert!(value.get_bool(ROOT).unwrap() == true);
     assert!(value.get_message(CHANS).unwrap().get_array("hello").is_ok());
     assert!(value.get_message_id(CLIENT_ID).is_ok());
-    assert!(value.get_u64(SEND_MESSAGES).unwrap() == 3);
-    assert!(value.get_u64(RECV_MESSAGES).unwrap() == 4);
+    assert!(value.get_u64(SEND_NUM).unwrap() == 4);
+    assert!(value.get_u64(RECV_NUM).unwrap() == 4);
 }
 
 #[test]
