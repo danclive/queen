@@ -28,9 +28,9 @@ pub struct Slot {
     // 保存客户端
     pub clients: Slab<Client>,
     // 发送的消息数
-    pub send_messages: Cell<usize>,
+    pub send_num: Cell<usize>,
     // 接收的消息数
-    pub recv_messages: Cell<usize>,
+    pub recv_num: Cell<usize>,
     // 随机数，用于发送共享消息
     rand: SmallRng
 }
@@ -59,8 +59,8 @@ impl Slot {
             chans: HashMap::new(),
             client_ids: HashMap::new(),
             clients: Slab::new(),
-            send_messages: Cell::new(0),
-            recv_messages: Cell::new(0),
+            send_num: Cell::new(0),
+            recv_num: Cell::new(0),
             rand: SmallRng::from_entropy()
         }
     }
@@ -147,7 +147,7 @@ impl Slot {
         token: usize,
         mut message: Message
     ) -> Result<()> {
-        self.recv_messages.set(self.recv_messages.get() + 1);
+        self.recv_num.set(self.recv_num.get() + 1);
 
         let success = hook.recv(&self.clients[token], &mut message);
 
@@ -204,7 +204,7 @@ impl Slot {
 
             if success {
                 if client.wire.send(message).is_ok() {
-                    self.send_messages.set(self.send_messages.get() + 1);
+                    self.send_num.set(self.send_num.get() + 1);
                 }
             }
         }
@@ -1081,18 +1081,4 @@ impl Client {
             wire
         }
     }
-
-    // pub fn send(&self, message: Message) -> result::Result<(), SendError<Message>> {
-    //     self.wire.send(message).map(|m| {
-    //         self.send_messages.set(self.send_messages.get() + 1);
-    //         m
-    //     })
-    // }
-
-    // pub fn recv(&self) -> result::Result<Message, RecvError> {
-    //     self.wire.recv().map(|m| {
-    //         self.recv_messages.set(self.recv_messages.get() + 1);
-    //         m
-    //     })
-    // }
 }
