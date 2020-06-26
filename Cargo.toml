@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.12.8"
+version       = "0.13.0"
 license       = "MIT"
 authors       = ["danclive <dangcheng@hotmail.com>"]
 description   = "message queue"

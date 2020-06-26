@@ -2,36 +2,36 @@ use std::collections::HashSet;
 
 use nson::Message;
 
-use super::{Slot, Client};
+use super::{Switch, Slot};
 
 pub trait Hook: Send + 'static {
-    fn accept(&self, _: &Client) -> bool { true }
+    fn accept(&self, _: &Slot) -> bool { true }
 
-    fn remove(&self, _: &Client) {}
+    fn remove(&self, _: &Slot) {}
 
-    fn recv(&self, _: &Client, _: &mut Message) -> bool { true }
+    fn recv(&self, _: &Slot, _: &mut Message) -> bool { true }
 
-    fn send(&self, _: &Client, _: &mut Message) -> bool { true }
+    fn send(&self, _: &Slot, _: &mut Message) -> bool { true }
 
-    fn auth(&self, _: &Client, _: &mut Message) -> bool { true }
+    fn auth(&self, _: &Slot, _: &mut Message) -> bool { true }
 
-    fn attach(&self, _: &Client, _: &mut Message, _chan: &str, _label: &HashSet<String>) -> bool { true }
+    fn attach(&self, _: &Slot, _: &mut Message, _chan: &str, _label: &HashSet<String>) -> bool { true }
 
-    fn detach(&self, _: &Client, _: &mut Message, _chan: &str, _label: &HashSet<String>) -> bool { true }
+    fn detach(&self, _: &Slot, _: &mut Message, _chan: &str, _label: &HashSet<String>) -> bool { true }
 
-    fn ping(&self, _: &Client, _: &mut Message) {}
+    fn ping(&self, _: &Slot, _: &mut Message) {}
 
-    fn emit(&self, _: &Client, _: &mut Message) -> bool { true }
+    fn emit(&self, _: &Slot, _: &mut Message) -> bool { true }
 
-    fn push(&self, _: &Client, _: &mut Message) -> bool { true }
+    fn push(&self, _: &Slot, _: &mut Message) -> bool { true }
 
-    fn kill(&self, _: &Client, _: &mut Message) -> bool { true }
+    fn kill(&self, _: &Slot, _: &mut Message) -> bool { true }
 
-    fn query(&self, _: &Slot, _token: usize, _: &mut Message) {}
+    fn query(&self, _: &Switch, _token: usize, _: &mut Message) {}
 
-    fn custom(&self, _: &Slot, _token: usize, _: &mut Message) {}
+    fn custom(&self, _: &Switch, _token: usize, _: &mut Message) {}
 
-    fn stop(&self, _: &Slot) {}
+    fn stop(&self, _: &Switch) {}
 }
 
 impl Hook for () {}

@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::thread;
 use std::collections::HashSet;
 
-use queen::{Socket, Hook, Slot, Client};
+use queen::{Socket, Hook, Switch, Slot};
 use queen::nson::{msg, MessageId, Message};
 use queen::dict::*;
 use queen::error::ErrorCode;
@@ -20,7 +20,7 @@ fn test_hook() {
 
     struct MyHookInner {
         pings: AtomicUsize,
-        clients: AtomicUsize,
+        slots: AtomicUsize,
         recvs: AtomicUsize,
         sends: AtomicUsize,
         run: AtomicBool
@@ -31,7 +31,7 @@ fn test_hook() {
             MyHook {
                 inner: Arc::new(MyHookInner {
                     pings: AtomicUsize::new(0),
-                    clients: AtomicUsize::new(0),
+                    slots: AtomicUsize::new(0),
                     recvs: AtomicUsize::new(0),
                     sends: AtomicUsize::new(0),
                     run: AtomicBool::new(true)
@@ -43,8 +43,8 @@ fn test_hook() {
             self.inner.pings.load(Ordering::SeqCst)
         }
 
-        fn clients(&self) -> usize {
-            self.inner.clients.load(Ordering::SeqCst)
+        fn slots(&self) -> usize {
+            self.inner.slots.load(Ordering::SeqCst)
         }
 
         fn recvs(&self) -> usize {
@@ -61,17 +61,17 @@ fn test_hook() {
     }
 
     impl Hook for MyHook {
-        fn accept(&self, _: &Client) -> bool {
-            self.inner.clients.fetch_add(1, Ordering::SeqCst);
+        fn accept(&self, _: &Slot) -> bool {
+            self.inner.slots.fetch_add(1, Ordering::SeqCst);
 
             true
         }
 
-        fn remove(&self, _: &Client) {
-            self.inner.clients.fetch_sub(1, Ordering::SeqCst);
+        fn remove(&self, _: &Slot) {
+            self.inner.slots.fetch_sub(1, Ordering::SeqCst);
         }
 
-        fn recv(&self, conn: &Client, message: &mut Message) -> bool {
+        fn recv(&self, conn: &Slot, message: &mut Message) -> bool {
             self.inner.recvs.fetch_add(1, Ordering::SeqCst);
 
             if !conn.auth {
@@ -85,13 +85,13 @@ fn test_hook() {
             true
         }
 
-        fn send(&self, _: &Client, _: &mut Message) -> bool {
+        fn send(&self, _: &Slot, _: &mut Message) -> bool {
             self.inner.sends.fetch_add(1, Ordering::SeqCst);
 
             true
         }
 
-        fn auth(&self, _: &Client, message: &mut Message) -> bool {
+        fn auth(&self, _: &Slot, message: &mut Message) -> bool {
             if let (Ok(user), Ok(pass)) = (message.get_str("user"), message.get_str("pass")) {
                 if user == "aaa" && pass == "bbb" {
                     return true
@@ -101,7 +101,7 @@ fn test_hook() {
             return false
         }
 
-        fn attach(&self, _: &Client, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
+        fn attach(&self, _: &Slot, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
             if chan == "123" {
                 return false
             }
@@ -111,7 +111,7 @@ fn test_hook() {
             return true
         }
 
-        fn detach(&self, _: &Client, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
+        fn detach(&self, _: &Slot, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
             if chan == "123" {
                 return false
             }
@@ -121,19 +121,19 @@ fn test_hook() {
             return true
         }
 
-        fn ping(&self, _: &Client, message: &mut Message) {
+        fn ping(&self, _: &Slot, message: &mut Message) {
             self.inner.pings.fetch_add(1, Ordering::SeqCst);
             message.insert("hello", "world");
         }
 
-        fn custom(&self, slot: &Slot, _token: usize, message: &mut Message) {
+        fn custom(&self, switch: &Switch, _token: usize, message: &mut Message) {
             message.insert("hahaha", "wawawa");
-            message.insert("clients", slot.client_ids.len() as u32);
+            message.insert("slots", switch.slot_ids.len() as u32);
 
             ErrorCode::OK.insert(message);
         }
 
-        fn stop(&self, _slot: &Slot) {
+        fn stop(&self, _switch: &Switch) {
             self.inner.run.store(false, Ordering::SeqCst);
         }
     }
@@ -144,7 +144,7 @@ fn test_hook() {
 
     let wire1 = socket.connect(msg!{}, None, None).unwrap();
 
-    assert!(hook.clients() == 1);
+    assert!(hook.slots() == 1);
 
     // ping
     let _ = wire1.send(msg!{
@@ -234,13 +234,13 @@ fn test_hook() {
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_i32(OK).unwrap() == 0);
     assert!(recv.get_str("hahaha").unwrap() == "wawawa");
-    assert!(recv.get_u32("clients").unwrap() == 1);
+    assert!(recv.get_u32("slots").unwrap() == 1);
 
     drop(wire1);
 
     thread::sleep(Duration::from_millis(100));
 
-    assert!(hook.clients() == 0);
+    assert!(hook.slots() == 0);
 
     socket.stop();
 

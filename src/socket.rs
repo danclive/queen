@@ -21,9 +21,11 @@ use crate::Wire;
 use crate::error::{Result, Error, RecvError};
 
 pub use hook::Hook;
-pub use slot::{Slot, Client};
+pub use switch::Switch;
+pub use slot::Slot;
 
 mod hook;
+mod switch;
 mod slot;
 
 #[derive(Clone)]
@@ -61,7 +63,7 @@ impl Socket {
             }
 
             inner.run.store(false, Ordering::Relaxed);
-            inner.hook.stop(&inner.slot);
+            inner.hook.stop(&inner.switch);
         }).unwrap();
 
         Ok(socket)
@@ -83,7 +85,7 @@ impl Socket {
     ) -> Result<Wire<Message>> {
         let (wire1, wire2) = Wire::pipe(capacity.unwrap_or(64), attr)?;
 
-        let packet = Packet::NewClient(wire1);
+        let packet = Packet::NewSlot(wire1);
 
         self.queue.push(packet);
 
@@ -106,17 +108,16 @@ impl Drop for Socket {
 }
 
 struct QueenInner<H> {
-    id: MessageId,
     epoll: Epoll,
     events: Events,
     queue: Queue<Packet>,
     hook: H,
-    slot: Slot,
+    switch: Switch,
     run: Arc<AtomicBool>
 }
 
 enum Packet {
-    NewClient(Wire<Message>)
+    NewSlot(Wire<Message>)
 }
 
 impl<H: Hook> QueenInner<H> {
@@ -129,12 +130,11 @@ impl<H: Hook> QueenInner<H> {
         run: Arc<AtomicBool>
     ) -> Result<QueenInner<H>> {
         Ok(QueenInner {
-            id,
             epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
             queue,
             hook,
-            slot: Slot::new(),
+            switch: Switch::new(id),
             run
         })
     }
@@ -171,8 +171,8 @@ impl<H: Hook> QueenInner<H> {
     fn dispatch_queue(&mut self) -> Result<()> {
         if let Some(packet) = self.queue.pop() {
             match packet {
-                Packet::NewClient(wire) => {
-                    self.slot.add_client(&self.epoll, &self.hook, wire)?;
+                Packet::NewSlot(wire) => {
+                    self.switch.add_slot(&self.epoll, &self.hook, wire)?;
                 }
             }
         }
@@ -181,14 +181,14 @@ impl<H: Hook> QueenInner<H> {
     }
 
     fn dispatch_conn(&mut self, token: usize) -> Result<()> {
-        if let Some(client) = self.slot.clients.get(token) {
-            match client.wire.recv() {
+        if let Some(slot) = self.switch.slots.get(token) {
+            match slot.wire.recv() {
                 Ok(message) => {
-                    self.slot.recv_message(&self.epoll, &self.hook, &self.id, token, message)?;
+                    self.switch.recv_message(&self.epoll, &self.hook, token, message)?;
                 }
                 Err(err) => {
                     if !matches!(err, RecvError::Empty) {
-                        self.slot.del_client(&self.epoll, &self.hook, token)?;
+                        self.switch.del_slot(&self.epoll, &self.hook, token)?;
                     }
                 }
             }

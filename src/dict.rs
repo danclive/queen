@@ -10,8 +10,8 @@ pub const QUERY:     &str = "_quer";
 pub const MINE:      &str = "_mine";
 pub const CUSTOM:    &str = "_cust";
 
-pub const SOCKET_ID:  &str = "_soid";
-pub const CLIENT_ID: &str = "_clid";
+pub const SOCKET_ID: &str = "_soid";
+pub const SLOT_ID:   &str = "_slid";
 pub const VALUE:     &str = "_valu";
 pub const LABEL:     &str = "_labe";
 pub const TO:        &str = "_to";
@@ -29,14 +29,14 @@ pub const ID:        &str = "_id";
 pub const OK:    &str = "_ok";
 pub const ERROR: &str = "_error";
 
-// client event
-pub const CLIENT_READY:  &str = "_ctre";
-pub const CLIENT_BREAK:  &str = "_ctbr";
-pub const CLIENT_ATTACH: &str = "_ctat";
-pub const CLIENT_DETACH: &str = "_ctde";
-pub const CLIENT_KILL:   &str = "_ctki";
-pub const CLIENT_SEND:   &str = "_ctse";
-pub const CLIENT_RECV:   &str = "_ctrc";
+// slot event
+pub const SLOT_READY:  &str = "_slre";
+pub const SLOT_BREAK:  &str = "_slbr";
+pub const SLOT_ATTACH: &str = "_slat";
+pub const SLOT_DETACH: &str = "_slde";
+pub const SLOT_KILL:   &str = "_slki";
+pub const SLOT_SEND:   &str = "_slse";
+pub const SLOT_RECV:   &str = "_slrc";
 
 // attr
 pub const SEND_NUM:    &str = "send_num";
