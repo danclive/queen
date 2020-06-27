@@ -12,7 +12,7 @@ pub use nson;
 
 pub const MAX_MESSAGE_LEN: usize = 64 * 1024 * 1024; // 64 MB
 
-pub use crate::socket::{Socket, Switch, Slot, Hook};
+pub use crate::socket::{Socket, Switch, Slot, SlotModify, Hook};
 pub use crate::wire::Wire;
 pub use crate::node::Node;
 pub use crate::port::Port;

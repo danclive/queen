@@ -19,7 +19,7 @@ use crate::dict::*;
 use crate::error::{ErrorCode, Result};
 
 use super::Hook;
-use super::Slot;
+use super::{Slot, SlotModify};
 
 pub struct Switch {
     pub id: MessageId,
@@ -516,24 +516,13 @@ impl Switch {
     ) {
         let mut slot = &mut self.slots[token];
 
-        // 保存认证之前的状态
-        struct TempSession {
-            pub root: bool,
-            pub id: MessageId,
-            pub label: Message
-        }
-
-        let temp_session = TempSession {
-            root: slot.root,
-            id: slot.id.clone(),
-            label: slot.label.clone()
-        };
+        let mut modify = SlotModify::default();
 
         // ROOT
         if let Some(s) = message.get(ROOT) {
             // ROOT 字段的值只能为 bool
             if let Some(s) = s.as_bool() {
-                slot.root = s;
+                modify.root = Some(s);
             } else {
                 ErrorCode::InvalidRootFieldType.insert(&mut message);
 
@@ -547,11 +536,8 @@ impl Switch {
         if let Some(label) = message.get(LABEL) {
             // LABEL 字段的值只能为 Message
             if let Some(label) = label.as_message() {
-                slot.label = label.clone();
+                modify.label = Some(label.clone());
             } else {
-                // 如果失败，记得恢复 ROOT
-                slot.root = temp_session.root;
-
                 ErrorCode::InvalidLabelFieldType.insert(&mut message);
 
                 self.send_message(hook, token, message);
@@ -567,10 +553,6 @@ impl Switch {
                 if let Some(other_token) = self.slot_ids.get(slot_id) {
                     // SLOT ID 不能重复，且不能挤掉已存在的 SLOT
                     if *other_token != token {
-                        // 如果失败，恢复 ROOT 和 LABEL
-                        slot.root = temp_session.root;
-                        slot.label = temp_session.label;
-
                         ErrorCode::DuplicateSlotId.insert(&mut message);
 
                         self.send_message(hook, token, message);
@@ -579,50 +561,22 @@ impl Switch {
                     }
                 }
 
-                // 认证时, 可以改变 SLOT_ID
-                self.slot_ids.remove(&slot.id);
-                // 认证成功时，设置
-                // 记得在 SLOT 掉线时移除
-                self.slot_ids.insert(slot_id.clone(), token);
-                slot.id = slot_id.clone();
-
+                modify.id = Some(slot_id.clone());
             } else {
-                // 如果失败，恢复 ROOT 和 LABEL
-                slot.root = temp_session.root;
-                slot.label = temp_session.label;
-
                 ErrorCode::InvalidSlotIdFieldType.insert(&mut message);
 
                 self.send_message(hook, token, message);
 
                 return
             }
-        } else {
-            // 认证时，如果没有提供 SLOT_ID, 可返回上次认证成功的 SLOT_ID
-            message.insert(SLOT_ID, slot.id.clone());
-            // 认证成功时，设置
-            // 记得在 SLOT 掉线时移除
-            self.slot_ids.insert(slot.id.clone(), token);
         }
 
         // 这里可以验证自定义字段的合法性
         // 这里可以验证超级用户的合法性
         // 这里可以验证 SLOT_ID 的合法性
-        let success = hook.auth(&slot, &mut message);
+        let success = hook.auth(&slot, &modify, &mut message);
 
         if !success {
-            // 认证失败时, 移除
-            self.slot_ids.remove(&slot.id);
-
-            if slot.auth {
-                // 如果上次是认证成功的，就将原来的插入
-                self.slot_ids.insert(temp_session.id.clone(), token);
-            }
-
-            slot.root = temp_session.root;
-            slot.id = temp_session.id;
-            slot.label = temp_session.label;
-
             ErrorCode::AuthenticationFailed.insert(&mut message);
 
             self.send_message(hook, token, message);
@@ -630,13 +584,39 @@ impl Switch {
             return
         }
 
-        slot.auth = true;
-
-        // 认证时，如果没有提供 LABEL, 可返回上次认证成功的 LABEL
-        // 如果 LABEL 为空的话，就没必要返回了
-        if !slot.label.is_empty() {
-            message.insert(LABEL, slot.label.clone());
+        if let Some(id) = modify.id {
+            // 认证时, 可以改变 SLOT_ID
+            self.slot_ids.remove(&slot.id);
+            // 认证成功时，设置
+            // 记得在 SLOT 掉线时移除
+            self.slot_ids.insert(id.clone(), token);
+            slot.id = id;
+        } else {
+            // 认证时，如果没有提供 SLOT_ID, 返回上次认证成功的 SLOT_ID
+            message.insert(SLOT_ID, slot.id.clone());
+            // 认证成功时，设置
+            // 记得在 SLOT 掉线时移除
+            self.slot_ids.insert(slot.id.clone(), token);
         }
+
+        if let Some(label) = modify.label {
+            slot.label = label;
+        } else {
+            // 如果没有提供 LABEL，返回上次认证成功的 LABEL
+            // 如果 LABEL 为空的话，就没必要返回了
+            if !slot.label.is_empty() {
+                message.insert(LABEL, slot.label.clone());
+            }
+        }
+
+        if let Some(root) = modify.root {
+            slot.root = root;
+        } else {
+            // 如果没有提供 ROOT，返回上次认证成功的 ROOT
+            message.insert(ROOT, slot.root);
+        }
+
+        slot.auth = true;
 
         message.insert(SOCKET_ID, self.id.clone());
 

@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::thread;
 use std::collections::HashSet;
 
-use queen::{Socket, Hook, Switch, Slot};
+use queen::{Socket, Hook, Switch, Slot, SlotModify};
 use queen::nson::{msg, MessageId, Message};
 use queen::dict::*;
 use queen::error::ErrorCode;
@@ -91,7 +91,7 @@ fn test_hook() {
             true
         }
 
-        fn auth(&self, _: &Slot, message: &mut Message) -> bool {
+        fn auth(&self, _: &Slot, _: &SlotModify, message: &mut Message) -> bool {
             if let (Ok(user), Ok(pass)) = (message.get_str("user"), message.get_str("pass")) {
                 if user == "aaa" && pass == "bbb" {
                     return true

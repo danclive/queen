@@ -7,11 +7,12 @@ use nson::{
 
 use crate::Wire;
 
+#[derive(Debug)]
 pub struct Slot {
     pub token: usize,
     // 默认情况下会随机生成一个，可以在认证时修改
     pub id: MessageId,
-    // 客户端的一些属性，可以在认证时设置
+    // 属性，可以在认证时设置
     pub label: Message,
     // 是否认证
     pub auth: bool,
@@ -35,4 +36,11 @@ impl Slot {
             wire
         }
     }
+}
+
+#[derive(Debug, Default)]
+pub struct SlotModify {
+    pub id: Option<MessageId>,
+    pub label: Option<Message>,
+    pub root: Option<bool>
 }

@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, result, fmt};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering}
@@ -6,7 +6,6 @@ use std::sync::{
 use std::time::Duration;
 use std::os::unix::io::AsRawFd;
 use std::marker::PhantomData;
-use std::result;
 use std::cell::Cell;
 
 use queen_io::{
@@ -30,6 +29,18 @@ pub struct Wire<T: Send> {
     send_num: Cell<usize>,
     recv_num: Cell<usize>,
     _not_sync: PhantomData<*const ()>
+}
+
+impl<T: Send> fmt::Debug for Wire<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Wire")
+         .field("capacity", &self.capacity)
+         .field("close", &self.is_close())
+         .field("attr", &*self.attr())
+         .field("send_num", &self.send_num.get())
+         .field("recv_num", &self.recv_num.get())
+         .finish()
+    }
 }
 
 impl<T: Send> Wire<T> {

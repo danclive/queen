@@ -22,7 +22,7 @@ use crate::error::{Result, Error, RecvError};
 
 pub use hook::Hook;
 pub use switch::Switch;
-pub use slot::Slot;
+pub use slot::{Slot, SlotModify};
 
 mod hook;
 mod switch;
