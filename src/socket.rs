@@ -62,7 +62,7 @@ impl Socket {
                 log::trace!("socket thread exit");
             }
 
-            inner.run.store(false, Ordering::Relaxed);
+            inner.run.store(false, Ordering::Release);
             inner.hook.stop(&inner.switch);
         }).unwrap();
 
@@ -70,11 +70,11 @@ impl Socket {
     }
 
     pub fn stop(&self) {
-        self.run.store(false, Ordering::Relaxed);
+        self.run.store(false, Ordering::Release);
     }
 
     pub fn is_run(&self) -> bool {
-        self.run.load(Ordering::Relaxed)
+        self.run.load(Ordering::Acquire)
     }
 
     pub fn connect(
@@ -102,7 +102,7 @@ impl Socket {
 impl Drop for Socket {
     fn drop(&mut self) {
         if Arc::strong_count(&self.run) == 1 {
-            self.run.store(false, Ordering::Relaxed);
+            self.run.store(false, Ordering::Release);
         }
     }
 }
@@ -142,7 +142,7 @@ impl<H: Hook> QueenInner<H> {
     fn run(&mut self) -> Result<()> {
         self.epoll.add(&self.queue, Self::QUEUE_TOKEN, Ready::readable(), EpollOpt::level())?;
 
-        while self.run.load(Ordering::Relaxed) {
+        while self.run.load(Ordering::Acquire) {
             let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
                 Ok(size) => size,
                 Err(err) => {
@@ -200,6 +200,6 @@ impl<H: Hook> QueenInner<H> {
 
 impl<H> Drop for QueenInner<H> {
     fn drop(&mut self) {
-        self.run.store(false, Ordering::Relaxed);
+        self.run.store(false, Ordering::Release);
     }
 }

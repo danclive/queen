@@ -86,11 +86,11 @@ impl<T: Send> Wire<T> {
 
     pub fn close(&self) {
         self.tx.push(Err(RecvError::Disconnected));
-        self.close.store(true, Ordering::Relaxed);
+        self.close.store(true, Ordering::Release);
     }
 
     pub fn is_close(&self) -> bool {
-        self.close.load(Ordering::Relaxed)
+        self.close.load(Ordering::Acquire)
     }
 
     pub fn is_full(&self) -> bool {

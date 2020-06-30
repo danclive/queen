@@ -80,7 +80,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
                     log::debug!("net thread exit");
                 }
 
-                net_work.run.store(false, Ordering::Relaxed);
+                net_work.run.store(false, Ordering::Release);
             }).unwrap();
         }
 
@@ -101,11 +101,11 @@ impl<C: Codec, H: Hook> Node<C, H> {
     }
 
     pub fn stop(&self) {
-        self.run.store(false, Ordering::Relaxed);
+        self.run.store(false, Ordering::Release);
     }
 
     pub fn is_run(&self) -> bool {
-        self.run.load(Ordering::Relaxed)
+        self.run.load(Ordering::Acquire)
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -113,7 +113,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
             self.epoll.add(&listen.as_raw_fd(), Token(id), Ready::readable(), EpollOpt::edge())?;
         }
 
-        while self.run.load(Ordering::Relaxed) && self.socket.is_run() {
+        while self.run.load(Ordering::Acquire) && self.socket.is_run() {
             let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
                 Ok(size) => size,
                 Err(err) => {
@@ -285,6 +285,6 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
 impl<C: Codec, H: Hook> Drop for Node<C, H> {
     fn drop(&mut self) {
-        self.run.store(false, Ordering::Relaxed);
+        self.run.store(false, Ordering::Release);
     }
 }

@@ -50,18 +50,18 @@ impl<C: Codec> Port<C> {
                 log::debug!("net thread exit");
             }
 
-            net_work.run.store(false, Ordering::Relaxed);
+            net_work.run.store(false, Ordering::Release);
         }).unwrap();
 
         Ok(port)
     }
 
     pub fn stop(&self) {
-        self.run.store(false, Ordering::Relaxed);
+        self.run.store(false, Ordering::Release);
     }
 
     pub fn is_run(&self) -> bool {
-        self.run.load(Ordering::Relaxed)
+        self.run.load(Ordering::Acquire)
     }
 
     pub fn connect<A: ToSocketAddrs>(

@@ -62,7 +62,7 @@ impl<C: Codec> NetWork<C> {
     pub fn run(&mut self) -> Result<()> {
         self.epoll.add(&self.queue, Token(Self::QUEUE_TOKEN), Ready::readable(), EpollOpt::level())?;
 
-        while self.run.load(Ordering::Relaxed) {
+        while self.run.load(Ordering::Acquire) {
             let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
                 Ok(size) => size,
                 Err(err) => {
