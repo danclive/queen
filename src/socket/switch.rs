@@ -385,12 +385,10 @@ impl Switch {
             };
         }
 
-        let mut no_consumers = true;
-
         // 发送 P2P 消息
         // 注意: 如果 TO 为数组，且为空，会按照常规消息发送
         if !to_ids.is_empty() {
-            no_consumers = false;
+            // no_consumers = false;
 
             // 如果存在 SHARE 字段，且值为 true，则只会随机给其中一个 SLOT 发送消息
             if message.get_bool(SHARE).ok().unwrap_or(false) {
@@ -444,7 +442,7 @@ impl Switch {
             }
 
             if !array.is_empty() {
-                no_consumers = false;
+                // no_consumers = false;
 
                 if array.len() == 1 {
                     if let Some(slot) = self.slots.get(array[0]) {
@@ -473,21 +471,9 @@ impl Switch {
                         }
                     }
 
-                    no_consumers = false;
-
                     send!(self, hook, slot, message);
                 }
             }
-        }
-
-        if no_consumers {
-            message.remove(FROM);
-
-            ErrorCode::NoConsumers.insert(&mut message);
-
-            self.send_message(hook, token, message);
-
-            return
         }
 
         // slot event

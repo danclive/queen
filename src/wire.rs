@@ -76,27 +76,33 @@ impl<T: Send> Wire<T> {
         Ok((wire1, wire2))
     }
 
+    #[inline]
     pub fn capacity(&self) -> usize {
         self.capacity
     }
 
+    #[inline]
     pub fn attr(&self) -> LockGuard<Message> {
         self.attr.lock()
     }
 
+    #[inline]
     pub fn close(&self) {
         self.tx.push(Err(RecvError::Disconnected));
         self.close.store(true, Ordering::Release);
     }
 
+    #[inline]
     pub fn is_close(&self) -> bool {
         self.close.load(Ordering::Acquire)
     }
 
+    #[inline]
     pub fn is_full(&self) -> bool {
         self.tx.pending() >= self.capacity
     }
 
+    #[inline]
     pub fn pending(&self) -> usize {
         self.tx.pending()
     }
@@ -117,6 +123,7 @@ impl<T: Send> Wire<T> {
         Ok(())
     }
 
+    #[inline]
     pub fn send_num(&self) -> usize {
         self.send_num.get()
     }
@@ -133,6 +140,7 @@ impl<T: Send> Wire<T> {
         }
     }
 
+    #[inline]
     pub fn recv_num(&self) -> usize {
         self.recv_num.get()
     }
