@@ -234,7 +234,26 @@ fn attach_detach() {
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
-    assert!(recv.get(FROM).is_some());
+    assert!(recv.get_message_id(FROM).is_ok());
+
+    // send with from
+    let _ = wire1.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        ACK: "123",
+        FROM: 123
+    });
+
+    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(recv.get_i32(OK).unwrap() == 0);
+
+    // recv
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get_i32(FROM) == Ok(123));
 
     // detach
     let _ = wire2.send(msg!{

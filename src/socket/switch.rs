@@ -358,7 +358,9 @@ impl Switch {
             }
         }
 
-        message.insert(FROM, &self.slots[token].id.clone());
+        if !message.contains_key(FROM) {
+            message.insert(FROM, &self.slots[token].id.clone());
+        }
 
         macro_rules! send {
             ($self: ident, $hook: ident, $slot: ident, $message: ident) => {
