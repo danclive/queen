@@ -48,11 +48,11 @@ fn port() {
 
     // wire1 recv
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     // wire2 recv
     let recv = wire2.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     // wire1 attach
     let _ = wire1.send(msg!{
@@ -61,7 +61,7 @@ fn port() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     // wire2 send
     let _ = wire2.send(msg!{
@@ -76,7 +76,7 @@ fn port() {
 
     // wire2 recv
     let recv = wire2.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
 }
 
 #[test]
@@ -158,11 +158,11 @@ fn port_secure() {
 
     // wire1 recv
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     // wire2 recv
     let recv = wire2.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     // wire1 attach
     let _ = wire1.send(msg!{
@@ -171,7 +171,7 @@ fn port_secure() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     // wire2 send
     let _ = wire2.send(msg!{
@@ -186,7 +186,7 @@ fn port_secure() {
 
     // wire2 recv
     let recv = wire2.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
 }
 
 #[test]
@@ -248,5 +248,5 @@ fn port_secure2() {
 
     // wire1 recv
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
 }

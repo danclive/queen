@@ -34,7 +34,7 @@ use queen::{Socket, Node, Port};
 use queen::net::NsonCodec;
 use queen::dict::*;
 use queen::nson::{MessageId, msg};
-use queen::error::ErrorCode;
+use queen::error::Code;
 
 fn main() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
@@ -47,8 +47,8 @@ fn main() {
     }).unwrap();
 
     let ret = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    if let Some(err) = ErrorCode::has_error(&ret) {
-        if err != ErrorCode::OK {
+    if let Some(err) = Code::get(&ret) {
+        if err != Code::Ok {
             println!("wire 1 auth error: {:?}", err);
             return
         }
@@ -79,8 +79,8 @@ fn main() {
     }).unwrap();
 
     let ret = wire2.wait(Some(Duration::from_secs(1))).unwrap();
-    if let Some(err) = ErrorCode::has_error(&ret) {
-        if err != ErrorCode::OK {
+    if let Some(err) = Code::get(&ret) {
+        if err != Code::Ok {
             println!("wire 2 auth error: {:?}", err);
             return
         }
@@ -95,8 +95,8 @@ fn main() {
     }).unwrap();
 
     let ret = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    if let Some(err) = ErrorCode::has_error(&ret) {
-        if err != ErrorCode::OK {
+    if let Some(err) = Code::get(&ret) {
+        if err != Code::Ok {
             println!("wire 1 attach error: {:?}", err);
             return
         }
@@ -106,14 +106,15 @@ fn main() {
 
     // wire 2 send
     wire2.send(msg!{
+        ID: MessageId::new(),
         CHAN: "hello",
         ACK: true,
         "hello": "world"
     }).unwrap();
 
     let ret = wire2.wait(Some(Duration::from_secs(1))).unwrap();
-    if let Some(err) = ErrorCode::has_error(&ret) {
-        if err != ErrorCode::OK {
+    if let Some(err) = Code::get(&ret) {
+        if err != Code::Ok {
             println!("wire 2 send error: {:?}", err);
             return
         }
@@ -123,8 +124,8 @@ fn main() {
 
     // wire 1 recv
     let ret = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    if let Some(err) = ErrorCode::has_error(&ret) {
-        if err != ErrorCode::OK {
+    if let Some(err) = Code::get(&ret) {
+        if err != Code::Ok {
             println!("wire 2 recv error: {:?}", err);
             return
         }

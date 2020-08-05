@@ -25,7 +25,7 @@ pub enum Error {
     Other(String),
     SendError(String),
     IoError(io::Error),
-    ErrorCode(ErrorCode),
+    ErrorCode(Code),
     RecvError(RecvError)
 }
 
@@ -37,8 +37,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<ErrorCode> for Error {
-    fn from(err: ErrorCode) -> Error {
+impl From<Code> for Error {
+    fn from(err: Code) -> Error {
         Error::ErrorCode(err)
     }
 }
@@ -86,8 +86,8 @@ impl error::Error for Error {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(i32)]
-pub enum ErrorCode {
-    OK = 0,
+pub enum Code {
+    Ok = 0,
     InternalError,
     UnsupportedFormat,
     Unauthorized,
@@ -112,66 +112,66 @@ pub enum ErrorCode {
     UnknownError,
 }
 
-impl ErrorCode {
+impl Code {
     pub fn code(self) -> i32 {
         self as i32
     }
 
-    pub fn from_i32(code: i32) -> ErrorCode {
-        if code < 0 || code > ErrorCode::UnknownError as i32 {
-            return ErrorCode::UnknownError
+    pub fn from_i32(code: i32) -> Code {
+        if code < 0 || code > Code::UnknownError as i32 {
+            return Code::UnknownError
         }
 
         unsafe { std::mem::transmute(code) }
     }
 
-    pub fn to_str(&self) -> &str{
+    pub fn to_str(&self) -> &str {
         match self {
-            ErrorCode::OK => "OK",
-            ErrorCode::InternalError => "InternalError",
-            ErrorCode::UnsupportedFormat => "UnsupportedFormat",
-            ErrorCode::Unauthorized => "Unauthorized",
-            ErrorCode::AuthenticationFailed => "AuthenticationFailed",
-            ErrorCode::PermissionDenied => "PermissionDenied",
-            ErrorCode::DuplicateSlotId => "DuplicatePortId",
-            ErrorCode::TargetSlotIdNotExist => "TargetPortIdNotExist",
-            ErrorCode::RefuseReceiveMessage => "RefuseReceiveMessage",
-            ErrorCode::CannotGetChanField => "CannotGetChanField",
-            ErrorCode::UnsupportedChan => "UnsupportedChan",
-            ErrorCode::CannotGetValueField => "CannotGetValueField",
-            ErrorCode::CannotGetSlotIdField => "CannotGetSlotIdField",
-            ErrorCode::InvalidSlotIdFieldType => "InvalidPortIdFieldType",
-            ErrorCode::InvalidLabelFieldType => "InvalidLabelFieldType",
-            ErrorCode::InvalidToFieldType => "InvalidToFieldType",
-            ErrorCode::InvalidRootFieldType => "InvalidRootFieldType",
-            ErrorCode::EmptyFieldName => "EmptyFieldName",
-            ErrorCode::EmptyFieldValue => "EmptyFieldValue",
-            ErrorCode::KeyTooLong => "KeyTooLong",
-            ErrorCode::BadValue => "BadValue",
-            ErrorCode::NotFound => "NotFound",
-            ErrorCode::UnknownError => "UnknownError"
+            Code::Ok => "OK",
+            Code::InternalError => "InternalError",
+            Code::UnsupportedFormat => "UnsupportedFormat",
+            Code::Unauthorized => "Unauthorized",
+            Code::AuthenticationFailed => "AuthenticationFailed",
+            Code::PermissionDenied => "PermissionDenied",
+            Code::DuplicateSlotId => "DuplicatePortId",
+            Code::TargetSlotIdNotExist => "TargetPortIdNotExist",
+            Code::RefuseReceiveMessage => "RefuseReceiveMessage",
+            Code::CannotGetChanField => "CannotGetChanField",
+            Code::UnsupportedChan => "UnsupportedChan",
+            Code::CannotGetValueField => "CannotGetValueField",
+            Code::CannotGetSlotIdField => "CannotGetSlotIdField",
+            Code::InvalidSlotIdFieldType => "InvalidPortIdFieldType",
+            Code::InvalidLabelFieldType => "InvalidLabelFieldType",
+            Code::InvalidToFieldType => "InvalidToFieldType",
+            Code::InvalidRootFieldType => "InvalidRootFieldType",
+            Code::EmptyFieldName => "EmptyFieldName",
+            Code::EmptyFieldValue => "EmptyFieldValue",
+            Code::KeyTooLong => "KeyTooLong",
+            Code::BadValue => "BadValue",
+            Code::NotFound => "NotFound",
+            Code::UnknownError => "UnknownError"
         }
     }
 
-    pub fn insert(self, message: &mut Message) {
+    pub fn set(self, message: &mut Message) {
         let code = self.code();
-        message.insert(OK, code);
+        message.insert(CODE, code);
     }
 
-    pub fn has_error(message: &Message) -> Option<ErrorCode> {
-        if let Ok(ok) = message.get_i32(OK) {
-            if ok < 0 || ok > ErrorCode::UnknownError as i32 {
-                return Some(ErrorCode::UnknownError)
+    pub fn get(message: &Message) -> Option<Code> {
+        if let Ok(code) = message.get_i32(CODE) {
+            if code < 0 || code > Code::UnknownError as i32 {
+                return Some(Code::UnknownError)
             }
 
-            return Some(unsafe { std::mem::transmute(ok) });
+            return Some(unsafe { std::mem::transmute(code) });
         }
 
         None
     }
 }
 
-impl fmt::Display for ErrorCode {
+impl fmt::Display for Code {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "code: {}, error: {}", self.code(), self.to_str())
     }

@@ -27,7 +27,7 @@ use crate::net::tcp_ext::TcpExt;
 use crate::crypto::{Crypto, Method};
 use crate::dict::*;
 use crate::util::message::read_block;
-use crate::error::{Result, Error, ErrorCode};
+use crate::error::{Result, Error, Code};
 
 pub use hook::Hook;
 
@@ -233,7 +233,10 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
             let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
 
-            ErrorCode::OK.insert(&mut message);
+            // 这里可以修改 Wire 的属性
+            hook.finish(&mut message, &wire);
+
+            Code::Ok.set(&mut message);
 
             let bytes = codec.encode(&None, message)?;
 
@@ -267,7 +270,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
             // 这里可以修改 Wire 的属性
             hook.finish(&mut message, &wire);
 
-            ErrorCode::OK.insert(&mut message);
+            Code::Ok.set(&mut message);
 
             // 握手消息发回
             let bytes = codec.encode(&None, message)?;

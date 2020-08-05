@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use queen::{Socket, Hook, Switch, Slot, SlotModify};
 use queen::nson::{msg, MessageId, Message};
 use queen::dict::*;
-use queen::error::ErrorCode;
+use queen::error::Code;
 
 #[test]
 fn test_hook() {
@@ -130,7 +130,7 @@ fn test_hook() {
             message.insert("hahaha", "wawawa");
             message.insert("slots", switch.slot_ids.len() as u32);
 
-            ErrorCode::OK.insert(message);
+            Code::Ok.set(message);
         }
 
         fn stop(&self, _switch: &Switch) {
@@ -152,7 +152,7 @@ fn test_hook() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::RefuseReceiveMessage));
+    assert!(Code::get(&recv) == Some(Code::RefuseReceiveMessage));
 
     assert!(hook.recvs() == 1);
     assert!(hook.sends() == 1);
@@ -163,7 +163,7 @@ fn test_hook() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::AuthenticationFailed));
+    assert!(Code::get(&recv) == Some(Code::AuthenticationFailed));
 
     let _ = wire1.send(msg!{
         CHAN: AUTH,
@@ -172,7 +172,7 @@ fn test_hook() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     assert!(hook.recvs() == 3);
     assert!(hook.sends() == 3);
@@ -183,7 +183,7 @@ fn test_hook() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
     assert!(recv.get_str("hello").unwrap() == "world");
 
     assert!(hook.pings() == 1);
@@ -195,7 +195,7 @@ fn test_hook() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::PermissionDenied));
+    assert!(Code::get(&recv) == Some(Code::PermissionDenied));
 
     // attach
     let _ = wire1.send(msg!{
@@ -204,7 +204,7 @@ fn test_hook() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
     assert!(recv.get_str("123").unwrap() == "456");
 
     // detach
@@ -214,7 +214,7 @@ fn test_hook() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(ErrorCode::has_error(&recv) == Some(ErrorCode::PermissionDenied));
+    assert!(Code::get(&recv) == Some(Code::PermissionDenied));
 
     // detach
     let _ = wire1.send(msg!{
@@ -223,7 +223,7 @@ fn test_hook() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
     assert!(recv.get_str("456").unwrap() == "789");
 
     // custom
@@ -232,7 +232,7 @@ fn test_hook() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(OK).unwrap() == 0);
+    assert!(recv.get_i32(CODE).unwrap() == 0);
     assert!(recv.get_str("hahaha").unwrap() == "wawawa");
     assert!(recv.get_u32("slots").unwrap() == 1);
 

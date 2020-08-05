@@ -16,7 +16,7 @@ use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
 use crate::Wire;
 use crate::dict::*;
-use crate::error::{ErrorCode, Result};
+use crate::error::{Code, Result};
 
 use super::Hook;
 use super::{Slot, SlotModify};
@@ -57,10 +57,10 @@ impl Switch {
 
         // 此处可以验证一下 SLOT 的属性，不过目前只能验证 wire.attr
         // 并且，wire.attr 是可以修改的
-        // 但是，为了避免不必要的问题，SLOT 的属性是不能在这里修改的
+        // 但是，SLOT 的属性是不能在这里修改的
         let success = hook.accept(&slot);
 
-        if success && matches!(slot.wire.send(msg!{OK: 0i32}), Ok(_)) {
+        if success && matches!(slot.wire.send(msg!{CODE: 0i32}), Ok(_)) {
             epoll.add(&slot.wire, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
             entry.insert(slot);
         } else {
@@ -132,7 +132,7 @@ impl Switch {
         let success = hook.recv(&self.slots[token], &mut message);
 
         if !success {
-            ErrorCode::RefuseReceiveMessage.insert(&mut message);
+            Code::RefuseReceiveMessage.set(&mut message);
 
             self.send_message(hook, token, message);
 
@@ -142,7 +142,7 @@ impl Switch {
         let chan = match message.get_str(CHAN) {
             Ok(chan) => chan,
             Err(_) => {
-                ErrorCode::CannotGetChanField.insert(&mut message);
+                Code::CannotGetChanField.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -161,7 +161,7 @@ impl Switch {
                 CUSTOM => self.custom(hook, token, message),
                 SLOT_KILL => self.kill(epoll, hook, token, message)?,
                 _ => {
-                    ErrorCode::UnsupportedChan.insert(&mut message);
+                    Code::UnsupportedChan.set(&mut message);
 
                     self.send_message(hook, token, message);
                 }
@@ -226,7 +226,7 @@ impl Switch {
     ) {
         // 认证之前，不能发送消息
         if !self.slots[token].auth {
-            ErrorCode::Unauthorized.insert(&mut message);
+            Code::Unauthorized.set(&mut message);
 
             self.send_message(hook, token, message);
 
@@ -236,7 +236,7 @@ impl Switch {
         let success = hook.emit(&self.slots[token], &mut message);
 
         if !success {
-            ErrorCode::PermissionDenied.insert(&mut message);
+            Code::PermissionDenied.set(&mut message);
 
             self.send_message(hook, token, message);
 
@@ -260,7 +260,7 @@ impl Switch {
                 reply_message.insert(ID, message_id);
             }
 
-            ErrorCode::OK.insert(&mut reply_message);
+            Code::Ok.set(&mut reply_message);
 
             message.remove(ACK);
 
@@ -283,7 +283,7 @@ impl Switch {
                 // TO 可以是单个 SLOT_ID，如果 SLOT_ID 不存在，应当反馈错误
                 // 错误信息中应当包含不存在的 SLOT_ID
                 if !self.slot_ids.contains_key(to_id) {
-                    ErrorCode::TargetSlotIdNotExist.insert(&mut message);
+                    Code::TargetSlotIdNotExist.set(&mut message);
                     message.insert(SLOT_ID, to_id);
 
                     self.send_message(hook, token, message);
@@ -306,7 +306,7 @@ impl Switch {
                             not_exist_ids.push(to_id.clone());
                         }
                     } else {
-                        ErrorCode::InvalidToFieldType.insert(&mut message);
+                        Code::InvalidToFieldType.set(&mut message);
 
                         self.send_message(hook, token, message);
 
@@ -315,7 +315,7 @@ impl Switch {
                 }
 
                 if !not_exist_ids.is_empty() {
-                    ErrorCode::TargetSlotIdNotExist.insert(&mut message);
+                    Code::TargetSlotIdNotExist.set(&mut message);
                     message.insert(SLOT_ID, not_exist_ids);
 
                     self.send_message(hook, token, message);
@@ -323,7 +323,7 @@ impl Switch {
                     return
                 }
             } else {
-                ErrorCode::InvalidToFieldType.insert(&mut message);
+                Code::InvalidToFieldType.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -342,7 +342,7 @@ impl Switch {
                     if let Some(v) = v.as_str() {
                         labels.insert(v.to_string());
                     } else {
-                        ErrorCode::InvalidLabelFieldType.insert(&mut message);
+                        Code::InvalidLabelFieldType.set(&mut message);
 
                         self.send_message(hook, token, message);
 
@@ -350,7 +350,7 @@ impl Switch {
                     }
                 }
             } else {
-                ErrorCode::InvalidLabelFieldType.insert(&mut message);
+                Code::InvalidLabelFieldType.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -512,7 +512,7 @@ impl Switch {
             if let Some(s) = s.as_bool() {
                 modify.root = Some(s);
             } else {
-                ErrorCode::InvalidRootFieldType.insert(&mut message);
+                Code::InvalidRootFieldType.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -526,7 +526,7 @@ impl Switch {
             if let Some(label) = label.as_message() {
                 modify.label = Some(label.clone());
             } else {
-                ErrorCode::InvalidLabelFieldType.insert(&mut message);
+                Code::InvalidLabelFieldType.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -541,7 +541,7 @@ impl Switch {
                 if let Some(other_token) = self.slot_ids.get(slot_id) {
                     // SLOT ID 不能重复，且不能挤掉已存在的 SLOT
                     if *other_token != token {
-                        ErrorCode::DuplicateSlotId.insert(&mut message);
+                        Code::DuplicateSlotId.set(&mut message);
 
                         self.send_message(hook, token, message);
 
@@ -551,7 +551,7 @@ impl Switch {
 
                 modify.id = Some(slot_id.clone());
             } else {
-                ErrorCode::InvalidSlotIdFieldType.insert(&mut message);
+                Code::InvalidSlotIdFieldType.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -565,7 +565,7 @@ impl Switch {
         let success = hook.auth(&slot, &modify, &mut message);
 
         if !success {
-            ErrorCode::AuthenticationFailed.insert(&mut message);
+            Code::AuthenticationFailed.set(&mut message);
 
             self.send_message(hook, token, message);
 
@@ -608,7 +608,7 @@ impl Switch {
 
         message.insert(SOCKET_ID, self.id.clone());
 
-        ErrorCode::OK.insert(&mut message);
+        Code::Ok.set(&mut message);
 
         // 这里发一个事件，表示有 SLOT 认证成功，准备好接收消息了
         // 注意，只有在 SLOT_READY 和 SLOT_BREAK 这两个事件才会返回
@@ -644,7 +644,7 @@ impl Switch {
     ) {
         // check auth
         if !self.slots[token].auth {
-            ErrorCode::Unauthorized.insert(&mut message);
+            Code::Unauthorized.set(&mut message);
 
             self.send_message(hook, token, message);
 
@@ -657,7 +657,7 @@ impl Switch {
                 SLOT_READY | SLOT_BREAK | SLOT_ATTACH | SLOT_DETACH | SLOT_SEND | SLOT_RECV => {
 
                     if !self.slots[token].root {
-                        ErrorCode::PermissionDenied.insert(&mut message);
+                        Code::PermissionDenied.set(&mut message);
 
                         self.send_message(hook, token, message);
 
@@ -679,7 +679,7 @@ impl Switch {
                         if let Some(v) = v.as_str() {
                             labels.insert(v.to_string());
                         } else {
-                            ErrorCode::InvalidLabelFieldType.insert(&mut message);
+                            Code::InvalidLabelFieldType.set(&mut message);
 
                             self.send_message(hook, token, message);
 
@@ -687,7 +687,7 @@ impl Switch {
                         }
                     }
                 } else {
-                    ErrorCode::InvalidLabelFieldType.insert(&mut message);
+                    Code::InvalidLabelFieldType.set(&mut message);
 
                     self.send_message(hook, token, message);
 
@@ -699,7 +699,7 @@ impl Switch {
             let success = hook.attach(&self.slots[token], &mut message, &chan, &labels);
 
             if !success {
-                ErrorCode::PermissionDenied.insert(&mut message);
+                Code::PermissionDenied.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -735,9 +735,9 @@ impl Switch {
 
             self.relay_root_message(hook, token, SLOT_ATTACH, event_message);
 
-            ErrorCode::OK.insert(&mut message);
+            Code::Ok.set(&mut message);
         } else {
-            ErrorCode::CannotGetValueField.insert(&mut message);
+            Code::CannotGetValueField.set(&mut message);
         }
 
         self.send_message(hook, token, message);
@@ -752,7 +752,7 @@ impl Switch {
     ) {
         // check auth
         if !self.slots[token].auth {
-            ErrorCode::Unauthorized.insert(&mut message);
+            Code::Unauthorized.set(&mut message);
 
             self.send_message(hook, token, message);
 
@@ -771,7 +771,7 @@ impl Switch {
                         if let Some(v) = v.as_str() {
                             labels.insert(v.to_string());
                         } else {
-                            ErrorCode::InvalidLabelFieldType.insert(&mut message);
+                            Code::InvalidLabelFieldType.set(&mut message);
 
                             self.send_message(hook, token, message);
 
@@ -779,7 +779,7 @@ impl Switch {
                         }
                     }
                 } else {
-                    ErrorCode::InvalidLabelFieldType.insert(&mut message);
+                    Code::InvalidLabelFieldType.set(&mut message);
 
                     self.send_message(hook, token, message);
 
@@ -792,7 +792,7 @@ impl Switch {
             let success = hook.detach(&self.slots[token], &mut message, &chan, &labels);
 
             if !success {
-                ErrorCode::PermissionDenied.insert(&mut message);
+                Code::PermissionDenied.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -839,9 +839,9 @@ impl Switch {
 
             self.relay_root_message(hook, token, SLOT_DETACH, event_message);
 
-            ErrorCode::OK.insert(&mut message);
+            Code::Ok.set(&mut message);
         } else {
-            ErrorCode::CannotGetValueField.insert(&mut message);
+            Code::CannotGetValueField.set(&mut message);
         }
 
         self.send_message(hook, token, message);
@@ -852,7 +852,7 @@ impl Switch {
         hook.ping(&self.slots[token], &mut message);
 
         // PING 的时候，会插入 OK: 0
-        ErrorCode::OK.insert(&mut message);
+        Code::Ok.set(&mut message);
 
         self.send_message(hook, token, message);
     }
@@ -881,7 +881,7 @@ impl Switch {
             message.insert(VALUE, slot);
         }
 
-        ErrorCode::OK.insert(&mut message);
+        Code::Ok.set(&mut message);
 
         self.send_message(hook, token, message);
     }
@@ -893,7 +893,7 @@ impl Switch {
             let slot = &self.slots[token];
 
             if !slot.auth {
-                ErrorCode::Unauthorized.insert(&mut message);
+                Code::Unauthorized.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -901,7 +901,7 @@ impl Switch {
             }
 
             if !slot.root {
-                ErrorCode::PermissionDenied.insert(&mut message);
+                Code::PermissionDenied.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -923,7 +923,7 @@ impl Switch {
             let slot = &self.slots[token];
 
             if !slot.auth {
-                ErrorCode::Unauthorized.insert(&mut message);
+                Code::Unauthorized.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -950,7 +950,7 @@ impl Switch {
             let slot = &self.slots[token];
 
             if !slot.auth {
-                ErrorCode::Unauthorized.insert(&mut message);
+                Code::Unauthorized.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -958,7 +958,7 @@ impl Switch {
             }
 
             if !slot.root {
-                ErrorCode::PermissionDenied.insert(&mut message);
+                Code::PermissionDenied.set(&mut message);
 
                 self.send_message(hook, token, message);
 
@@ -969,7 +969,7 @@ impl Switch {
         let success = hook.kill(&self.slots[token], &mut message);
 
         if !success {
-            ErrorCode::PermissionDenied.insert(&mut message);
+            Code::PermissionDenied.set(&mut message);
 
             self.send_message(hook, token, message);
 
@@ -983,28 +983,28 @@ impl Switch {
                 if let Some(other_token) = self.slot_ids.get(slot_id).cloned() {
                     remove_token = Some(other_token);
                 } else {
-                    ErrorCode::TargetSlotIdNotExist.insert(&mut message);
+                    Code::TargetSlotIdNotExist.set(&mut message);
 
                     self.send_message(hook, token, message);
 
                     return Ok(())
                 }
             } else {
-                ErrorCode::InvalidSlotIdFieldType.insert(&mut message);
+                Code::InvalidSlotIdFieldType.set(&mut message);
 
                 self.send_message(hook, token, message);
 
                 return Ok(())
             }
         } else {
-            ErrorCode::CannotGetSlotIdField.insert(&mut message);
+            Code::CannotGetSlotIdField.set(&mut message);
 
             self.send_message(hook, token, message);
 
             return Ok(())
         }
 
-        ErrorCode::OK.insert(&mut message);
+        Code::Ok.set(&mut message);
 
         self.send_message(hook, token, message);
 

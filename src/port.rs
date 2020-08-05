@@ -100,8 +100,8 @@ impl<C: Codec> Port<C> {
         let bytes = read_block(&mut stream, Some(1024))?;
         let mut message = codec.decode(&None, bytes)?;
 
-        if message.get_i32(OK) == Ok(0) {
-            message.remove(OK);
+        if message.get_i32(CODE) == Ok(0) {
+            message.remove(CODE);
 
             stream.set_nonblocking(true)?;
             stream.set_read_timeout(None)?;
