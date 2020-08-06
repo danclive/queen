@@ -20,7 +20,7 @@ use nson::{
 use crate::Wire;
 use crate::error::{Result, Error, RecvError};
 
-pub use hook::Hook;
+pub use hook::{Hook, NonHook};
 pub use switch::Switch;
 pub use slot::{Slot, SlotModify};
 

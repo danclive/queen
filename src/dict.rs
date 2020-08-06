@@ -18,7 +18,6 @@ pub const LABEL:     &str = "_labe";
 pub const TO:        &str = "_to";
 pub const FROM:      &str = "_from";
 pub const SHARE:     &str = "_shar";
-pub const ACK:       &str = "_ack";
 pub const ROOT:      &str = "_root";
 pub const ATTR:      &str = "_attr";
 pub const ADDR:      &str = "_addr";

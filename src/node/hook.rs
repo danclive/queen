@@ -16,4 +16,7 @@ pub trait Hook {
     fn finish(&self, _: &mut Message, _: &Wire<Message>) { }
 }
 
+pub struct NonHook;
+
+impl Hook for NonHook {}
 impl Hook for () {}

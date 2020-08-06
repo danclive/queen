@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use std::thread;
 use std::time::Duration;
 
@@ -27,23 +28,8 @@ fn main() {
 
     println!("wire 1 auth ret: {:?}", ret);
 
-    // start port
-    let mut node = Node::<NsonCodec, ()>::new(
-        socket.clone(),
-        1,
-        vec!["127.0.0.1:8888".parse().unwrap()],
-        ()
-    ).unwrap();
-
-    thread::spawn(move || {
-        node.run().unwrap();
-    });
-
-    // start port
-    let port = Port::<NsonCodec>::new().unwrap();
-
     // start wire 2
-    let wire2 = port.connect("127.0.0.1:8888", msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(msg!{}, None, None).unwrap();
 
     wire2.send(msg!{
         CHAN: AUTH
@@ -58,6 +44,8 @@ fn main() {
     }
 
     println!("wire 2 auth ret: {:?}", ret);
+
+
 
     // wire 1 attach
     wire1.send(msg!{
@@ -75,21 +63,46 @@ fn main() {
 
     println!("wire 1 attach ret: {:?}", ret);
 
+    thread::spawn(move || {
+        loop {
+            if let Ok(ret) = wire1.wait(Some(Duration::from_secs(1))) {
+                if let Some(err) = Code::get(&ret) {
+                    if err != Code::Ok {
+                        println!("wire 1 recv error: {:?}", err);
+                        return
+                    }
+                }
+
+                println!("wire 1 recv ret: {:?}", ret);
+
+                if let Some(_) = ret.get("aaa") {
+                    wire1.send(msg!{
+                        CHAN: "hello",
+                        CODE: 0i32,
+                        TO: ret.get_message_id(FROM).unwrap(),
+                        "lalala": "wawawa"
+                    }).unwrap();
+                }
+            }
+        }
+    });
+
+
     // wire 2 send
     wire2.send(msg!{
         ID: MessageId::new(),
         CHAN: "hello",
+        "aaa": true,
         "hello": "world"
     }).unwrap();
 
-    // wire 1 recv
-    let ret = wire1.wait(Some(Duration::from_secs(1))).unwrap();
+    let ret = wire2.wait(Some(Duration::from_secs(1))).unwrap();
     if let Some(err) = Code::get(&ret) {
         if err != Code::Ok {
-            println!("wire 1 recv error: {:?}", err);
+            println!("wire 2 send error: {:?}", err);
             return
         }
     }
 
-    println!("wire 1 recv ret: {:?}", ret);
+    println!("wire 2 send ret: {:?}", ret);
 }

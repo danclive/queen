@@ -196,18 +196,6 @@ fn attach_detach() {
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    // try send
-    let _ = wire1.send(msg!{
-        CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
-    });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_str(ACK).unwrap() == "123");
-
     // attach
     let _ = wire2.send(msg!{
         CHAN: ATTACH,
@@ -221,13 +209,8 @@ fn attach_detach() {
     // send
     let _ = wire1.send(msg!{
         CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
+        "hello": "world"
     });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
@@ -240,13 +223,8 @@ fn attach_detach() {
     let _ = wire1.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        ACK: "123",
         FROM: 123
     });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
@@ -268,14 +246,8 @@ fn attach_detach() {
     // send
     let _ = wire1.send(msg!{
         CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
+        "hello": "world"
     });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_str(ACK).unwrap() == "123");
 
     // recv
     assert!(wire2.wait(Some(Duration::from_millis(100))) == Err(RecvError::TimedOut));
@@ -318,16 +290,14 @@ fn label() {
         LABEL: "label1"
     });
 
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
     // send
     let _ = wire3.send(msg!{
         CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
+        "hello": "world"
     });
-
-    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -346,11 +316,8 @@ fn label() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1",
-        ACK: "123"
+        LABEL: "label1"
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     assert!(wire1.wait(Some(Duration::from_millis(100))) == Err(RecvError::TimedOut));
@@ -373,14 +340,8 @@ fn label() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1",
-        ACK: "123"
+        LABEL: "label1"
     });
-
-    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_str(ACK).unwrap() == "123");
 
     // recv
     assert!(wire2.wait(Some(Duration::from_millis(100))).is_err());
@@ -388,11 +349,8 @@ fn label() {
     // send
     let _ = wire3.send(msg!{
         CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
+        "hello": "world"
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -433,11 +391,8 @@ fn label() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1",
-        ACK: "123"
+        LABEL: "label1"
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire4.wait(Some(Duration::from_millis(100))).unwrap();
@@ -458,11 +413,8 @@ fn label() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label2",
-        ACK: "123"
+        LABEL: "label2"
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire4.wait(Some(Duration::from_millis(100))).unwrap();
@@ -515,11 +467,8 @@ fn labels() {
     // send
     let _ = wire3.send(msg!{
         CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
+        "hello": "world"
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -538,14 +487,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label5",
-        ACK: "123"
+        LABEL: "label5"
     });
-
-    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_str(ACK).unwrap() == "123");
 
     // recv
     assert!(wire1.wait(Some(Duration::from_millis(100))).is_err());
@@ -554,14 +497,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label5", "label6"],
-        ACK: "123"
+        LABEL: ["label5", "label6"]
     });
-
-    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_str(ACK).unwrap() == "123");
 
     // recv
     assert!(wire1.wait(Some(Duration::from_millis(100))).is_err());
@@ -570,11 +507,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1",
-        ACK: "123"
+        LABEL: "label1"
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -588,11 +522,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label1"],
-        ACK: "123"
+        LABEL: ["label1"]
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -606,11 +537,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label1", "label5"],
-        ACK: "123"
+        LABEL: ["label1", "label5"]
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -624,11 +552,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label1", "label4"],
-        ACK: "123"
+        LABEL: ["label1", "label4"]
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -654,11 +579,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label1", "label4"],
-        ACK: "123"
+        LABEL: ["label1", "label4"]
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     assert!(wire1.wait(Some(Duration::from_millis(100))).is_err());
@@ -681,11 +603,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label2",
-        ACK: "123"
+        LABEL: "label2"
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -699,11 +618,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label2", "label3"],
-        ACK: "123"
+        LABEL: ["label2", "label3"]
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -741,11 +657,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1",
-        ACK: "123"
+        LABEL: "label1"
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire4.wait(Some(Duration::from_millis(100))).unwrap();
@@ -766,11 +679,8 @@ fn labels() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1",
-        ACK: "123"
+        LABEL: "label1"
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire4.wait(Some(Duration::from_millis(100))).unwrap();
@@ -827,11 +737,8 @@ fn share() {
     // send
     let _ = wire3.send(msg!{
         CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
+        "hello": "world"
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
 
@@ -849,11 +756,8 @@ fn share() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        SHARE: true,
-        ACK: "123"
+        SHARE: true
     });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     let mut read_num = 0;
 
@@ -895,11 +799,8 @@ fn share() {
     let _ = wire4.send(msg!{
         CHAN: "bbb",
         "hello": "world",
-        LABEL: "label1",
-        ACK: "123"
+        LABEL: "label1"
     });
-
-    assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
 
@@ -920,11 +821,8 @@ fn share() {
         CHAN: "bbb",
         "hello": "world",
         LABEL: "label1",
-        SHARE: true,
-        ACK: "123"
+        SHARE: true
     });
-
-    assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     let mut read_num = 0;
 
@@ -996,7 +894,6 @@ fn wire_to_wire() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        ACK: "123",
         TO: MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap()
     });
 
@@ -1008,11 +905,10 @@ fn wire_to_wire() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        ACK: "123",
         TO: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
     });
 
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    // assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -1025,7 +921,6 @@ fn wire_to_wire() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        ACK: "123",
         TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c463").unwrap(), MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap()]
     });
 
@@ -1040,11 +935,10 @@ fn wire_to_wire() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        ACK: "123",
         TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()]
     });
 
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    // assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -1063,12 +957,11 @@ fn wire_to_wire() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        ACK: "123",
         SHARE: true,
         TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()]
     });
 
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    // assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let mut num = 0;
@@ -1366,14 +1259,8 @@ fn slot_event_send_recv() {
     // try send
     let _ = wire1.send(msg!{
         CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
+        "hello": "world"
     });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_str(ACK).unwrap() == "123");
 
     let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
 
@@ -1389,13 +1276,8 @@ fn slot_event_send_recv() {
     // send
     let _ = wire1.send(msg!{
         CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
+        "hello": "world"
     });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
 
@@ -1436,21 +1318,17 @@ fn self_send_recv() {
     // send
     let _ = wire1.send(msg!{
         CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
+        "hello": "world"
     });
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-    assert!(recv.get_i32(CODE).unwrap() == 0);
+    assert!(recv.get_str(CHAN).unwrap() == ATTACH);
+    assert!(recv.get_i32(CODE).is_ok());
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
     assert!(recv.get_str("hello").unwrap() == "world");
     assert!(recv.get_message_id(FROM).is_ok());
     assert!(recv.get_i32(CODE).is_err());
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_str(ACK).unwrap() == "123");
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).is_err());
 
@@ -1475,8 +1353,7 @@ fn self_send_recv() {
     // send
     let _ = wire1.send(msg!{
         CHAN: "aaa",
-        "hello": "world",
-        ACK: "123"
+        "hello": "world"
     });
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -1488,10 +1365,6 @@ fn self_send_recv() {
     assert!(recv.get_str("hello").unwrap() == "world");
     assert!(recv.get_message_id(FROM).is_ok());
     assert!(recv.get_i32(CODE).is_err());
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_str(ACK).unwrap() == "123");
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).is_err());
     assert!(wire2.wait(Some(Duration::from_millis(100))).is_err());

@@ -29,7 +29,7 @@ use crate::dict::*;
 use crate::util::message::read_block;
 use crate::error::{Result, Error, Code};
 
-pub use hook::Hook;
+pub use hook::{Hook, NonHook};
 
 mod hook;
 

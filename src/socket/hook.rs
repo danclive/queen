@@ -34,4 +34,7 @@ pub trait Hook: Send + 'static {
     fn stop(&self, _: &Switch) {}
 }
 
+pub struct NonHook;
+
+impl Hook for NonHook {}
 impl Hook for () {}

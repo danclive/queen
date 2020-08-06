@@ -66,17 +66,12 @@ fn port() {
     // wire2 send
     let _ = wire2.send(msg!{
         CHAN: "hello",
-        "hello": "world",
-        ACK: true
+        "hello": "world"
     });
 
     // wire1 recv
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_str("hello").unwrap() == "world");
-
-    // wire2 recv
-    let recv = wire2.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(CODE).unwrap() == 0);
 }
 
 #[test]
@@ -176,17 +171,12 @@ fn port_secure() {
     // wire2 send
     let _ = wire2.send(msg!{
         CHAN: "hello",
-        "hello": "world",
-        ACK: true
+        "hello": "world"
     });
 
     // wire1 recv
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
     assert!(recv.get_str("hello").unwrap() == "world");
-
-    // wire2 recv
-    let recv = wire2.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(CODE).unwrap() == 0);
 }
 
 #[test]

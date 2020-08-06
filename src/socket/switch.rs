@@ -243,32 +243,6 @@ impl Switch {
             return
         }
 
-        // 如果消息中有 ACK 字段，就发送一条回复消息
-        // ACK 可以是任意支持的类型
-        // ACK 只是针对 SLOT -> SOCKET，以便于某些情况下 SLOT 控制自己的流速，
-        // 在目前的实现中，如果 SLOT 发送过快，填满缓冲区，此时 SOCKET 已经没有
-        // 能力进行处理，会丢失溢出的消息。在 SOCKET -> SLOT 时，如果缓冲区满了，也就
-        // 意味着 SLOT 的网络拥堵，或者 SLOT 处理能力不足，会丢失溢出的消息，但
-        // 不会断开连接
-        let reply_message = if let Some(ack) = message.get(ACK) {
-            let mut reply_message = msg!{
-                CHAN: &chan,
-                ACK: ack.clone()
-            };
-
-            if let Ok(message_id) = message.get_message_id(ID) {
-                reply_message.insert(ID, message_id);
-            }
-
-            Code::Ok.set(&mut reply_message);
-
-            message.remove(ACK);
-
-            Some(reply_message)
-        } else {
-            None
-        };
-
         // 两种模式下，自己都可以收到自己发送的消息，如果不想处理，可以利用 `FROM` 进行过滤，
         // 也就是此时 FROM == 自己的 SLOT_ID
 
@@ -489,11 +463,6 @@ impl Switch {
         };
 
         self.relay_root_message(hook, token, SLOT_SEND, event_message);
-
-        // send reply message
-        if let Some(reply_message) = reply_message {
-            self.send_message(hook, token, reply_message);
-        }
     }
 
     pub(crate) fn auth(
