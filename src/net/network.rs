@@ -12,12 +12,11 @@ use std::io::{
 use queen_io::{
     epoll::{Epoll, Event, Events, Token, Ready, EpollOpt},
     queue::mpsc::Queue,
-    tcp::TcpStream
+    net::tcp::TcpStream,
+    plus::slab::Slab
 };
 
 use nson::Message;
-
-use slab::Slab;
 
 use crate::Wire;
 use crate::crypto::Crypto;

@@ -1,4 +1,4 @@
-use queen_io::tcp::TcpStream;
+use queen_io::net::tcp::TcpStream;
 
 use nson::Message;
 

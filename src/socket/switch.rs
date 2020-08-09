@@ -2,15 +2,14 @@ use std::collections::{HashMap, HashSet};
 use std::cell::Cell;
 
 use queen_io::{
-    epoll::{Epoll, Token, Ready, EpollOpt}
+    epoll::{Epoll, Token, Ready, EpollOpt},
+    plus::slab::Slab
 };
 
 use nson::{
     Message, msg,
     message_id::MessageId
 };
-
-use slab::Slab;
 
 use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 

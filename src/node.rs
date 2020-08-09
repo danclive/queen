@@ -13,7 +13,7 @@ use std::str::FromStr;
 use queen_io::{
     epoll::{Epoll, Events, Token, Ready, EpollOpt},
     queue::mpsc::Queue,
-    tcp::{TcpListener, TcpStream}
+    net::tcp::{TcpListener, TcpStream}
 };
 
 use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};

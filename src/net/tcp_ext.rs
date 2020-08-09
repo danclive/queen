@@ -2,7 +2,7 @@ use std::os::unix::io::AsRawFd;
 use std::io;
 
 use queen_io::sys::socket::{setsockopt, getsockopt};
-use queen_io::tcp::TcpStream;
+use queen_io::net::tcp::TcpStream;
 
 pub trait TcpExt: AsRawFd {
     fn set_keep_alive(&self, enabled: bool) -> io::Result<()> {

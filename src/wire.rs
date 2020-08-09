@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 use std::cell::Cell;
 
 use queen_io::{
-    epoll::{Epoll, Token, Ready, EpollOpt, Evented},
+    epoll::{Epoll, Token, Ready, EpollOpt, Source},
     queue::spsc::Queue
 };
 
@@ -170,7 +170,7 @@ impl<T: Send> Drop for Wire<T> {
 
 unsafe impl<T: Send> Send for Wire<T> {}
 
-impl<T: Send> Evented for Wire<T> {
+impl<T: Send> Source for Wire<T> {
     fn add(&self, epoll: &Epoll, token: Token, interest: Ready, opts: EpollOpt) -> io::Result<()> {
         self.rx.add(epoll, token, interest, opts)
     }

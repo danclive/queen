@@ -4,15 +4,15 @@ use std::time::Duration;
 use std::os::unix::io::AsRawFd;
 use std::result;
 
-use queen_io::{Awakener, poll};
+use queen_io::{waker::Waker, poll};
 
 use crate::error::{Result, Error, SendError, RecvError};
 
 pub fn channel<T>() -> Result<(Sender<T>, Receiver<T>)> {
     let (shared0, shared1) = SharedBox::allocate();
-    let wakeup = Awakener::new()?;
-    let tx = Sender { sb: shared0, wakeup: wakeup.clone() };
-    let rx = Receiver { sb: shared1, wakeup };
+    let waker = Waker::new()?;
+    let tx = Sender { sb: shared0, waker: waker.clone() };
+    let rx = Receiver { sb: shared1, waker };
     Ok((tx, rx))
 }
 
@@ -20,7 +20,7 @@ pub fn channel<T>() -> Result<(Sender<T>, Receiver<T>)> {
 #[derive(Debug)]
 pub struct Sender<T> {
     sb: SharedBox<T>,
-    wakeup: Awakener
+    waker: Waker
 }
 
 impl<T> Sender<T> {
@@ -31,7 +31,7 @@ impl<T> Sender<T> {
         if old == mark_empty() {
             // Secceeded.
             self.sb.abandon();
-            let _ = self.wakeup.wakeup();
+            let _ = self.waker.wakeup();
             Ok(())
         } else {
             // Failed; the receiver already has dropped.
@@ -53,7 +53,7 @@ impl<T> Drop for Sender<T> {
                 self.sb.release();
             }
         }
-        let _ = self.wakeup.wakeup();
+        let _ = self.waker.wakeup();
     }
 }
 
@@ -63,7 +63,7 @@ unsafe impl<T: Send> Send for Sender<T> {}
 #[derive(Debug)]
 pub struct Receiver<T> {
     sb: SharedBox<T>,
-    wakeup: Awakener
+    waker: Waker
 }
 
 impl<T> Receiver<T> {
@@ -87,7 +87,7 @@ impl<T> Receiver<T> {
     }
 
     pub fn wait(&self, timeout: Option<Duration>) -> Result<()> {
-        if poll::wait(self.wakeup.as_raw_fd(), poll::Ready::readable(), timeout)?.is_readable() {
+        if poll::wait(self.waker.as_raw_fd(), poll::Ready::readable(), timeout)?.is_readable() {
             return Ok(())
         }
 

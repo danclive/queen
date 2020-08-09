@@ -7,7 +7,7 @@ use std::net::ToSocketAddrs;
 use std::time::Duration;
 use std::io::Write;
 
-use queen_io::tcp::TcpStream;
+use queen_io::net::tcp::TcpStream;
 use queen_io::queue::mpsc::Queue;
 
 use crate::net::{NetWork, Packet, CryptoOptions, Codec};
