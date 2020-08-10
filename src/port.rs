@@ -40,7 +40,9 @@ impl<C: Codec> Port<C> {
             run: Arc::new(AtomicBool::new(true))
         };
 
-        let mut net_work = NetWork::<C>::new(port.queue.clone(), port.run.clone())?;
+        let mut net_work = NetWork::<C>::new(port.queue.clone())?;
+
+        let run = port.run.clone();
 
         thread::Builder::new().name("port_net".to_string()).spawn(move || {
             let ret = net_work.run();
@@ -50,18 +52,19 @@ impl<C: Codec> Port<C> {
                 log::debug!("net thread exit");
             }
 
-            net_work.run.store(false, Ordering::Release);
+            run.store(false, Ordering::Relaxed);
         }).unwrap();
 
         Ok(port)
     }
 
     pub fn stop(&self) {
-        self.run.store(false, Ordering::Release);
+        self.run.store(false, Ordering::Relaxed);
+        self.queue.push(Packet::Close);
     }
 
     pub fn is_run(&self) -> bool {
-        self.run.load(Ordering::Acquire)
+        self.run.load(Ordering::Relaxed)
     }
 
     pub fn connect<A: ToSocketAddrs>(
@@ -71,6 +74,11 @@ impl<C: Codec> Port<C> {
         crypto_options: Option<CryptoOptions>,
         capacity: Option<usize>
     ) -> Result<Wire<Message>> {
+
+        if !self.is_run() {
+            return Err(Error::ConnectionAborted("port is not run!".to_string()))
+        }
+
         let mut stream = TcpStream::connect(addr)?;
 
         stream.set_nodelay(true)?;
@@ -126,6 +134,12 @@ impl<C: Codec> Port<C> {
             return Ok(wire2)
         }
 
-        Err(Error::InvalidInput(format!("{}", message)))
+        Err(Error::InvalidData(format!("{}", message)))
+    }
+}
+
+impl<C: Codec> Drop for Port<C> {
+    fn drop(&mut self) {
+        self.stop()
     }
 }

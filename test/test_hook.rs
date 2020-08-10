@@ -56,7 +56,7 @@ fn test_hook() {
         }
 
         fn run(&self) -> bool {
-            !self.inner.run.load(Ordering::SeqCst)
+            self.inner.run.load(Ordering::SeqCst)
         }
     }
 
@@ -244,7 +244,7 @@ fn test_hook() {
 
     socket.stop();
 
-    thread::sleep(Duration::from_millis(100));
+    thread::sleep(Duration::from_millis(1000));
 
     assert!(hook.run() == false);
 }

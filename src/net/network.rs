@@ -1,9 +1,5 @@
 use std::collections::VecDeque;
 use std::time::Duration;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering}
-};
 use std::io::{
     Write,
     ErrorKind::{WouldBlock, Interrupted}
@@ -31,7 +27,8 @@ pub enum Packet<C: Codec> {
         stream: TcpStream,
         codec: C,
         crypto: Option<Crypto>
-    }
+    },
+    Close
 }
 
 pub struct NetWork<C: Codec> {
@@ -39,29 +36,27 @@ pub struct NetWork<C: Codec> {
     events: Events,
     pub queue: Queue<Packet<C>>,
     wires: Slab<Wire<Message>>,
-    nets: Slab<NetConn<C>>,
-    pub run: Arc<AtomicBool>
+    nets: Slab<NetConn<C>>
 }
 
 impl<C: Codec> NetWork<C> {
     const START_TOKEN: usize = 2;
     const QUEUE_TOKEN: usize = 0;
 
-    pub fn new(queue: Queue<Packet<C>>, run: Arc<AtomicBool>) -> Result<Self> {
+    pub fn new(queue: Queue<Packet<C>>) -> Result<Self> {
         Ok(Self {
             epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
             queue,
             wires: Slab::new(),
-            nets: Slab::new(),
-            run
+            nets: Slab::new()
         })
     }
 
     pub fn run(&mut self) -> Result<()> {
         self.epoll.add(&self.queue, Token(Self::QUEUE_TOKEN), Ready::readable(), EpollOpt::level())?;
 
-        while self.run.load(Ordering::Acquire) {
+        loop {
             let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
                 Ok(size) => size,
                 Err(err) => {
@@ -77,52 +72,47 @@ impl<C: Codec> NetWork<C> {
                 let event = self.events.get(i).unwrap();
 
                 if event.token().0 == Self::QUEUE_TOKEN {
-                    self.dispatch_queue()?;
+                    if let Some(packet) = self.queue.pop() {
+                        match packet {
+                            Packet::NewConn { wire, stream, codec, crypto } => {
+                                let entry1 = self.wires.vacant_entry();
+                                let entry2 = self.nets.vacant_entry();
+
+                                assert_eq!(entry1.key(), entry2.key());
+
+                                let id = Self::START_TOKEN + entry1.key() * 2;
+                                let id2 = Self::START_TOKEN + entry2.key() * 2 + 1;
+
+                                self.epoll.add(
+                                    &wire,
+                                    Token(id),
+                                    Ready::readable(),
+                                    EpollOpt::level()
+                                )?;
+
+                                self.epoll.add(
+                                    &stream,
+                                    Token(id2),
+                                    Ready::readable() | Ready::hup(),
+                                    EpollOpt::edge()
+                                )?;
+
+                                entry1.insert(wire);
+
+                                let conn = NetConn::new(id2, stream, codec, crypto);
+
+                                entry2.insert(conn);
+                            }
+                            Packet::Close => {
+                                return Ok(())
+                            }
+                        }
+                    }
                 } else {
                     self.dispatch_conn(event)?;
                 }
             }
         }
-
-        Ok(())
-    }
-
-    fn dispatch_queue(&mut self) -> Result<()> {
-        if let Some(packet) = self.queue.pop() {
-            match packet {
-                Packet::NewConn { wire, stream, codec, crypto } => {
-                    let entry1 = self.wires.vacant_entry();
-                    let entry2 = self.nets.vacant_entry();
-
-                    assert_eq!(entry1.key(), entry2.key());
-
-                    let id = Self::START_TOKEN + entry1.key() * 2;
-                    let id2 = Self::START_TOKEN + entry2.key() * 2 + 1;
-
-                    self.epoll.add(
-                        &wire,
-                        Token(id),
-                        Ready::readable(),
-                        EpollOpt::level()
-                    )?;
-
-                    self.epoll.add(
-                        &stream,
-                        Token(id2),
-                        Ready::readable() | Ready::hup(),
-                        EpollOpt::edge()
-                    )?;
-
-                    entry1.insert(wire);
-
-                    let conn = NetConn::new(id2, stream, codec, crypto);
-
-                    entry2.insert(conn);
-                }
-            }
-        }
-
-        Ok(())
     }
 
     fn dispatch_conn(&mut self, event: Event) -> Result<()> {

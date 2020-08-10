@@ -51,7 +51,6 @@ impl Socket {
             id,
             queue,
             hook,
-            run
         )?;
 
         thread::Builder::new().name("socket".to_string()).spawn(move || {
@@ -62,7 +61,7 @@ impl Socket {
                 log::trace!("socket thread exit");
             }
 
-            inner.run.store(false, Ordering::Release);
+            run.store(false, Ordering::Relaxed);
             inner.hook.stop(&inner.switch);
         }).unwrap();
 
@@ -70,11 +69,12 @@ impl Socket {
     }
 
     pub fn stop(&self) {
-        self.run.store(false, Ordering::Release);
+        self.run.store(false, Ordering::Relaxed);
+        self.queue.push(Packet::Close);
     }
 
     pub fn is_run(&self) -> bool {
-        self.run.load(Ordering::Acquire)
+        self.run.load(Ordering::Relaxed)
     }
 
     pub fn connect(
@@ -101,8 +101,8 @@ impl Socket {
 
 impl Drop for Socket {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.run) == 1 {
-            self.run.store(false, Ordering::Release);
+        if Arc::strong_count(&self.run) <= 2 {
+            self.stop()
         }
     }
 }
@@ -112,12 +112,12 @@ struct QueenInner<H> {
     events: Events,
     queue: Queue<Packet>,
     hook: H,
-    switch: Switch,
-    run: Arc<AtomicBool>
+    switch: Switch
 }
 
 enum Packet {
-    NewSlot(Wire<Message>)
+    NewSlot(Wire<Message>),
+    Close
 }
 
 impl<H: Hook> QueenInner<H> {
@@ -126,23 +126,21 @@ impl<H: Hook> QueenInner<H> {
     fn new(
         id: MessageId,
         queue: Queue<Packet>,
-        hook: H,
-        run: Arc<AtomicBool>
+        hook: H
     ) -> Result<QueenInner<H>> {
         Ok(QueenInner {
             epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
             queue,
             hook,
-            switch: Switch::new(id),
-            run
+            switch: Switch::new(id)
         })
     }
 
     fn run(&mut self) -> Result<()> {
         self.epoll.add(&self.queue, Self::QUEUE_TOKEN, Ready::readable(), EpollOpt::level())?;
 
-        while self.run.load(Ordering::Acquire) {
+        loop {
             let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
                 Ok(size) => size,
                 Err(err) => {
@@ -158,48 +156,32 @@ impl<H: Hook> QueenInner<H> {
                 let event = self.events.get(i).unwrap();
 
                 if event.token() == Self::QUEUE_TOKEN {
-                    self.dispatch_queue()?;
+                    if let Some(packet) = self.queue.pop() {
+                        match packet {
+                            Packet::NewSlot(wire) => {
+                                self.switch.add_slot(&self.epoll, &self.hook, wire)?;
+                            }
+                            Packet::Close => {
+                                return Ok(())
+                            }
+                        }
+                    }
                 } else {
-                    self.dispatch_conn(event.token().0)?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn dispatch_queue(&mut self) -> Result<()> {
-        if let Some(packet) = self.queue.pop() {
-            match packet {
-                Packet::NewSlot(wire) => {
-                    self.switch.add_slot(&self.epoll, &self.hook, wire)?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn dispatch_conn(&mut self, token: usize) -> Result<()> {
-        if let Some(slot) = self.switch.slots.get(token) {
-            match slot.wire.recv() {
-                Ok(message) => {
-                    self.switch.recv_message(&self.epoll, &self.hook, token, message)?;
-                }
-                Err(err) => {
-                    if !matches!(err, RecvError::Empty) {
-                        self.switch.del_slot(&self.epoll, &self.hook, token)?;
+                    let token = event.token().0;
+                    if let Some(slot) = self.switch.slots.get(token) {
+                        match slot.wire.recv() {
+                            Ok(message) => {
+                                self.switch.recv_message(&self.epoll, &self.hook, token, message)?;
+                            }
+                            Err(err) => {
+                                if !matches!(err, RecvError::Empty) {
+                                    self.switch.del_slot(&self.epoll, &self.hook, token)?;
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-
-        Ok(())
-    }
-}
-
-impl<H> Drop for QueenInner<H> {
-    fn drop(&mut self) {
-        self.run.store(false, Ordering::Release);
     }
 }

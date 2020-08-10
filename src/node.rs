@@ -70,7 +70,9 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
             queues.push(queue.clone());
 
-            let mut net_work = NetWork::<C>::new(queue, run.clone())?;
+            let mut net_work = NetWork::<C>::new(queue)?;
+
+            let run2 = run.clone();
 
             thread::Builder::new().name("node_net".to_string()).spawn(move || {
                 let ret = net_work.run();
@@ -80,7 +82,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
                     log::debug!("net thread exit");
                 }
 
-                net_work.run.store(false, Ordering::Release);
+                run2.store(false, Ordering::Relaxed);
             }).unwrap();
         }
 
@@ -100,12 +102,18 @@ impl<C: Codec, H: Hook> Node<C, H> {
         })
     }
 
+    #[inline]
     pub fn stop(&self) {
-        self.run.store(false, Ordering::Release);
+        self.run.store(false, Ordering::Relaxed);
+
+        for queue in &self.queues {
+            queue.push(Packet::Close);
+        }
     }
 
+    #[inline]
     pub fn is_run(&self) -> bool {
-        self.run.load(Ordering::Acquire)
+        self.run.load(Ordering::Relaxed)
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -113,7 +121,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
             self.epoll.add(&listen.as_raw_fd(), Token(id), Ready::readable(), EpollOpt::edge())?;
         }
 
-        while self.run.load(Ordering::Acquire) && self.socket.is_run() {
+        while self.is_run() && self.socket.is_run() {
             let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
                 Ok(size) => size,
                 Err(err) => {
@@ -282,12 +290,12 @@ impl<C: Codec, H: Hook> Node<C, H> {
             return Ok((wire, codec, Some(crypto)))
         }
 
-        Err(Error::InvalidInput(format!("{}", message)))
+        Err(Error::InvalidData(format!("{}", message)))
     }
 }
 
 impl<C: Codec, H: Hook> Drop for Node<C, H> {
     fn drop(&mut self) {
-        self.run.store(false, Ordering::Release);
+        self.stop()
     }
 }
