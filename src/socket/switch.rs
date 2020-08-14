@@ -33,7 +33,7 @@ pub struct Switch {
 }
 
 impl Switch {
-    pub fn new(id: MessageId) -> Self {
+    pub(crate) fn new(id: MessageId) -> Self {
         Self {
             id,
             chans: HashMap::new(),
@@ -158,6 +158,7 @@ impl Switch {
                 MINE => self.mine(hook, token, message),
                 QUERY => self.query(hook, token, message),
                 CUSTOM => self.custom(hook, token, message),
+                CTRL => self.ctrl(hook, token, message),
                 SLOT_KILL => self.kill(epoll, hook, token, message)?,
                 _ => {
                     Code::UnsupportedChan.set(&mut message);
@@ -205,7 +206,7 @@ impl Switch {
                 if let Some(slot) = self.slots.get(*other_token) {
                     let mut message = message.clone();
 
-                    let success = hook.send(&slot, &mut message);
+                    let success = hook.send(slot, &mut message);
 
                     if success {
                         self.send_message(hook, slot.token, message);
@@ -337,7 +338,7 @@ impl Switch {
 
         macro_rules! send {
             ($self: ident, $hook: ident, $slot: ident, $message: ident) => {
-                let success = $hook.push(&$slot, &mut $message);
+                let success = $hook.push($slot, &mut $message);
 
                 if success {
                     $self.send_message($hook, $slot.token, $message.clone());
@@ -530,7 +531,7 @@ impl Switch {
         // 这里可以验证自定义字段的合法性
         // 这里可以验证超级用户的合法性
         // 这里可以验证 SLOT_ID 的合法性
-        let success = hook.auth(&slot, &modify, &mut message);
+        let success = hook.auth(slot, &modify, &mut message);
 
         if !success {
             Code::AuthenticationFailed.set(&mut message);
@@ -877,14 +878,14 @@ impl Switch {
             }
         }
 
-        hook.query(&self, token, &mut message);
+        hook.query(self, token, &mut message);
 
-        // QUERY 的时候，不会插入 OK: 0, 由 hook 函数决定
+        // QUERY 的时候，不会插入 CODE: 0, 由 hook 函数决定
 
         self.send_message(hook, token, message);
     }
 
-    // 注意，QUERY 和 CUSTOM 的不同之处在于，前者必须具有 ROOT 权限，后者不需要
+    // 用于实现自定义功能。注意，QUERY 和 CUSTOM 的不同之处在于，前者必须具有 ROOT 权限，后者不需要
     // 可以在 Hook.custom 自行定制返回数据
     pub(crate) fn custom(&self, hook: &impl Hook, token: usize, mut message: Message) {
         {
@@ -899,9 +900,40 @@ impl Switch {
             }
         }
 
-        hook.custom(&self, token, &mut message);
+        hook.custom(self, token, &mut message);
 
-        // CUSTOM 的时候，不会插入 OK: 0, 由 hook 函数决定
+        // CUSTOM 的时候，不会插入 CODE: 0, 由 hook 函数决定
+
+        self.send_message(hook, token, message);
+    }
+
+    // 用于控制命令。必须具有 ROOT 权限
+    // 可以在 Hook.ctrl 自行定制返回数据
+    // 注意，在 Hook.ctrl 能修改 Switch 结构，需谨慎操作
+    pub(crate) fn ctrl(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
+        {
+            let slot = &self.slots[token];
+
+            if !slot.auth {
+                Code::Unauthorized.set(&mut message);
+
+                self.send_message(hook, token, message);
+
+                return
+            }
+
+            if !slot.root {
+                Code::PermissionDenied.set(&mut message);
+
+                self.send_message(hook, token, message);
+
+                return
+            }
+        }
+
+        hook.ctrl(self, token, &mut message);
+
+        // QUERY 的时候，不会插入 CODE: 0, 由 hook 函数决定
 
         self.send_message(hook, token, message);
     }

@@ -81,7 +81,7 @@ impl<C: Codec> NetWork<C> {
                                 assert_eq!(entry1.key(), entry2.key());
 
                                 let id = Self::START_TOKEN + entry1.key() * 2;
-                                let id2 = Self::START_TOKEN + entry2.key() * 2 + 1;
+                                // let id2 = Self::START_TOKEN + entry2.key() * 2 + 1;
 
                                 self.epoll.add(
                                     &wire,
@@ -92,14 +92,14 @@ impl<C: Codec> NetWork<C> {
 
                                 self.epoll.add(
                                     &stream,
-                                    Token(id2),
+                                    Token(id + 1),
                                     Ready::readable() | Ready::hup(),
                                     EpollOpt::edge()
                                 )?;
 
                                 entry1.insert(wire);
 
-                                let conn = NetConn::new(id2, stream, codec, crypto);
+                                let conn = NetConn::new(id + 1, stream, codec, crypto);
 
                                 entry2.insert(conn);
                             }

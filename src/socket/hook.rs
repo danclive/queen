@@ -31,6 +31,8 @@ pub trait Hook: Send + 'static {
 
     fn custom(&self, _: &Switch, _token: usize, _: &mut Message) {}
 
+    fn ctrl(&self, _: &mut Switch, _token: usize, _: &mut Message) {}
+
     fn stop(&self, _: &Switch) {}
 }
 

@@ -9,6 +9,7 @@ pub const PING:      &str = "_ping";
 pub const QUERY:     &str = "_quer";
 pub const MINE:      &str = "_mine";
 pub const CUSTOM:    &str = "_cust";
+pub const CTRL:      &str = "_ctrl";
 
 // params
 pub const SOCKET_ID: &str = "_soid";
