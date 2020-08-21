@@ -33,46 +33,86 @@ pub use hook::{Hook, NonHook};
 
 mod hook;
 
-pub struct Node<C: Codec, H: Hook> {
-    socket: Socket,
-    epoll: Epoll,
-    events: Events,
-    queues: Vec<Queue<Packet<C>>>,
-    listens: Vec<TcpListener>,
-    rand: SmallRng,
-    hook: H,
-    pub tcp_keep_alive: bool,
-    pub tcp_keep_idle: u32,
-    pub tcp_keep_intvl: u32,
-    pub tcp_keep_cnt: u32,
-    pub run: Arc<AtomicBool>
+pub struct Node<C: Codec> {
+    queues: Arc<Vec<Queue<Packet<C>>>>,
+    run: Arc<AtomicBool>
 }
 
-impl<C: Codec, H: Hook> Node<C, H> {
-    pub fn new(
+impl<C: Codec> Node<C> {
+    pub fn new<H: Hook + Send + 'static>(
         socket: Socket,
         works: usize,
         addrs: Vec<SocketAddr>,
         hook: H
     ) -> Result<Self> {
-        let run = Arc::new(AtomicBool::new(true));
+        let mut queues = Vec::new();
 
+        for _ in 0..works {
+            let queue: Queue<Packet<C>> = Queue::new()?;
+            queues.push(queue.clone());
+        }
+
+        let node = Self {
+            queues: Arc::new(queues),
+            run: Arc::new(AtomicBool::new(true))
+        };
+
+        let mut inner: Inner<C, H> = Inner::new(node.clone(), socket, works, addrs, hook)?;
+
+        thread::Builder::new().name("node".to_string()).spawn(move || {
+            inner.run().unwrap()
+        }).unwrap();
+
+        Ok(node)
+    }
+
+    #[inline]
+    pub fn stop(&self) {
+        self.run.store(false, Ordering::Relaxed);
+
+        for queue in self.queues.iter() {
+            queue.push(Packet::Close);
+        }
+    }
+
+    #[inline]
+    pub fn is_run(&self) -> bool {
+        self.run.load(Ordering::Relaxed)
+    }
+}
+
+struct Inner<C: Codec, H: Hook> {
+    node: Node<C>,
+    socket: Socket,
+    epoll: Epoll,
+    events: Events,
+    listens: Vec<TcpListener>,
+    rand: SmallRng,
+    hook: H,
+    tcp_keep_alive: bool,
+    tcp_keep_idle: u32,
+    tcp_keep_intvl: u32,
+    tcp_keep_cnt: u32
+}
+
+impl<C: Codec, H: Hook> Inner<C, H> {
+    fn new(
+        node: Node<C>,
+        socket: Socket,
+        _works: usize,
+        addrs: Vec<SocketAddr>,
+        hook: H
+    ) -> Result<Self> {
         let mut listens = Vec::new();
 
         for addr in addrs {
             listens.push(TcpListener::bind(addr)?);
         }
 
-        let mut queues = Vec::new();
+        for queue in node.queues.iter() {
+            let mut net_work = NetWork::<C>::new(queue.clone())?;
 
-        for _ in 0..works {
-            let queue: Queue<Packet<C>> = Queue::new()?;
-
-            queues.push(queue.clone());
-
-            let mut net_work = NetWork::<C>::new(queue)?;
-
-            let run2 = run.clone();
+            let run2 = node.run.clone();
 
             thread::Builder::new().name("node_net".to_string()).spawn(move || {
                 let ret = net_work.run();
@@ -86,34 +126,24 @@ impl<C: Codec, H: Hook> Node<C, H> {
             }).unwrap();
         }
 
-        Ok(Node {
+        Ok(Self {
+            node,
             socket,
             epoll: Epoll::new()?,
             events: Events::with_capacity(16),
-            queues,
             listens,
             hook,
             rand: SmallRng::from_entropy(),
             tcp_keep_alive: true,
             tcp_keep_idle: 30,
             tcp_keep_intvl: 5,
-            tcp_keep_cnt: 3,
-            run
+            tcp_keep_cnt: 3
         })
     }
 
     #[inline]
-    pub fn stop(&self) {
-        self.run.store(false, Ordering::Relaxed);
-
-        for queue in &self.queues {
-            queue.push(Packet::Close);
-        }
-    }
-
-    #[inline]
-    pub fn is_run(&self) -> bool {
-        self.run.load(Ordering::Relaxed)
+    fn is_run(&self) -> bool {
+        self.node.run.load(Ordering::Relaxed)
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -183,7 +213,7 @@ impl<C: Codec, H: Hook> Node<C, H> {
                         // 探测尝试的次数.如果第1次探测包就收到响应了,则后2次的不再发
                         stream.set_keep_cnt(self.tcp_keep_cnt as i32)?;
 
-                        if let Some(queue) = self.queues.choose(&mut self.rand) {
+                        if let Some(queue) = self.node.queues.choose(&mut self.rand) {
                             queue.push(Packet::NewConn {
                                 wire,
                                 stream,
@@ -233,10 +263,13 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
             // 这里会将原始的握手消息传入。
             // 但是要注意，握手消息是没有加密的，不能传递敏感数据
+            let mut origin = message.clone();
+            origin.remove(CHAN);
+
             let attr = msg!{
                 ADDR: addr.to_string(),
                 SECURE: false,
-                ORIGIN: message.clone()
+                ORIGIN: origin
             };
 
             let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
@@ -267,10 +300,13 @@ impl<C: Codec, H: Hook> Node<C, H> {
 
             // 这里会将原始的握手消息传入。
             // 但是要注意，握手消息是没有加密的，不能传递敏感数据
+            let mut origin = message.clone();
+            origin.remove(CHAN);
+
             let attr = msg!{
                 ADDR: addr.to_string(),
                 SECURE: true,
-                ORIGIN: message.clone()
+                ORIGIN: origin
             };
 
             let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
@@ -294,8 +330,19 @@ impl<C: Codec, H: Hook> Node<C, H> {
     }
 }
 
-impl<C: Codec, H: Hook> Drop for Node<C, H> {
+impl<C: Codec> Clone for Node<C> {
+    fn clone(&self) -> Self {
+        Self {
+            queues: self.queues.clone(),
+            run: self.run.clone()
+        }
+    }
+}
+
+impl<C: Codec> Drop for Node<C> {
     fn drop(&mut self) {
-        self.stop()
+        if Arc::strong_count(&self.run) - self.queues.len() <= 2 {
+            self.stop()
+        }
     }
 }

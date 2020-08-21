@@ -1,4 +1,3 @@
-use std::thread;
 use std::time::Duration;
 
 use queen::{Socket, Node, Port, NonHook};
@@ -27,17 +26,13 @@ fn main() {
 
     println!("wire 1 auth ret: {:?}", ret);
 
-    // start port
-    let mut node = Node::<NsonCodec, ()>::new(
+    // start node
+    let _node = Node::<NsonCodec>::new(
         socket.clone(),
-        1,
+        4,
         vec!["127.0.0.1:8888".parse().unwrap()],
         ()
     ).unwrap();
-
-    thread::spawn(move || {
-        node.run().unwrap();
-    });
 
     // start port
     let port = Port::<NsonCodec>::new().unwrap();

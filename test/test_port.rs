@@ -1,4 +1,3 @@
-use std::thread;
 use std::time::Duration;
 
 use queen::{Socket, Node, Port, Wire};
@@ -19,16 +18,12 @@ fn port() {
 
     let addr = get_free_addr();
 
-    let mut node = Node::<NsonCodec, ()>::new(
+    let _node = Node::<NsonCodec>::new(
         socket.clone(),
         2,
         vec![addr.parse().unwrap()],
         ()
     ).unwrap();
-
-    thread::spawn(move || {
-        node.run().unwrap();
-    });
 
     // start wire
     let wire1 = socket.connect(msg!{}, None, None).unwrap();
@@ -112,16 +107,12 @@ fn port_secure() {
         }
     }
 
-    let mut node = Node::<NsonCodec, MyHook>::new(
+    let _node = Node::<NsonCodec>::new(
         socket.clone(),
         2,
         vec![addr.parse().unwrap()],
         MyHook
     ).unwrap();
-
-    thread::spawn(move || {
-        node.run().unwrap();
-    });
 
     // start wire
     let wire1 = socket.connect(msg!{}, None, None).unwrap();
@@ -212,16 +203,12 @@ fn port_secure2() {
         }
     }
 
-    let mut node = Node::<NsonCodec, MyHook>::new(
+    let _node = Node::<NsonCodec>::new(
         socket.clone(),
         2,
         vec![addr.parse().unwrap()],
         MyHook
     ).unwrap();
-
-    thread::spawn(move || {
-        node.run().unwrap();
-    });
 
     // start wire
     let wire1 = socket.connect(msg!{}, None, None).unwrap();

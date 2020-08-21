@@ -4,7 +4,7 @@ use nson::Message;
 
 use crate::Wire;
 
-pub trait Hook {
+pub trait Hook: Send + 'static {
     fn enable_secure(&self) -> bool { false }
 
     fn accept(&self, _: &mut TcpStream) -> bool { true }
