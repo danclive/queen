@@ -243,6 +243,35 @@ impl Switch {
             return
         }
 
+        macro_rules! send {
+            ($self: ident, $hook: ident, $slot: ident, $message: ident) => {
+                let success = $hook.push($slot, &mut $message);
+
+                if success {
+                    $self.send_message($hook, $slot.token, $message.clone());
+
+                    // slot event
+                    // {
+                    //     CHAN: SLOT_RECV,
+                    //     VALUE: $message
+                    // }
+                    let event_message = msg!{
+                        CHAN: SLOT_RECV,
+                        VALUE: $message.clone(),
+                        TO: $slot.id.clone()
+                    };
+
+                    let id = $slot.token;
+
+                    $self.relay_root_message($hook, id, SLOT_RECV, event_message);
+                }
+            };
+        }
+
+        if !message.contains_key(FROM) {
+            message.insert(FROM, &self.slots[token].id.clone());
+        }
+
         // 两种模式下，自己都可以收到自己发送的消息，如果不想处理，可以利用 `FROM` 进行过滤，
         // 也就是此时 FROM == 自己的 SLOT_ID
 
@@ -250,34 +279,20 @@ impl Switch {
         // 不管 SLOT 是否 ATTACH，都可给其发送消息
         // 忽略 LABEL
         // 自己可以收到自己发送的消息
-        let mut to_ids = vec![];
-
         if let Some(to) = message.get(TO).cloned() {
+            let mut to_ids = vec![];
+
             if let Some(to_id) = to.as_message_id() {
-                // TO 可以是单个 SLOT_ID，如果 SLOT_ID 不存在，应当反馈错误
-                // 错误信息中应当包含不存在的 SLOT_ID
-                if !self.slot_ids.contains_key(to_id) {
-                    Code::TargetSlotIdNotExist.set(&mut message);
-                    message.insert(SLOT_ID, to_id);
-
-                    self.send_message(hook, token, message);
-
-                    return
+                // TO 可以是单个 SLOT_ID
+                if self.slot_ids.contains_key(to_id) {
+                    to_ids.push(to_id.clone());
                 }
-
-                to_ids.push(to_id.clone());
             } else if let Some(to_array) = to.as_array() {
-                // TO 也可以是一个数组，但是只要其中一个 SLOT_ID 不存在，应当反馈错误
-                // 错误信息中应当包含不存在的 SLOT_ID
-                // 注意: 如果 TO 为数组，且为空，会按照常规消息发送
-                let mut not_exist_ids = vec![];
-
+                // TO 也可以是一个数组
                 for to in to_array {
                     if let Some(to_id) = to.as_message_id() {
                         if self.slot_ids.contains_key(to_id) {
                             to_ids.push(to_id.clone());
-                        } else {
-                            not_exist_ids.push(to_id.clone());
                         }
                     } else {
                         Code::InvalidToFieldType.set(&mut message);
@@ -287,15 +302,6 @@ impl Switch {
                         return
                     }
                 }
-
-                if !not_exist_ids.is_empty() {
-                    Code::TargetSlotIdNotExist.set(&mut message);
-                    message.insert(SLOT_ID, not_exist_ids);
-
-                    self.send_message(hook, token, message);
-
-                    return
-                }
             } else {
                 Code::InvalidToFieldType.set(&mut message);
 
@@ -303,6 +309,34 @@ impl Switch {
 
                 return
             }
+
+            if !to_ids.is_empty() {
+                if message.get_bool(SHARE).ok().unwrap_or(false) {
+                    if to_ids.len() == 1 {
+                        if let Some(slot_id) = self.slot_ids.get(&to_ids[0]) {
+                            if let Some(slot) = self.slots.get(*slot_id) {
+                                send!(self, hook, slot, message);
+                            }
+                        }
+                    } else if let Some(to) = to_ids.choose(&mut self.rand) {
+                        if let Some(slot_id) = self.slot_ids.get(to) {
+                            if let Some(slot) = self.slots.get(*slot_id) {
+                                send!(self, hook, slot, message);
+                            }
+                        }
+                    }
+                } else {
+                    for to in &to_ids {
+                        if let Some(slot_id) = self.slot_ids.get(to) {
+                            if let Some(slot) = self.slots.get(*slot_id) {
+                                send!(self, hook, slot, message);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return
         }
 
         // labels
@@ -332,67 +366,7 @@ impl Switch {
             }
         }
 
-        if !message.contains_key(FROM) {
-            message.insert(FROM, &self.slots[token].id.clone());
-        }
-
-        macro_rules! send {
-            ($self: ident, $hook: ident, $slot: ident, $message: ident) => {
-                let success = $hook.push($slot, &mut $message);
-
-                if success {
-                    $self.send_message($hook, $slot.token, $message.clone());
-
-                    // slot event
-                    // {
-                    //     CHAN: SLOT_RECV,
-                    //     VALUE: $message
-                    // }
-                    let event_message = msg!{
-                        CHAN: SLOT_RECV,
-                        VALUE: $message.clone(),
-                        TO: $slot.id.clone()
-                    };
-
-                    let id = $slot.token;
-
-                    $self.relay_root_message($hook, id, SLOT_RECV, event_message);
-                }
-            };
-        }
-
-        // 发送 P2P 消息
-        // 注意: 如果 TO 为数组，且为空，会按照常规消息发送
-        if !to_ids.is_empty() {
-            // no_consumers = false;
-
-            // 如果存在 SHARE 字段，且值为 true，则只会随机给其中一个 SLOT 发送消息
-            if message.get_bool(SHARE).ok().unwrap_or(false) {
-                if to_ids.len() == 1 {
-                    if let Some(slot_id) = self.slot_ids.get(&to_ids[0]) {
-                        if let Some(slot) = self.slots.get(*slot_id) {
-                            send!(self, hook, slot, message);
-                        }
-                    }
-                } else if let Some(to) = to_ids.choose(&mut self.rand) {
-                    if let Some(slot_id) = self.slot_ids.get(to) {
-                        if let Some(slot) = self.slots.get(*slot_id) {
-                            send!(self, hook, slot, message);
-                        }
-                    }
-                }
-            } else {
-                for to in &to_ids {
-                    if let Some(slot_id) = self.slot_ids.get(to) {
-                        if let Some(slot) = self.slots.get(*slot_id) {
-                            send!(self, hook, slot, message);
-                        }
-                    }
-                }
-            }
-        // 如果存在 SHARE 字段，且值为 true，则只会随机给其中一个 SLOT 发送消息
-        // 会根据 LABEL 过滤
-        } else if message.get_bool(SHARE).ok().unwrap_or(false) {
+        if message.get_bool(SHARE).ok().unwrap_or(false) {
             let mut array: Vec<usize> = Vec::new();
 
             if let Some(ids) = self.chans.get(&chan) {
@@ -418,8 +392,6 @@ impl Switch {
             }
 
             if !array.is_empty() {
-                // no_consumers = false;
-
                 if array.len() == 1 {
                     if let Some(slot) = self.slots.get(array[0]) {
                         send!(self, hook, slot, message);

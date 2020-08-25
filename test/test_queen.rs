@@ -894,21 +894,8 @@ fn wire_to_wire() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        TO: MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap()
-    });
-
-    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(Code::get(&recv) == Some(Code::TargetSlotIdNotExist));
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap());
-
-    let _ = wire3.send(msg!{
-        CHAN: "aaa",
-        "hello": "world",
         TO: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
     });
-
-    // assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -921,24 +908,8 @@ fn wire_to_wire() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c463").unwrap(), MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap()]
-    });
-
-    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(Code::get(&recv) == Some(Code::TargetSlotIdNotExist));
-    let array = recv.get_array(SLOT_ID).unwrap();
-    assert!(array.len() == 2);
-    assert!(array.contains(&MessageId::with_string("016f9dd00d746c7f89ce342387e4c463").unwrap().into()));
-    assert!(array.contains(&MessageId::with_string("016f9dd25e24d713c22ec04881afd5d2").unwrap().into()));
-
-    let _ = wire3.send(msg!{
-        CHAN: "aaa",
-        "hello": "world",
         TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()]
     });
-
-    // assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -960,8 +931,6 @@ fn wire_to_wire() {
         SHARE: true,
         TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()]
     });
-
-    // assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // recv
     let mut num = 0;
