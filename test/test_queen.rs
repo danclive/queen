@@ -850,18 +850,18 @@ fn wire_to_wire() {
     // auth
     let _ = wire1.send(msg!{
         CHAN: AUTH,
-        SLOT_ID: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
+        SLOT_ID: MessageId::with_string("016f9dd00d746c7f89ce3423").unwrap()
     });
 
     let _ = wire2.send(msg!{
         CHAN: AUTH,
-        SLOT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
+        SLOT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e9").unwrap()
     });
 
     // duplicate
     let _ = wire3.send(msg!{
         CHAN: AUTH,
-        SLOT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()
+        SLOT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e9").unwrap()
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -873,7 +873,7 @@ fn wire_to_wire() {
 
     let _ = wire3.send(msg!{
         CHAN: AUTH,
-        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
+        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap()
     });
 
     assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -894,7 +894,7 @@ fn wire_to_wire() {
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        TO: MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap()
+        TO: MessageId::with_string("016f9dd00d746c7f89ce3423").unwrap()
     });
 
     // recv
@@ -902,13 +902,13 @@ fn wire_to_wire() {
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
-    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
+    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
 
     // slot to slots
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()]
+        TO: [MessageId::with_string("016f9dd00d746c7f89ce3423").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e9").unwrap()]
     });
 
     // recv
@@ -916,20 +916,20 @@ fn wire_to_wire() {
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
-    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
+    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
 
     let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
-    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
+    assert!(recv.get_message_id(FROM).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
 
     // share
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
         SHARE: true,
-        TO: [MessageId::with_string("016f9dd00d746c7f89ce342387e4c462").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e91e43f7c0").unwrap()]
+        TO: [MessageId::with_string("016f9dd00d746c7f89ce3423").unwrap(), MessageId::with_string("016f9dd0c97338e09f5c61e9").unwrap()]
     });
 
     // recv
@@ -1084,32 +1084,32 @@ fn slot_event() {
 
     let _ = wire2.send(msg!{
         CHAN: AUTH,
-        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
+        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap()
     });
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     let _ = wire1.send(msg!{
         CHAN: SLOT_KILL,
-        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap()
+        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap()
     });
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == SLOT_READY);
     assert!(recv.get_bool(ROOT).unwrap() == false);
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
+    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == SLOT_KILL);
     assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
+    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == SLOT_BREAK);
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924b").unwrap());
+    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
 
     thread::sleep(Duration::from_millis(100));
 
@@ -1118,13 +1118,13 @@ fn slot_event() {
 
     let _ = wire1.send(msg!{
         CHAN: SLOT_KILL,
-        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924c").unwrap()
+        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap()
     });
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
 
     assert!(Code::get(&recv) == Some(Code::TargetSlotIdNotExist));
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c7ba0924c").unwrap());
+    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
 }
 
 #[test]
