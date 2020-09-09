@@ -47,7 +47,7 @@ impl Socket {
             run: run.clone()
         };
 
-        let mut inner = QueenInner::new(
+        let mut inner = SockeInner::new(
             id,
             queue,
             hook,
@@ -107,7 +107,7 @@ impl Drop for Socket {
     }
 }
 
-struct QueenInner<H> {
+struct SockeInner<H> {
     epoll: Epoll,
     events: Events,
     queue: Queue<Packet>,
@@ -120,15 +120,15 @@ enum Packet {
     Close
 }
 
-impl<H: Hook> QueenInner<H> {
+impl<H: Hook> SockeInner<H> {
     const QUEUE_TOKEN: Token = Token(usize::max_value());
 
     fn new(
         id: MessageId,
         queue: Queue<Packet>,
         hook: H
-    ) -> Result<QueenInner<H>> {
-        Ok(QueenInner {
+    ) -> Result<SockeInner<H>> {
+        Ok(SockeInner {
             epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
             queue,

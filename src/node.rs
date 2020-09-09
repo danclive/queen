@@ -264,7 +264,10 @@ impl<C: Codec, H: Hook> Inner<C, H> {
             // 这里会将原始的握手消息传入。
             // 但是要注意，握手消息是没有加密的，不能传递敏感数据
             let mut origin = message.clone();
+            // 去除一些冗余信息
             origin.remove(CHAN);
+            origin.remove(ADDR);
+            origin.remove(SECURE);
 
             let attr = msg!{
                 ADDR: addr.to_string(),
@@ -301,7 +304,10 @@ impl<C: Codec, H: Hook> Inner<C, H> {
             // 这里会将原始的握手消息传入。
             // 但是要注意，握手消息是没有加密的，不能传递敏感数据
             let mut origin = message.clone();
+            // 去除一些冗余信息
             origin.remove(CHAN);
+            origin.remove(ADDR);
+            origin.remove(SECURE);
 
             let attr = msg!{
                 ADDR: addr.to_string(),
