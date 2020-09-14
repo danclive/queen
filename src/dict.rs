@@ -1,34 +1,34 @@
-pub const CHAN:      &str = "_chan";
+pub const CHAN:      &str = "_ch";
 
 // channel
-pub const CHANS:     &str = "_chas";
-pub const AUTH:      &str = "_auth";
-pub const ATTACH:    &str = "_atta";
-pub const DETACH:    &str = "_deta";
-pub const PING:      &str = "_ping";
-pub const QUERY:     &str = "_quer";
-pub const MINE:      &str = "_mine";
-pub const CUSTOM:    &str = "_cust";
-pub const CTRL:      &str = "_ctrl";
+pub const CHANS:     &str = "_cs";
+pub const AUTH:      &str = "_au";
+pub const ATTACH:    &str = "_ah";
+pub const DETACH:    &str = "_dh";
+pub const PING:      &str = "_pi";
+pub const QUERY:     &str = "_qu";
+pub const MINE:      &str = "_mi";
+pub const CUSTOM:    &str = "_cu";
+pub const CTRL:      &str = "_ct";
 
 // params
-pub const SOCKET_ID: &str = "_soid";
-pub const SLOT_ID:   &str = "_slid";
-pub const VALUE:     &str = "_valu";
-pub const LABEL:     &str = "_labe";
+pub const SOCKET_ID: &str = "_so";
+pub const SLOT_ID:   &str = "_sl";
+pub const VALUE:     &str = "_va";
+pub const LABEL:     &str = "_la";
 pub const TO:        &str = "_to";
-pub const FROM:      &str = "_from";
-pub const SHARE:     &str = "_shar";
-pub const ROOT:      &str = "_root";
-pub const ATTR:      &str = "_attr";
-pub const ADDR:      &str = "_addr";
+pub const FROM:      &str = "_fr";
+pub const SHARE:     &str = "_sh";
+pub const ROOT:      &str = "_ro";
+pub const ATTR:      &str = "_at";
+pub const ADDR:      &str = "_ad";
 
 // message id
 pub const ID:        &str = "_id";
 
 // error
-pub const CODE:      &str = "_code";
-pub const ERROR:     &str = "_erro";
+pub const CODE:      &str = "_co";
+pub const ERROR:     &str = "_er";
 
 // slot event channel
 pub const SLOT_READY:  &str = "_slre";
@@ -44,12 +44,12 @@ pub const SEND_NUM:    &str = "_snum";
 pub const RECV_NUM:    &str = "_rnum";
 
 // crypto
-pub const AES_128_GCM:       &str = "AES_128_GCM";
-pub const AES_256_GCM:       &str = "AES_256_GCM";
-pub const CHACHA20_POLY1305: &str = "CHACHA20_POLY1305";
+pub const AES_128_GCM:       &str = "A1G";
+pub const AES_256_GCM:       &str = "A2G";
+pub const CHACHA20_POLY1305: &str = "CP1";
 
 // network
-pub const HAND:      &str = "_hand";
-pub const METHOD:    &str = "_meth";
-pub const SECURE:    &str = "_secu";
-pub const ORIGIN:    &str = "_orig";
+pub const HAND:      &str = "_ha";
+pub const METHOD:    &str = "_me";
+pub const SECURE:    &str = "_se";
+pub const ORIGIN:    &str = "_or";
