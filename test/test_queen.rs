@@ -12,7 +12,7 @@ fn conn() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
     for _ in 0..10000 {
-        let _wire = socket.connect(msg!{}, None, None).unwrap();
+        let _wire = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
     }
 
     struct MyHook;
@@ -25,13 +25,13 @@ fn conn() {
 
     let socket = Socket::new(MessageId::new(), MyHook).unwrap();
 
-    let ret = socket.connect(msg!{}, None, None);
+    let ret = socket.connect(MessageId::new(), false, msg!{}, None, None);
     assert!(ret.is_err());
 
     match ret {
         Ok(_) => unreachable!(),
         Err(err) => {
-            assert!(matches!(err, Error::ConnectionRefused(_)));
+            assert!(matches!(err, Error::ErrorCode(Code::AuthenticationFailed)));
         }
     }
 }
@@ -40,8 +40,8 @@ fn conn() {
 fn connect() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING
@@ -72,125 +72,18 @@ fn connect() {
 }
 
 #[test]
-fn auth() {
-    let socket = Socket::new(MessageId::new(), ()).unwrap();
-
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
-
-    let _ = wire1.send(msg!{
-        CHAN: ATTACH
-    });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(Code::get(&recv) == Some(Code::Unauthorized));
-
-    let _ = wire1.send(msg!{
-        CHAN: AUTH
-    });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_message_id(SLOT_ID).is_ok());
-    assert!(recv.get(LABEL).is_none());
-
-    let _ = wire1.send(msg!{
-        CHAN: AUTH,
-        LABEL: msg!{
-            "aa": "bb"
-        }
-    });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_message_id(SLOT_ID).is_ok());
-    assert!(recv.get_message(LABEL).unwrap() == &msg!{"aa": "bb"});
-
-    let slot_id = MessageId::new();
-
-    let _ = wire1.send(msg!{
-        CHAN: AUTH,
-        SLOT_ID: slot_id.clone()
-    });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &slot_id);
-    assert!(recv.get_message(LABEL).unwrap() == &msg!{"aa": "bb"});
-
-    let _ = wire1.send(msg!{
-        CHAN: AUTH,
-        LABEL: msg!{
-            "cc": "dd"
-        }
-    });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_message_id(SLOT_ID).is_ok());
-    assert!(recv.get_message(LABEL).unwrap() == &msg!{"cc": "dd"});
-
-    // wire2
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
-    let _ = wire2.send(msg!{
-        CHAN: AUTH,
-        SLOT_ID: slot_id.clone()
-    });
-
-    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(Code::get(&recv) == Some(Code::DuplicateSlotId));
-
-    let _ = wire2.send(msg!{
-        CHAN: MINE,
-    });
-
-    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-
-    let value = recv.get_message(VALUE).unwrap();
-
-    assert!(value.get_bool(AUTH).unwrap() == false);
-    assert!(value.get_bool(ROOT).unwrap() == false);
-    assert!(value.get_message(CHANS).unwrap().is_empty());
-    assert!(value.get_message_id(SLOT_ID).unwrap() != &slot_id);
-    assert!(value.get_u64(SEND_NUM).unwrap() == 2);
-    assert!(value.get_u64(RECV_NUM).unwrap() == 2);
-
-    drop(wire1);
-
-    thread::sleep(Duration::from_millis(100));
-
-    // wire 2 auth again
-    let _ = wire2.send(msg!{
-        CHAN: AUTH,
-        SLOT_ID: slot_id.clone()
-    });
-
-    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &slot_id);
-}
-
-#[test]
 fn attach_detach() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
-    // auth
     let _ = wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     let _ = wire2.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -257,21 +150,20 @@ fn attach_detach() {
 fn label() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
-    let wire3 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire3 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
-    // auth
     let _ = wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     let _ = wire2.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     let _ = wire3.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -363,11 +255,10 @@ fn label() {
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
 
-    let wire4 = socket.connect(msg!{}, None, None).unwrap();
+    let wire4 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
-    // auth
     let _ = wire4.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     // attach
@@ -427,21 +318,20 @@ fn label() {
 fn labels() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
-    let wire3 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire3 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
-    // auth
     let _ = wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     let _ = wire2.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     let _ = wire3.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -629,11 +519,10 @@ fn labels() {
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).is_err());
 
-    let wire4 = socket.connect(msg!{}, None, None).unwrap();
+    let wire4 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
-    // auth
     let _ = wire4.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     // attach
@@ -693,26 +582,25 @@ fn labels() {
 fn share() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
-    let wire3 = socket.connect(msg!{}, None, None).unwrap();
-    let wire4 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire3 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire4 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
-    // auth
     let _ = wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     let _ = wire2.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     let _ = wire3.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     let _ = wire4.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -843,52 +731,36 @@ fn share() {
 fn wire_to_wire() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
-    let wire3 = socket.connect(msg!{}, None, None).unwrap();
+    let slot_id = MessageId::with_string("016f9dd00d746c7f89ce3423").unwrap();
+    let wire1 = socket.connect(slot_id, false, msg!{}, None, None).unwrap();
 
-    // auth
+    let slot_id = MessageId::with_string("016f9dd0c97338e09f5c61e9").unwrap();
+    let wire2 = socket.connect(slot_id, false, msg!{}, None, None).unwrap();
+
+    let slot_id = MessageId::with_string("016f9dd0c97338e09f5c61e9").unwrap();
+    let ret = socket.connect(slot_id, false, msg!{}, None, None);
+
+    assert!(matches!(ret, Err(Error::ErrorCode(Code::DuplicateSlotId))));
+
     let _ = wire1.send(msg!{
-        CHAN: AUTH,
-        SLOT_ID: MessageId::with_string("016f9dd00d746c7f89ce3423").unwrap()
+        CHAN: PING
     });
 
     let _ = wire2.send(msg!{
-        CHAN: AUTH,
-        SLOT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e9").unwrap()
-    });
-
-    // duplicate
-    let _ = wire3.send(msg!{
-        CHAN: AUTH,
-        SLOT_ID: MessageId::with_string("016f9dd0c97338e09f5c61e9").unwrap()
+        CHAN: PING
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-    // assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
 
-    assert!(Code::get(&recv) == Some(Code::DuplicateSlotId));
+    let slot_id = MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap();
+    let wire3 = socket.connect(slot_id, false, msg!{}, None, None).unwrap();
 
     let _ = wire3.send(msg!{
-        CHAN: AUTH,
-        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap()
+        CHAN: PING
     });
 
     assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-
-    // type
-    let wire4 = socket.connect(msg!{}, None, None).unwrap();
-
-    let _ = wire4.send(msg!{
-        CHAN: AUTH,
-        SLOT_ID: 123
-    });
-
-    let recv = wire4.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(Code::get(&recv) == Some(Code::InvalidSlotIdFieldType));
 
     // slot to slot
     let _ = wire3.send(msg!{
@@ -950,25 +822,15 @@ fn wire_to_wire() {
 fn slot_event() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), true, msg!{}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
-        CHAN: AUTH,
-        ROOT: 123
-    });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(Code::get(&recv) == Some(Code::InvalidRootFieldType));
-
-    let _ = wire1.send(msg!{
-        CHAN: AUTH,
-        ROOT: true
+        CHAN: PING
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    // supe attach
+    // attach
     let _ = wire1.send(msg!{
         CHAN: ATTACH,
         VALUE: SLOT_READY
@@ -994,12 +856,10 @@ fn slot_event() {
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    // auth
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(MessageId::new(), true, msg!{}, None, None).unwrap();
 
     let _ = wire2.send(msg!{
-        CHAN: AUTH,
-        ROOT: true
+        CHAN: PING
     });
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -1009,7 +869,6 @@ fn slot_event() {
     assert!(recv.get_str(CHAN).unwrap() == SLOT_READY);
     assert!(recv.get_bool(ROOT).unwrap() == true);
     assert!(recv.get_message_id(SLOT_ID).is_ok());
-    assert!(recv.get_message(LABEL).is_ok());
     assert!(recv.get_message(ATTR).is_ok());
 
     // attach
@@ -1076,15 +935,13 @@ fn slot_event() {
 
     assert!(recv.get_str(CHAN).unwrap() == SLOT_BREAK);
     assert!(recv.get_message_id(SLOT_ID).is_ok());
-    assert!(recv.get_message(LABEL).is_ok());
     assert!(recv.get_message(ATTR).is_ok());
 
-    // auth
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
+    let slot_id = MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap();
+    let wire2 = socket.connect(slot_id, false, msg!{}, None, None).unwrap();
 
     let _ = wire2.send(msg!{
-        CHAN: AUTH,
-        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap()
+        CHAN: PING
     });
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -1125,13 +982,30 @@ fn slot_event() {
 
     assert!(Code::get(&recv) == Some(Code::TargetSlotIdNotExist));
     assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
+
+    let wire3 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+
+    let _ = wire3.send(msg!{
+        CHAN: PING
+    });
+
+    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    let _ = wire3.send(msg!{
+        CHAN: ATTACH,
+        VALUE: SLOT_READY
+    });
+
+    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(Code::get(&recv) == Some(Code::PermissionDenied));
 }
 
 #[test]
 fn mine() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
     // mine
     let _ = wire1.send(msg!{
@@ -1144,18 +1018,11 @@ fn mine() {
 
     let value = recv.get_message(VALUE).unwrap();
 
-    assert!(value.get_bool(AUTH).unwrap() == false);
     assert!(value.get_bool(ROOT).unwrap() == false);
     assert!(value.get_message(CHANS).unwrap().is_empty());
     assert!(value.is_null(SLOT_ID) == false);
     assert!(value.get_u64(SEND_NUM).unwrap() == 1);
     assert!(value.get_u64(RECV_NUM).unwrap() == 1);
-
-    // auth
-    let _ = wire1.send(msg!{
-        CHAN: AUTH,
-        ROOT: true
-    });
 
     // attach
     let _ = wire1.send(msg!{
@@ -1164,7 +1031,6 @@ fn mine() {
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     // mine
     let _ = wire1.send(msg!{
@@ -1177,34 +1043,31 @@ fn mine() {
 
     let value = recv.get_message(VALUE).unwrap();
 
-    assert!(value.get_bool(AUTH).unwrap() == true);
-    assert!(value.get_bool(ROOT).unwrap() == true);
+    assert!(value.get_bool(ROOT).unwrap() == false);
     assert!(value.get_message(CHANS).unwrap().get_array("hello").is_ok());
     assert!(value.get_message_id(SLOT_ID).is_ok());
-    assert!(value.get_u64(SEND_NUM).unwrap() == 4);
-    assert!(value.get_u64(RECV_NUM).unwrap() == 4);
+    assert!(value.get_u64(SEND_NUM).unwrap() == 3);
+    assert!(value.get_u64(RECV_NUM).unwrap() == 3);
 }
 
 #[test]
 fn slot_event_send_recv() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
-    let wire3 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire3 = socket.connect(MessageId::new(), true, msg!{}, None, None).unwrap();
 
-    // auth
     let _ = wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     let _ = wire2.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     let _ = wire3.send(msg!{
-        CHAN: AUTH,
-        ROOT: true
+        CHAN: PING
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -1269,11 +1132,10 @@ fn slot_event_send_recv() {
 fn self_send_recv() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
-    // auth
     let _ = wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -1302,11 +1164,10 @@ fn self_send_recv() {
     assert!(wire1.wait(Some(Duration::from_millis(100))).is_err());
 
     // wire2
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
-    // auth
     let _ = wire2.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);

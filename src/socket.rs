@@ -18,11 +18,11 @@ use nson::{
 };
 
 use crate::Wire;
-use crate::error::{Result, Error, RecvError};
+use crate::error::{Result, Error, RecvError, Code};
 
 pub use hook::{Hook, NonHook};
 pub use switch::Switch;
-pub use slot::{Slot, SlotModify};
+pub use slot::Slot;
 
 mod hook;
 mod switch;
@@ -30,6 +30,7 @@ mod slot;
 
 #[derive(Clone)]
 pub struct Socket {
+    id: MessageId,
     queue: Queue<Packet>,
     run: Arc<AtomicBool>
 }
@@ -43,6 +44,7 @@ impl Socket {
         let run = Arc::new(AtomicBool::new(true));
 
         let socket = Socket {
+            id,
             queue: queue.clone(),
             run: run.clone()
         };
@@ -68,6 +70,10 @@ impl Socket {
         Ok(socket)
     }
 
+    pub fn id(&self) -> &MessageId {
+        &self.id
+    }
+
     pub fn stop(&self) {
         self.run.store(false, Ordering::Relaxed);
         self.queue.push(Packet::Close);
@@ -79,20 +85,26 @@ impl Socket {
 
     pub fn connect(
         &self,
+        slot_id: MessageId,
+        root: bool,
         attr: Message,
         capacity: Option<usize>,
         timeout: Option<Duration>
     ) -> Result<Wire<Message>> {
         let (wire1, wire2) = Wire::pipe(capacity.unwrap_or(64), attr)?;
 
-        let packet = Packet::NewSlot(wire1);
+        let packet = Packet::NewSlot(slot_id, root, wire1);
 
         self.queue.push(packet);
 
-        let ret = wire2.wait(Some(timeout.unwrap_or(Duration::from_secs(10))));
+        let ret = wire2.wait(Some(timeout.unwrap_or(Duration::from_secs(10))))?;
 
-        if let Err(err) = ret {
-            return Err(Error::ConnectionRefused(err.to_string()))
+        if let Some(code) = Code::get(&ret) {
+            if code != Code::Ok {
+                return Err(Error::ErrorCode(code))
+            }
+        } else {
+            unreachable!()
         }
 
         Ok(wire2)
@@ -116,7 +128,7 @@ struct SockeInner<H> {
 }
 
 enum Packet {
-    NewSlot(Wire<Message>),
+    NewSlot(MessageId, bool, Wire<Message>),
     Close
 }
 
@@ -158,8 +170,8 @@ impl<H: Hook> SockeInner<H> {
                 if event.token() == Self::QUEUE_TOKEN {
                     if let Some(packet) = self.queue.pop() {
                         match packet {
-                            Packet::NewSlot(wire) => {
-                                self.switch.add_slot(&self.epoll, &self.hook, wire)?;
+                            Packet::NewSlot(id, root, wire) => {
+                                self.switch.add_slot(&self.epoll, &self.hook, id, root, wire)?;
                             }
                             Packet::Close => {
                                 return Ok(())

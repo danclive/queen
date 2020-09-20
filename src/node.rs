@@ -18,7 +18,7 @@ use queen_io::{
 
 use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
-use nson::{msg, Message};
+use nson::{msg, Message, MessageId};
 
 use crate::Socket;
 use crate::Wire;
@@ -237,25 +237,79 @@ impl<C: Codec, H: Hook> Inner<C, H> {
     ) -> Result<(Wire<Message>, C, Option<Crypto>)> {
         let mut codec = C::new();
 
-        // 握手时的消息，不能超过 1024 字节
-        let bytes = read_block(stream, Some(1024))?;
+        // 握手时的消息，不能超过 2048 字节
+        let bytes = read_block(stream, Some(2048))?;
         let mut message = codec.decode(&None, bytes)?;
 
         let chan = match message.get_str(CHAN) {
             Ok(chan) => chan,
             Err(_) => {
-                return Err(Error::InvalidData("message.get_str(CHAN)".to_string()))
+                #[cfg(debug_assertions)]
+                {
+                    Code::CannotGetChanField.set(&mut message);
+                    let _ = Self::send(&mut codec, stream, message);
+                }
+
+                return Err(Error::ErrorCode(Code::CannotGetChanField))
             }
         };
 
         if chan != HAND {
-            return Err(Error::InvalidData("chan != HAND".to_string()))
+            #[cfg(debug_assertions)]
+            {
+                Code::UnsupportedChan.set(&mut message);
+                let _ = Self::send(&mut codec, stream, message);
+            }
+
+            return Err(Error::ErrorCode(Code::UnsupportedChan))
         }
+
+        // SLOT_ID
+        let slot_id = if let Some(slot_id) = message.get(SLOT_ID) {
+            if let Some(slot_id) = slot_id.as_message_id() {
+                *slot_id
+            } else {
+                #[cfg(debug_assertions)]
+                {
+                    Code::InvalidSlotIdFieldType.set(&mut message);
+                    let _ = Self::send(&mut codec, stream, message);
+                }
+
+                return Err(Error::ErrorCode(Code::InvalidSlotIdFieldType));
+            }
+        } else {
+            let slot_id = MessageId::new();
+            message.insert(SLOT_ID, slot_id);
+            slot_id
+        };
+
+        // ROOT
+        let root = if let Some(root) = message.get(ROOT) {
+            if let Some(root) = root.as_bool() {
+                root
+            } else {
+                #[cfg(debug_assertions)]
+                {
+                    Code::InvalidRootFieldType.set(&mut message);
+                    let _ = Self::send(&mut codec, stream, message);
+                }
+
+                return Err(Error::ErrorCode(Code::InvalidRootFieldType));
+            }
+        } else {
+            false
+        };
 
         // 握手消息是可以修改的，修改后的消息会发回客户端，因此可以携带自定义数据
         // 但是对于一些握手必备的属性，请谨慎修改，比如加密方式（METHOD）
-        if !hook.start(&mut message) {
-            return Err(Error::PermissionDenied("hook.hand".to_string()));
+        if !hook.start(slot_id, root, &mut message) {
+            #[cfg(debug_assertions)]
+            {
+                Code::AuthenticationFailed.set(&mut message);
+                let _ = Self::send(&mut codec, stream, message);
+            }
+
+            return Err(Error::ErrorCode(Code::AuthenticationFailed));
         }
 
         if !hook.enable_secure() {
@@ -275,16 +329,15 @@ impl<C: Codec, H: Hook> Inner<C, H> {
                 ORIGIN: origin
             };
 
-            let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
+            let wire = socket.connect(slot_id, root, attr, None, None)?;
 
             // 这里可以修改 Wire 的属性
-            hook.finish(&mut message, &wire);
+            hook.finish(slot_id, root, &mut message, &wire);
 
             Code::Ok.set(&mut message);
 
-            let bytes = codec.encode(&None, message)?;
-
-            stream.write_all(&bytes)?;
+            // 握手消息发回
+            Self::send(&mut codec, stream, message)?;
 
             return Ok((wire, codec, None))
         }
@@ -293,13 +346,31 @@ impl<C: Codec, H: Hook> Inner<C, H> {
             let method = if let Ok(method) = Method::from_str(method) {
                 method
             } else {
-                return Err(Error::InvalidData("Method::from_str(hand)".to_string()))
+                #[cfg(debug_assertions)]
+                {
+                    Code::UnsupportedFormat.set(&mut message);
+                    let _ = Self::send(&mut codec, stream, message);
+                }
+
+                return Err(Error::ErrorCode(Code::UnsupportedFormat));
             };
 
             // 握手消息是可以修改的，修改后的消息会发回客户端，因此可以携带自定义数据
             // 但是对于一些握手必备的属性，请谨慎修改
             // 这里需要根据传递的自定义数据，返回一个加密密钥
-            let secret = hook.access(&mut message).ok_or_else(|| Error::PermissionDenied("hook.access".to_string()))?;
+            // let secret = hook.access(&mut message).ok_or_else(|| Error::ErrorCode(Code::PermissionDenied))?;
+            let secret = match hook.access(slot_id, root, &mut message) {
+                Some(s) => s,
+                None => {
+                    #[cfg(debug_assertions)]
+                    {
+                        Code::PermissionDenied.set(&mut message);
+                        let _ = Self::send(&mut codec, stream, message);
+                    }
+
+                    return Err(Error::ErrorCode(Code::PermissionDenied))
+                }
+            };
 
             // 这里会将原始的握手消息传入。
             // 但是要注意，握手消息是没有加密的，不能传递敏感数据
@@ -315,24 +386,35 @@ impl<C: Codec, H: Hook> Inner<C, H> {
                 ORIGIN: origin
             };
 
-            let wire = socket.connect(attr, None, Some(Duration::from_secs(10)))?;
+            let wire = socket.connect(slot_id, root, attr, None, None)?;
 
             // 这里可以修改 Wire 的属性
-            hook.finish(&mut message, &wire);
+            hook.finish(slot_id, root, &mut message, &wire);
 
             Code::Ok.set(&mut message);
 
             // 握手消息发回
-            let bytes = codec.encode(&None, message)?;
-
-            stream.write_all(&bytes)?;
+            Self::send(&mut codec, stream, message)?;
 
             let crypto = Crypto::new(&method, secret.as_bytes());
 
             return Ok((wire, codec, Some(crypto)))
         }
 
-        Err(Error::InvalidData(format!("{}", message)))
+        #[cfg(debug_assertions)]
+        {
+            Code::PermissionDenied.set(&mut message);
+            let _ = Self::send(&mut codec, stream, message);
+        }
+
+        Err(Error::ErrorCode(Code::PermissionDenied))
+    }
+
+    fn send(codec: &mut impl Codec, stream: &mut TcpStream, message: Message) -> Result<()> {
+        let bytes = codec.encode(&None, message)?;
+        stream.write_all(&bytes)?;
+
+        Ok(())
     }
 }
 

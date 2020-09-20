@@ -12,15 +12,14 @@ Queen 是一个支持订阅发布模式、一对一和一对多的数据总线�
 在 `Cargo.toml` 文件中加入
 
 ```
-queen = "0.18"
+queen = "0.20"
 ```
 
 ## 功能特性
 
-* 订阅发布
+* 订阅发布 & 请求响应
 * 一对一、一对多
 * 使用 [nson](https://github.com/danclive/nson) 作为数据格式
-* 提供若干 Hook 函数，开发者可以按需定制鉴权等功能
 * 支持消息加密
 * ... 待补充
 
@@ -39,26 +38,19 @@ fn main() {
     let socket = Socket::new(MessageId::new(), NonHook).unwrap();
 
     // start wire 1
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
     wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     }).unwrap();
 
     let ret = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    if let Some(err) = Code::get(&ret) {
-        if err != Code::Ok {
-            println!("wire 1 auth error: {:?}", err);
-            return
-        }
-    }
-
-    println!("wire 1 auth ret: {:?}", ret);
+    println!("wire 1 ping ret: {:?}", ret);
 
     // start node
     let _node = Node::<NsonCodec>::new(
         socket.clone(),
-        1,
+        4,
         vec!["127.0.0.1:8888".parse().unwrap()],
         ()
     ).unwrap();
@@ -67,21 +59,21 @@ fn main() {
     let port = Port::<NsonCodec>::new().unwrap();
 
     // start wire 2
-    let wire2 = port.connect("127.0.0.1:8888", msg!{}, None, None).unwrap();
+    let wire2 = port.connect("127.0.0.1:8888", None, MessageId::new(), false, msg!{}, None).unwrap();
 
     wire2.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     }).unwrap();
 
     let ret = wire2.wait(Some(Duration::from_secs(1))).unwrap();
     if let Some(err) = Code::get(&ret) {
         if err != Code::Ok {
-            println!("wire 2 auth error: {:?}", err);
+            println!("wire 2 ping error: {:?}", err);
             return
         }
     }
 
-    println!("wire 2 auth ret: {:?}", ret);
+    println!("wire 2 ping ret: {:?}", ret);
 
     // wire 1 attach
     wire1.send(msg!{
@@ -90,13 +82,6 @@ fn main() {
     }).unwrap();
 
     let ret = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    if let Some(err) = Code::get(&ret) {
-        if err != Code::Ok {
-            println!("wire 1 attach error: {:?}", err);
-            return
-        }
-    }
-
     println!("wire 1 attach ret: {:?}", ret);
 
     // wire 2 send
@@ -117,4 +102,5 @@ fn main() {
 
     println!("wire 1 recv ret: {:?}", ret);
 }
+
 ```

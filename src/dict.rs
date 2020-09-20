@@ -2,7 +2,6 @@ pub const CHAN:      &str = "_ch";
 
 // channel
 pub const CHANS:     &str = "_cs";
-pub const AUTH:      &str = "_au";
 pub const ATTACH:    &str = "_ah";
 pub const DETACH:    &str = "_dh";
 pub const PING:      &str = "_pi";

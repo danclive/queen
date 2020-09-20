@@ -10,13 +10,14 @@ use std::io::Write;
 use queen_io::net::tcp::TcpStream;
 use queen_io::queue::mpsc::Queue;
 
+use nson::{Message, MessageId};
+
 use crate::net::{NetWork, Packet, CryptoOptions, Codec};
 use crate::net::tcp_ext::TcpExt;
 use crate::Wire;
 use crate::crypto::Crypto;
 use crate::dict::*;
-use crate::nson::Message;
-use crate::error::{Result, Error};
+use crate::error::{Result, Error, Code};
 use crate::util::message::read_block;
 
 #[derive(Clone)]
@@ -70,8 +71,10 @@ impl<C: Codec> Port<C> {
     pub fn connect<A: ToSocketAddrs>(
         &self,
         addr: A,
-        mut attr: Message,
         crypto_options: Option<CryptoOptions>,
+        slot_id: MessageId,
+        root: bool,
+        mut attr: Message,
         capacity: Option<usize>
     ) -> Result<Wire<Message>> {
 
@@ -90,6 +93,8 @@ impl<C: Codec> Port<C> {
         attr.insert(CHAN, HAND);
         attr.insert(ADDR, stream.peer_addr()?.to_string());
         attr.insert(SECURE, false);
+        attr.insert(SLOT_ID, slot_id);
+        attr.insert(ROOT, root);
 
         let crypto = crypto_options.map(|options| {
             attr.insert(SECURE, true);
@@ -108,30 +113,35 @@ impl<C: Codec> Port<C> {
         let bytes = read_block(&mut stream, Some(1024))?;
         let mut message = codec.decode(&None, bytes)?;
 
-        if message.get_i32(CODE) == Ok(0) {
-            message.remove(CODE);
+        if let Some(code) = Code::get(&message) {
+            if code == Code::Ok {
+                message.remove(CHAN);
+                message.remove(CODE);
 
-            stream.set_nonblocking(true)?;
-            stream.set_read_timeout(None)?;
-            stream.set_write_timeout(None)?;
-            // 握手结束
+                stream.set_nonblocking(true)?;
+                stream.set_read_timeout(None)?;
+                stream.set_write_timeout(None)?;
+                // 握手结束
 
-            stream.set_keep_alive(self.tcp_keep_alive)?;
-            stream.set_keep_idle(self.tcp_keep_idle as i32)?;
-            stream.set_keep_intvl(self.tcp_keep_intvl as i32)?;
-            stream.set_keep_cnt(self.tcp_keep_cnt as i32)?;
+                stream.set_keep_alive(self.tcp_keep_alive)?;
+                stream.set_keep_idle(self.tcp_keep_idle as i32)?;
+                stream.set_keep_intvl(self.tcp_keep_intvl as i32)?;
+                stream.set_keep_cnt(self.tcp_keep_cnt as i32)?;
 
-            // 握手消息可以被对端修改，这里将修改后的出入，以便能够携带一些自定义数据
-            let (wire1, wire2) = Wire::pipe(capacity.unwrap_or(64), message)?;
+                // 握手消息可以被对端修改，这里将修改后的出入，以便能够携带一些自定义数据
+                let (wire1, wire2) = Wire::pipe(capacity.unwrap_or(64), message)?;
 
-            self.queue.push(Packet::NewConn {
-                wire: wire1,
-                stream,
-                codec,
-                crypto
-            });
+                self.queue.push(Packet::NewConn {
+                    wire: wire1,
+                    stream,
+                    codec,
+                    crypto
+                });
 
-            return Ok(wire2)
+                return Ok(wire2)
+            } else {
+                return Err(Error::ErrorCode(code))
+            }
         }
 
         Err(Error::InvalidData(format!("{}", message)))

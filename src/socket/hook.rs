@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use nson::Message;
 
-use super::{Switch, Slot, SlotModify};
+use super::{Switch, Slot};
 
 pub trait Hook: Send + 'static {
     fn accept(&self, _: &Slot) -> bool { true }
@@ -12,8 +12,6 @@ pub trait Hook: Send + 'static {
     fn recv(&self, _: &Slot, _: &mut Message) -> bool { true }
 
     fn send(&self, _: &Slot, _: &mut Message) -> bool { true }
-
-    fn auth(&self, _: &Slot, _: &SlotModify, _: &mut Message) -> bool { true }
 
     fn attach(&self, _: &Slot, _: &mut Message, _chan: &str, _label: &HashSet<String>) -> bool { true }
 

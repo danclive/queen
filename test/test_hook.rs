@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::thread;
 use std::collections::HashSet;
 
-use queen::{Socket, Hook, Switch, Slot, SlotModify};
+use queen::{Socket, Hook, Switch, Slot};
 use queen::nson::{msg, MessageId, Message};
 use queen::dict::*;
 use queen::error::Code;
@@ -71,14 +71,12 @@ fn test_hook() {
             self.inner.slots.fetch_sub(1, Ordering::SeqCst);
         }
 
-        fn recv(&self, conn: &Slot, message: &mut Message) -> bool {
+        fn recv(&self, _: &Slot, message: &mut Message) -> bool {
             self.inner.recvs.fetch_add(1, Ordering::SeqCst);
 
-            if !conn.auth {
-                if let Ok(chan) = message.get_str(CHAN) {
-                    if chan == PING {
-                        return false
-                    }
+            if let Ok(chan) = message.get_str(CHAN) {
+                if chan == "aaa" {
+                    return false
                 }
             }
 
@@ -89,16 +87,6 @@ fn test_hook() {
             self.inner.sends.fetch_add(1, Ordering::SeqCst);
 
             true
-        }
-
-        fn auth(&self, _: &Slot, _: &SlotModify, message: &mut Message) -> bool {
-            if let (Ok(user), Ok(pass)) = (message.get_str("user"), message.get_str("pass")) {
-                if user == "aaa" && pass == "bbb" {
-                    return true
-                }
-            }
-
-            return false
         }
 
         fn attach(&self, _: &Slot, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
@@ -142,13 +130,12 @@ fn test_hook() {
 
     let socket = Socket::new(MessageId::new(), hook.clone()).unwrap();
 
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
     assert!(hook.slots() == 1);
 
-    // ping
     let _ = wire1.send(msg!{
-        CHAN: PING
+        CHAN: "aaa"
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
@@ -156,26 +143,6 @@ fn test_hook() {
 
     assert!(hook.recvs() == 1);
     assert!(hook.sends() == 1);
-
-    // auth
-    let _ = wire1.send(msg!{
-        CHAN: AUTH
-    });
-
-    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(Code::get(&recv) == Some(Code::AuthenticationFailed));
-
-    let _ = wire1.send(msg!{
-        CHAN: AUTH,
-        "user": "aaa",
-        "pass": "bbb"
-    });
-
-    let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-
-    assert!(hook.recvs() == 3);
-    assert!(hook.sends() == 3);
 
     // ping
     let _ = wire1.send(msg!{
@@ -187,6 +154,8 @@ fn test_hook() {
     assert!(recv.get_str("hello").unwrap() == "world");
 
     assert!(hook.pings() == 1);
+    assert!(hook.recvs() == 2);
+    assert!(hook.sends() == 2);
 
     // attach
     let _ = wire1.send(msg!{
@@ -235,6 +204,9 @@ fn test_hook() {
     assert!(recv.get_i32(CODE).unwrap() == 0);
     assert!(recv.get_str("hahaha").unwrap() == "wawawa");
     assert!(recv.get_u32("slots").unwrap() == 1);
+
+    assert!(hook.recvs() == 7);
+    assert!(hook.sends() == 7);
 
     drop(wire1);
 

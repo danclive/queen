@@ -26,19 +26,19 @@ fn port() {
     ).unwrap();
 
     // start wire
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     // start port
     let port = Port::<NsonCodec>::new().unwrap();
 
-    let wire2 = port.connect(addr, msg!{}, None, None).unwrap();
+    let wire2 = port.connect(addr, None, MessageId::new(), false, msg!{}, None).unwrap();
 
     let _ = wire2.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     // wire1 recv
@@ -83,13 +83,13 @@ fn port_secure() {
             true
         }
 
-        fn start(&self, message: &mut Message) -> bool {
+        fn start(&self, _slot_id: MessageId, _root: bool, message: &mut Message) -> bool {
             message.insert("lalala", 123);
 
             true
         }
 
-        fn access(&self, message: &mut Message) -> Option<String> {
+        fn access(&self, _slot_id: MessageId, _root: bool, message: &mut Message) -> Option<String> {
             message.insert("hello", "world");
 
             if let Ok(access) = message.get_str(ACCESS) {
@@ -101,7 +101,7 @@ fn port_secure() {
             None
         }
 
-        fn finish(&self, message: &mut Message, wire: &Wire<Message>) {
+        fn finish(&self, _slot_id: MessageId, _root: bool, message: &mut Message, wire: &Wire<Message>) {
             message.insert("wawawa", 456);
             wire.attr().insert("aaa", "bbb");
         }
@@ -115,10 +115,10 @@ fn port_secure() {
     ).unwrap();
 
     // start wire
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     // start port
@@ -133,13 +133,13 @@ fn port_secure() {
         ACCESS: "12d3eaf5e9effffb14fb213e"
     };
 
-    let wire2 = port.connect(addr, attr, Some(crypto_options), None).unwrap();
+    let wire2 = port.connect(addr, Some(crypto_options), MessageId::new(), false, attr, None).unwrap();
     assert!(wire2.attr().get_i32("lalala").unwrap() == 123);
     assert!(wire2.attr().get_i32("wawawa").unwrap() == 456);
     assert!(wire2.attr().get_str("hello").unwrap() == "world");
 
     let _ = wire2.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     // wire1 recv
@@ -184,15 +184,7 @@ fn port_secure2() {
             true
         }
 
-        fn start(&self, message: &mut Message) -> bool {
-            message.insert("lalala", 123);
-
-            true
-        }
-
-        fn access(&self, message: &mut Message) -> Option<String> {
-            message.insert("hello", "world");
-
+        fn access(&self, _slot_id: MessageId, _root: bool, message: &mut Message) -> Option<String> {
             if let Ok(access) = message.get_str(ACCESS) {
                 if access == "12d3eaf5e9effffb14fb213e" {
                     return Some("99557df09590ad6043ceefd1".to_string())
@@ -211,16 +203,16 @@ fn port_secure2() {
     ).unwrap();
 
     // start wire
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     });
 
     // start port
     let port = Port::<NsonCodec>::new().unwrap();
 
-    let wire2 = port.connect(addr, msg!{}, None, None);
+    let wire2 = port.connect(addr, None, MessageId::new(), false, msg!{}, None);
     assert!(wire2.is_err());
 
     // wire1 recv

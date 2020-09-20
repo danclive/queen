@@ -18,7 +18,7 @@ use crate::dict::*;
 use crate::error::{Code, Result};
 
 use super::Hook;
-use super::{Slot, SlotModify};
+use super::Slot;
 
 pub struct Switch {
     pub id: MessageId,
@@ -49,21 +49,54 @@ impl Switch {
         &mut self,
         epoll: &Epoll,
         hook: &impl Hook,
+        id: MessageId,
+        root: bool,
         wire: Wire<Message>
     ) -> Result<()> {
+        if self.slot_ids.contains_key(&id) {
+            let _ = wire.send(msg!{CODE: Code::DuplicateSlotId.code()});
+
+            return Ok(())
+        }
+
         let entry = self.slots.vacant_entry();
-        let slot = Slot::new(entry.key(), wire);
+        let token = entry.key();
+
+        let slot = Slot::new(token, id, root, wire);
 
         // 此处可以验证一下 SLOT 的属性，不过目前只能验证 wire.attr
         // 并且，wire.attr 是可以修改的
         // 但是，SLOT 的属性是不能在这里修改的
         let success = hook.accept(&slot);
 
-        if success && matches!(slot.wire.send(msg!{CODE: 0i32}), Ok(_)) {
-            epoll.add(&slot.wire, Token(entry.key()), Ready::readable(), EpollOpt::level())?;
+        if success && slot.wire.send(msg!{CODE: Code::Ok.code()}) == Ok(()) {
+            epoll.add(&slot.wire, Token(token), Ready::readable(), EpollOpt::level())?;
+
+            self.slot_ids.insert(slot.id, token);
+
+            // 这里发一个事件，表示有 SLOT 认证成功，准备好接收消息了
+            // 注意，只有在 SLOT_READY 和 SLOT_BREAK 这两个事件才会返回
+            // SLOT 的 LABEL 和 ATTR
+            // slot event
+            // {
+            //     CHAN: SLOT_READY,
+            //     ROOT: $slot.root,
+            //     SLOT_ID: $slot_id,
+            //     LABEL: $label,
+            //     ATTR: $attr
+            // }
+            let event_message = msg!{
+                CHAN: SLOT_READY,
+                ROOT: slot.root,
+                SLOT_ID: slot.id,
+                ATTR: slot.wire.attr().clone()
+            };
+
             entry.insert(slot);
+
+            self.relay_root_message(hook, token, SLOT_READY, event_message);
         } else {
-            slot.wire.close();
+            let _ = slot.wire.send(msg!{CODE: Code::AuthenticationFailed.code()});
         }
 
         Ok(())
@@ -109,7 +142,6 @@ impl Switch {
             let event_message = msg!{
                 CHAN: SLOT_BREAK,
                 SLOT_ID: slot.id,
-                LABEL: slot.label.clone(),
                 ATTR: slot.wire.attr().clone()
             };
 
@@ -151,7 +183,7 @@ impl Switch {
 
         if chan.starts_with('_') {
             match chan {
-                AUTH => self.auth(hook, token, message),
+                // AUTH => self.auth(hook, token, message),
                 ATTACH => self.attach(hook, token, message),
                 DETACH => self.detach(hook, token, message),
                 PING => self.ping(hook, token, message),
@@ -224,15 +256,6 @@ impl Switch {
         chan: String,
         mut message: Message
     ) {
-        // 认证之前，不能发送消息
-        if !self.slots[token].auth {
-            Code::Unauthorized.set(&mut message);
-
-            self.send_message(hook, token, message);
-
-            return
-        }
-
         let success = hook.emit(&self.slots[token], &mut message);
 
         if !success {
@@ -258,7 +281,7 @@ impl Switch {
                     let event_message = msg!{
                         CHAN: SLOT_RECV,
                         VALUE: $message.clone(),
-                        TO: $slot.id.clone()
+                        TO: $slot.id
                     };
 
                     let id = $slot.token;
@@ -437,145 +460,6 @@ impl Switch {
         self.relay_root_message(hook, token, SLOT_SEND, event_message);
     }
 
-    pub(crate) fn auth(
-        &mut self,
-        hook: &impl Hook,
-        token: usize,
-        mut message: Message
-    ) {
-        let mut slot = &mut self.slots[token];
-
-        let mut modify = SlotModify::default();
-
-        // ROOT
-        if let Some(s) = message.get(ROOT) {
-            // ROOT 字段的值只能为 bool
-            if let Some(s) = s.as_bool() {
-                modify.root = Some(s);
-            } else {
-                Code::InvalidRootFieldType.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
-        }
-
-        // LABEL
-        if let Some(label) = message.get(LABEL) {
-            // LABEL 字段的值只能为 Message
-            if let Some(label) = label.as_message() {
-                modify.label = Some(label.clone());
-            } else {
-                Code::InvalidLabelFieldType.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
-        }
-
-        // SLOT_ID
-        if let Some(slot_id) = message.get(SLOT_ID) {
-            // SLOT_ID 的类型必须为 MessageId
-            if let Some(slot_id) = slot_id.as_message_id() {
-                if let Some(other_token) = self.slot_ids.get(slot_id) {
-                    // SLOT ID 不能重复，且不能挤掉已存在的 SLOT
-                    if *other_token != token {
-                        Code::DuplicateSlotId.set(&mut message);
-
-                        self.send_message(hook, token, message);
-
-                        return
-                    }
-                }
-
-                modify.id = Some(slot_id.clone());
-            } else {
-                Code::InvalidSlotIdFieldType.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
-        }
-
-        // 这里可以验证自定义字段的合法性
-        // 这里可以验证超级用户的合法性
-        // 这里可以验证 SLOT_ID 的合法性
-        let success = hook.auth(slot, &modify, &mut message);
-
-        if !success {
-            Code::AuthenticationFailed.set(&mut message);
-
-            self.send_message(hook, token, message);
-
-            return
-        }
-
-        if let Some(id) = modify.id {
-            // 认证时, 可以改变 SLOT_ID
-            self.slot_ids.remove(&slot.id);
-            // 认证成功时，设置
-            // 记得在 SLOT 掉线时移除
-            self.slot_ids.insert(id.clone(), token);
-            slot.id = id;
-        } else {
-            // 认证时，如果没有提供 SLOT_ID, 返回上次认证成功的 SLOT_ID
-            message.insert(SLOT_ID, slot.id.clone());
-            // 认证成功时，设置
-            // 记得在 SLOT 掉线时移除
-            self.slot_ids.insert(slot.id.clone(), token);
-        }
-
-        if let Some(label) = modify.label {
-            slot.label = label;
-        } else {
-            // 如果没有提供 LABEL，返回上次认证成功的 LABEL
-            // 如果 LABEL 为空的话，就没必要返回了
-            if !slot.label.is_empty() {
-                message.insert(LABEL, slot.label.clone());
-            }
-        }
-
-        if let Some(root) = modify.root {
-            slot.root = root;
-        } else {
-            // 如果没有提供 ROOT，返回上次认证成功的 ROOT
-            message.insert(ROOT, slot.root);
-        }
-
-        slot.auth = true;
-
-        message.insert(SOCKET_ID, self.id.clone());
-
-        Code::Ok.set(&mut message);
-
-        // 这里发一个事件，表示有 SLOT 认证成功，准备好接收消息了
-        // 注意，只有在 SLOT_READY 和 SLOT_BREAK 这两个事件才会返回
-        // SLOT 的 LABEL 和 ATTR
-        // slot event
-        // {
-        //     CHAN: SLOT_READY,
-        //     ROOT: $slot.root,
-        //     SLOT_ID: $slot_id,
-        //     LABEL: $label,
-        //     ATTR: $attr
-        // }
-        let event_message = msg!{
-            CHAN: SLOT_READY,
-            ROOT: slot.root,
-            SLOT_ID: slot.id.clone(),
-            LABEL: slot.label.clone(),
-            ATTR: slot.wire.attr().clone()
-        };
-
-        // 之所以在这里才发送，是因为上面使用了 slot 的几个字段
-        self.send_message(hook, token, message);
-
-        self.relay_root_message(hook, token, SLOT_READY, event_message);
-    }
-
     // ATTACH 的时候，可以附带自定义数据，可以通过 Hook.attach 或 SLOT_ATTACH 事件获取
     pub(crate) fn attach(
         &mut self,
@@ -583,15 +467,6 @@ impl Switch {
         token: usize,
         mut message: Message
     ) {
-        // check auth
-        if !self.slots[token].auth {
-            Code::Unauthorized.set(&mut message);
-
-            self.send_message(hook, token, message);
-
-            return
-        }
-
         if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
             // check ROOT
             match chan.as_str() {
@@ -691,15 +566,6 @@ impl Switch {
         token: usize,
         mut message: Message
     ) {
-        // check auth
-        if !self.slots[token].auth {
-            Code::Unauthorized.set(&mut message);
-
-            self.send_message(hook, token, message);
-
-            return
-        }
-
         if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
             // label
             let mut labels = HashSet::new();
@@ -809,12 +675,11 @@ impl Switch {
             }
 
             let slot = msg!{
-                AUTH: slot.auth,
+                SOCKET_ID: self.id,
+                SLOT_ID: slot.id,
                 ROOT: slot.root,
-                CHANS: chans,
-                SLOT_ID: slot.id.clone(),
-                LABEL: slot.label.clone(),
                 ATTR: slot.wire.attr().clone(),
+                CHANS: chans,
                 SEND_NUM: slot.wire.send_num() as u64,
                 RECV_NUM: slot.wire.recv_num() as u64
             };
@@ -832,14 +697,6 @@ impl Switch {
     pub(crate) fn query(&self, hook: &impl Hook, token: usize, mut message: Message) {
         {
             let slot = &self.slots[token];
-
-            if !slot.auth {
-                Code::Unauthorized.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
 
             if !slot.root {
                 Code::PermissionDenied.set(&mut message);
@@ -860,18 +717,6 @@ impl Switch {
     // 用于实现自定义功能。注意，QUERY 和 CUSTOM 的不同之处在于，前者必须具有 ROOT 权限，后者不需要
     // 可以在 Hook.custom 自行定制返回数据
     pub(crate) fn custom(&self, hook: &impl Hook, token: usize, mut message: Message) {
-        {
-            let slot = &self.slots[token];
-
-            if !slot.auth {
-                Code::Unauthorized.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
-        }
-
         hook.custom(self, token, &mut message);
 
         // CUSTOM 的时候，不会插入 CODE: 0, 由 hook 函数决定
@@ -885,14 +730,6 @@ impl Switch {
     pub(crate) fn ctrl(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
         {
             let slot = &self.slots[token];
-
-            if !slot.auth {
-                Code::Unauthorized.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
 
             if !slot.root {
                 Code::PermissionDenied.set(&mut message);
@@ -920,14 +757,6 @@ impl Switch {
     ) -> Result<()> {
         {
             let slot = &self.slots[token];
-
-            if !slot.auth {
-                Code::Unauthorized.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return Ok(())
-            }
 
             if !slot.root {
                 Code::PermissionDenied.set(&mut message);

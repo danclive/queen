@@ -12,39 +12,24 @@ fn main() {
     let socket = Socket::new(MessageId::new(), NonHook).unwrap();
 
     // start wire 1
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
     wire1.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     }).unwrap();
 
     let ret = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    if let Some(err) = Code::get(&ret) {
-        if err != Code::Ok {
-            println!("wire 1 auth error: {:?}", err);
-            return
-        }
-    }
-
-    println!("wire 1 auth ret: {:?}", ret);
+    println!("wire 1 ping ret: {:?}", ret);
 
     // start wire 2
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
 
     wire2.send(msg!{
-        CHAN: AUTH
+        CHAN: PING
     }).unwrap();
 
     let ret = wire2.wait(Some(Duration::from_secs(1))).unwrap();
-    if let Some(err) = Code::get(&ret) {
-        if err != Code::Ok {
-            println!("wire 2 auth error: {:?}", err);
-            return
-        }
-    }
-
-    println!("wire 2 auth ret: {:?}", ret);
-
+    println!("wire 2 ping ret: {:?}", ret);
 
 
     // wire 1 attach
