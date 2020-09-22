@@ -10,13 +10,10 @@ use crate::Wire;
 #[derive(Debug)]
 pub struct Slot {
     pub token: usize,
-    // 默认情况下会随机生成一个，可以在认证时修改
     pub id: MessageId,
-    // 是否具有超级权限
     pub root: bool,
-    // SLOT ATTACH 的 CHAN，以及 LABEL
     pub chans: HashMap<String, HashSet<String>>,
-    // 线
+    pub share_chans: HashMap<String, HashSet<String>>,
     pub wire: Wire<Message>
 }
 
@@ -27,6 +24,7 @@ impl Slot {
             id,
             root,
             chans: HashMap::new(),
+            share_chans: HashMap::new(),
             wire
         }
     }

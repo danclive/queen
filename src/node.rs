@@ -429,7 +429,7 @@ impl<C: Codec> Clone for Node<C> {
 
 impl<C: Codec> Drop for Node<C> {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.run) - self.queues.len() <= 2 {
+        if Arc::strong_count(&self.run) <= 2 + self.queues.len() {
             self.stop()
         }
     }

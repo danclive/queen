@@ -48,6 +48,7 @@ impl<T> Lock<T> {
         }
     }
 
+    #[allow(clippy::missing_safety_doc)]
     pub unsafe fn force_unlock(&self) {
         self.lock.store(false, Ordering::Release);
     }

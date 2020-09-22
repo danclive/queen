@@ -728,6 +728,333 @@ fn share() {
 }
 
 #[test]
+fn share_attach() {
+    let socket = Socket::new(MessageId::new(), ()).unwrap();
+
+    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire3 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire4 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+
+    let _ = wire1.send(msg!{
+        CHAN: PING
+    });
+
+    let _ = wire2.send(msg!{
+        CHAN: PING
+    });
+
+    let _ = wire3.send(msg!{
+        CHAN: PING
+    });
+
+    let _ = wire4.send(msg!{
+        CHAN: PING
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // attatch
+    let _ = wire1.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        SHARE: true
+    });
+
+    let _ = wire2.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa",
+        SHARE: true
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world"
+    });
+
+    let mut read_num = 0;
+
+    if wire1.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    if wire2.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    assert!(read_num == 1);
+
+    // detach
+    let _ = wire1.send(msg!{
+        CHAN: DETACH,
+        VALUE: "aaa"
+    });
+
+    let _ = wire2.send(msg!{
+        CHAN: DETACH,
+        VALUE: "aaa"
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world"
+    });
+
+    let mut read_num = 0;
+
+    if wire1.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    if wire2.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    assert!(read_num == 1);
+
+    // detach
+    let _ = wire1.send(msg!{
+        CHAN: DETACH,
+        VALUE: "aaa",
+        SHARE: true
+    });
+
+    let _ = wire2.send(msg!{
+        CHAN: DETACH,
+        VALUE: "aaa",
+        SHARE: true
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire3.send(msg!{
+        CHAN: "aaa",
+        "hello": "world"
+    });
+
+    let mut read_num = 0;
+
+    if wire1.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    if wire2.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    assert!(read_num == 0);
+
+    // with label
+
+    // attatch
+    let _ = wire1.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "bbb",
+        LABEL: "label1",
+        SHARE: true
+    });
+
+    let _ = wire2.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "bbb",
+        LABEL: "label1",
+        SHARE: true
+    });
+
+    let _ = wire3.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "bbb",
+        SHARE: true
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire4.send(msg!{
+        CHAN: "bbb",
+        "hello": "world",
+        LABEL: "label1"
+    });
+
+    let mut read_num = 0;
+
+    if wire1.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    if wire2.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    assert!(read_num == 1);
+
+    assert!(wire3.wait(Some(Duration::from_millis(100))).is_err());
+
+    // detach
+    let _ = wire1.send(msg!{
+        CHAN: DETACH,
+        VALUE: "bbb",
+        LABEL: "label1"
+    });
+
+    let _ = wire2.send(msg!{
+        CHAN: DETACH,
+        VALUE: "bbb",
+        LABEL: "label1"
+    });
+
+    let _ = wire3.send(msg!{
+        CHAN: DETACH,
+        VALUE: "bbb"
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire4.send(msg!{
+        CHAN: "bbb",
+        "hello": "world",
+        LABEL: "label1"
+    });
+
+    let mut read_num = 0;
+
+    if wire1.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    if wire2.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    assert!(read_num == 1);
+
+    assert!(wire3.wait(Some(Duration::from_millis(100))).is_err());
+
+    // detach
+    let _ = wire1.send(msg!{
+        CHAN: DETACH,
+        VALUE: "bbb",
+        LABEL: "label1",
+        SHARE: true
+    });
+
+    let _ = wire2.send(msg!{
+        CHAN: DETACH,
+        VALUE: "bbb",
+        LABEL: "label1",
+        SHARE: true
+    });
+
+    let _ = wire3.send(msg!{
+        CHAN: DETACH,
+        VALUE: "bbb",
+        SHARE: true
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire4.send(msg!{
+        CHAN: "bbb",
+        "hello": "world",
+        LABEL: "label1"
+    });
+
+    let mut read_num = 0;
+
+    if wire1.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    if wire2.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    assert!(read_num == 0);
+
+    assert!(wire3.wait(Some(Duration::from_millis(100))).is_err());
+
+    // attach
+    let _ = wire1.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "ccc",
+        SHARE: true
+    });
+
+    let _ = wire1.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "ccc"
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire3.send(msg!{
+        CHAN: "ccc",
+        "hello": "world"
+    });
+
+    let mut read_num = 0;
+
+    if wire1.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    if wire1.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    assert!(read_num == 2);
+
+    // detach
+    let _ = wire1.send(msg!{
+        CHAN: DETACH,
+        VALUE: "ccc"
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire3.send(msg!{
+        CHAN: "ccc",
+        "hello": "world"
+    });
+
+    let mut read_num = 0;
+
+    if wire1.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    if wire1.wait(Some(Duration::from_millis(100))).is_ok() {
+        read_num += 1;
+    }
+
+    assert!(read_num == 1);
+}
+
+#[test]
 fn wire_to_wire() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 

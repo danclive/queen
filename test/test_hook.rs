@@ -139,7 +139,7 @@ fn test_hook() {
     });
 
     let recv = wire1.wait(Some(Duration::from_secs(1))).unwrap();
-    assert!(Code::get(&recv) == Some(Code::RefuseReceiveMessage));
+    assert!(Code::get(&recv) == Some(Code::PermissionDenied));
 
     assert!(hook.recvs() == 1);
     assert!(hook.sends() == 1);

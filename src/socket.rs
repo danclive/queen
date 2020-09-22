@@ -97,7 +97,7 @@ impl Socket {
 
         self.queue.push(packet);
 
-        let ret = wire2.wait(Some(timeout.unwrap_or(Duration::from_secs(10))))?;
+        let ret = wire2.wait(Some(timeout.unwrap_or_else(|| Duration::from_secs(10))))?;
 
         if let Some(code) = Code::get(&ret) {
             if code != Code::Ok {

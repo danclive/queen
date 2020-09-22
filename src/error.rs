@@ -74,28 +74,32 @@ impl error::Error for Error {
 #[repr(i32)]
 pub enum Code {
     Ok = 0,
-    InternalError,
-    UnsupportedFormat,
-    Unauthorized,
-    AuthenticationFailed,
-    PermissionDenied,
-    DuplicateSlotId,
-    TargetSlotIdNotExist,
-    RefuseReceiveMessage,
-    CannotGetChanField,
-    UnsupportedChan,
-    CannotGetValueField,
-    CannotGetSlotIdField,
-    InvalidSlotIdFieldType,
-    InvalidLabelFieldType,
-    InvalidToFieldType,
-    InvalidRootFieldType,
-    EmptyFieldName,
-    EmptyFieldValue,
-    KeyTooLong,
-    BadValue,
-    NotFound,
-    UnknownError,
+
+    Unauthorized = 10,
+    AuthenticationFailed = 11,
+    PermissionDenied = 12,
+
+    DuplicateSlotId = 20,
+    TargetSlotIdNotExist = 21,
+    CannotGetChanField = 22,
+    UnsupportedChan = 23,
+    CannotGetValueField = 24,
+    CannotGetSlotIdField = 25,
+    InvalidSlotIdFieldType = 26,
+    InvalidLabelFieldType = 27,
+    InvalidToFieldType = 28,
+    InvalidRootFieldType = 29,
+    InvalidShareFieldType = 210,
+
+    InternalError = 30,
+    UnsupportedFormat = 31,
+    EmptyFieldName = 32,
+    EmptyFieldValue = 33,
+    KeyTooLong = 34,
+    BadValue = 35,
+    NotFound = 36,
+
+    UnknownError = -1,
 }
 
 impl Code {
@@ -104,24 +108,47 @@ impl Code {
     }
 
     pub fn from_i32(code: i32) -> Code {
-        if code < 0 || code > Code::UnknownError as i32 {
-            return Code::UnknownError
-        }
+        match code {
+            0 => Code::Ok,
 
-        unsafe { std::mem::transmute(code) }
+            10 => Code::Unauthorized,
+            11 => Code::AuthenticationFailed,
+            12 => Code::PermissionDenied,
+
+            20 => Code::DuplicateSlotId,
+            21 => Code::TargetSlotIdNotExist,
+            22 => Code::CannotGetChanField,
+            23 => Code::UnsupportedChan,
+            24 => Code::CannotGetValueField,
+            25 => Code::CannotGetSlotIdField,
+            26 => Code::InvalidSlotIdFieldType,
+            27 => Code::InvalidLabelFieldType,
+            28 => Code::InvalidToFieldType,
+            29 => Code::InvalidRootFieldType,
+            210 => Code::InvalidShareFieldType,
+
+            30 => Code::InternalError,
+            31 => Code::UnsupportedFormat,
+            32 => Code::EmptyFieldName,
+            33 => Code::EmptyFieldValue,
+            34 => Code::KeyTooLong,
+            35 => Code::BadValue,
+            36 => Code::NotFound,
+
+            _ => Code::UnknownError
+        }
     }
 
     pub fn to_str(&self) -> &str {
         match self {
             Code::Ok => "OK",
-            Code::InternalError => "InternalError",
-            Code::UnsupportedFormat => "UnsupportedFormat",
+
             Code::Unauthorized => "Unauthorized",
             Code::AuthenticationFailed => "AuthenticationFailed",
             Code::PermissionDenied => "PermissionDenied",
+
             Code::DuplicateSlotId => "DuplicatePortId",
             Code::TargetSlotIdNotExist => "TargetPortIdNotExist",
-            Code::RefuseReceiveMessage => "RefuseReceiveMessage",
             Code::CannotGetChanField => "CannotGetChanField",
             Code::UnsupportedChan => "UnsupportedChan",
             Code::CannotGetValueField => "CannotGetValueField",
@@ -130,6 +157,10 @@ impl Code {
             Code::InvalidLabelFieldType => "InvalidLabelFieldType",
             Code::InvalidToFieldType => "InvalidToFieldType",
             Code::InvalidRootFieldType => "InvalidRootFieldType",
+            Code::InvalidShareFieldType => "InvalidShareFieldType",
+
+            Code::InternalError => "InternalError",
+            Code::UnsupportedFormat => "UnsupportedFormat",
             Code::EmptyFieldName => "EmptyFieldName",
             Code::EmptyFieldValue => "EmptyFieldValue",
             Code::KeyTooLong => "KeyTooLong",
@@ -146,11 +177,7 @@ impl Code {
 
     pub fn get(message: &Message) -> Option<Code> {
         if let Ok(code) = message.get_i32(CODE) {
-            if code < 0 || code > Code::UnknownError as i32 {
-                return Some(Code::UnknownError)
-            }
-
-            return Some(unsafe { std::mem::transmute(code) });
+            return Some(Code::from_i32(code))
         }
 
         None

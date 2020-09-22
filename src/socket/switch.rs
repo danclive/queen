@@ -24,6 +24,7 @@ pub struct Switch {
     pub id: MessageId,
     // CHAN，Token
     pub chans: HashMap<String, HashSet<usize>>,
+    pub share_chans: HashMap<String, HashSet<usize>>,
     // SLOT_ID，Token
     pub slot_ids: HashMap<MessageId, usize>,
     pub slots: Slab<Slot>,
@@ -37,6 +38,7 @@ impl Switch {
         Self {
             id,
             chans: HashMap::new(),
+            share_chans: HashMap::new(),
             slot_ids: HashMap::new(),
             slots: Slab::new(),
             send_num: Cell::new(0),
@@ -82,13 +84,12 @@ impl Switch {
             //     CHAN: SLOT_READY,
             //     ROOT: $slot.root,
             //     SLOT_ID: $slot_id,
-            //     LABEL: $label,
             //     ATTR: $attr
             // }
             let event_message = msg!{
                 CHAN: SLOT_READY,
-                ROOT: slot.root,
                 SLOT_ID: slot.id,
+                ROOT: slot.root,
                 ATTR: slot.wire.attr().clone()
             };
 
@@ -110,11 +111,22 @@ impl Switch {
     ) -> Result<()> {
         if self.slots.contains(token) {
             let slot = self.slots.remove(token);
-            // slot.wire.close();
+            // slot.wire.close(); 这里不需要主动关闭，离开作用域后会自动关闭
             epoll.delete(&slot.wire)?;
 
             for chan in slot.chans.keys() {
                 if let Some(ids) = self.chans.get_mut(chan) {
+                    ids.remove(&token);
+
+                    if ids.is_empty() {
+                        self.chans.remove(chan);
+                    }
+                }
+            }
+
+            // 移除共享订阅
+            for chan in slot.share_chans.keys() {
+                if let Some(ids) = self.share_chans.get_mut(chan) {
                     ids.remove(&token);
 
                     if ids.is_empty() {
@@ -136,12 +148,12 @@ impl Switch {
             // {
             //     CHAN: SLOT_BREAK,
             //     SLOT_ID: $slot_id,
-            //     LABEL: $label,
             //     ATTR: $attr
             // }
             let event_message = msg!{
                 CHAN: SLOT_BREAK,
                 SLOT_ID: slot.id,
+                ROOT: slot.root,
                 ATTR: slot.wire.attr().clone()
             };
 
@@ -163,7 +175,7 @@ impl Switch {
         let success = hook.recv(&self.slots[token], &mut message);
 
         if !success {
-            Code::RefuseReceiveMessage.set(&mut message);
+            Code::PermissionDenied.set(&mut message);
 
             self.send_message(hook, token, message);
 
@@ -183,7 +195,6 @@ impl Switch {
 
         if chan.starts_with('_') {
             match chan {
-                // AUTH => self.auth(hook, token, message),
                 ATTACH => self.attach(hook, token, message),
                 DETACH => self.detach(hook, token, message),
                 PING => self.ping(hook, token, message),
@@ -214,10 +225,8 @@ impl Switch {
         if let Some(slot) = self.slots.get(token) {
             let success = hook.send(slot, &mut message);
 
-            if success {
-                if slot.wire.send(message).is_ok() {
-                    self.send_num.set(self.send_num.get() + 1);
-                }
+            if success && slot.wire.send(message).is_ok() {
+                self.send_num.set(self.send_num.get() + 1);
             }
         }
     }
@@ -308,14 +317,14 @@ impl Switch {
             if let Some(to_id) = to.as_message_id() {
                 // TO 可以是单个 SLOT_ID
                 if self.slot_ids.contains_key(to_id) {
-                    to_ids.push(to_id.clone());
+                    to_ids.push(*to_id);
                 }
             } else if let Some(to_array) = to.as_array() {
                 // TO 也可以是一个数组
                 for to in to_array {
                     if let Some(to_id) = to.as_message_id() {
                         if self.slot_ids.contains_key(to_id) {
-                            to_ids.push(to_id.clone());
+                            to_ids.push(*to_id);
                         }
                     } else {
                         Code::InvalidToFieldType.set(&mut message);
@@ -389,10 +398,10 @@ impl Switch {
             }
         }
 
-        if message.get_bool(SHARE).ok().unwrap_or(false) {
-            let mut array: Vec<usize> = Vec::new();
+        if let Some(ids) = self.chans.get(&chan) {
+            if message.get_bool(SHARE).ok().unwrap_or(false) {
+                let mut array: Vec<usize> = Vec::new();
 
-            if let Some(ids) = self.chans.get(&chan) {
                 // 这里没有进行过滤 `.filter(|id| **id != token )`
                 // 也就是自己可以收到自己发送的消息
                 for slot_id in ids.iter() {
@@ -401,6 +410,7 @@ impl Switch {
                         if !labels.is_empty() {
                             let slot_labels = slot.chans.get(&chan).expect("It shouldn't be executed here!");
 
+                            // 交集
                             // if !slot_labels.iter().any(|l| labels.contains(l)) {
                             //     continue
                             // }
@@ -411,6 +421,59 @@ impl Switch {
 
                         array.push(*slot_id);
                     }
+                }
+
+                if !array.is_empty() {
+                    if array.len() == 1 {
+                        if let Some(slot) = self.slots.get(array[0]) {
+                            send!(self, hook, slot, message);
+                        }
+                    } else if let Some(id) = array.choose(&mut self.rand) {
+                        if let Some(slot) = self.slots.get(*id) {
+                            send!(self, hook, slot, message);
+                        }
+                    }
+                }
+            } else {
+                // 给每个 SLOT 发送消息
+                // 会根据 LABEL 过滤
+                // 这里没有进行过滤 `.filter(|id| **id != token )`
+                // 也就是自己可以收到自己发送的消息
+                for slot_id in ids.iter() {
+                    if let Some(slot) = self.slots.get(*slot_id) {
+                        // filter labels
+                        if !labels.is_empty() {
+                            let slot_labels = slot.chans.get(&chan).expect("It shouldn't be executed here!");
+
+                            if (slot_labels & &labels).is_empty() {
+                                continue;
+                            }
+                        }
+
+                        send!(self, hook, slot, message);
+                    }
+                }
+            }
+        }
+
+        // 共享订阅
+        // 注意: 共享订阅与普通订阅是两套并行的机制，
+        // 不管发送消息时有没有　SHARE　参数，共享订阅始终能收到消息
+        if let Some(ids) = self.share_chans.get(&chan) {
+            let mut array: Vec<usize> = Vec::new();
+
+            for slot_id in ids.iter() {
+                if let Some(slot) = self.slots.get(*slot_id) {
+                    // filter labels
+                    if !labels.is_empty() {
+                        let slot_labels = slot.share_chans.get(&chan).expect("It shouldn't be executed here!");
+
+                        if (slot_labels & &labels).is_empty() {
+                            continue;
+                        }
+                    }
+
+                    array.push(*slot_id);
                 }
             }
 
@@ -423,26 +486,6 @@ impl Switch {
                     if let Some(slot) = self.slots.get(*id) {
                         send!(self, hook, slot, message);
                     }
-                }
-            }
-
-        // 给每个 SLOT 发送消息
-        // 会根据 LABEL 过滤
-        } else if let Some(ids) = self.chans.get(&chan) {
-            // 这里没有进行过滤 `.filter(|id| **id != token )`
-            // 也就是自己可以收到自己发送的消息
-            for slot_id in ids.iter() {
-                if let Some(slot) = self.slots.get(*slot_id) {
-                    // filter labels
-                    if !labels.is_empty() {
-                        let slot_labels = slot.chans.get(&chan).expect("It shouldn't be executed here!");
-
-                        if !slot_labels.iter().any(|l| labels.contains(l)) {
-                            continue
-                        }
-                    }
-
-                    send!(self, hook, slot, message);
                 }
             }
         }
@@ -511,6 +554,21 @@ impl Switch {
                 }
             }
 
+            // share
+            let mut share = false;
+
+            if let Some(share2) = message.get(SHARE) {
+                if let Some(share2) = share2.as_bool() {
+                    share = share2
+                } else {
+                    Code::InvalidShareFieldType.set(&mut message);
+
+                    self.send_message(hook, token, message);
+
+                    return
+                }
+            }
+
             // 这里可以验证该 SLOT 是否有权限
             let success = hook.attach(&self.slots[token], &mut message, &chan, &labels);
 
@@ -532,7 +590,7 @@ impl Switch {
             let mut event_message = msg!{
                 CHAN: SLOT_ATTACH,
                 VALUE: &chan,
-                SLOT_ID: self.slots[token].id.clone()
+                SLOT_ID: self.slots[token].id
             };
 
             if let Some(label) = message.get(LABEL) {
@@ -540,13 +598,26 @@ impl Switch {
             }
 
             // session_attach
-            let ids = self.chans.entry(chan.to_owned()).or_insert_with(HashSet::new);
-            ids.insert(token);
+            if share {
+                event_message.insert(SHARE, true);
 
-            {
-                let slot = &mut self.slots[token];
-                let set = slot.chans.entry(chan).or_insert_with(HashSet::new);
-                set.extend(labels);
+                let ids = self.share_chans.entry(chan.to_owned()).or_insert_with(HashSet::new);
+                ids.insert(token);
+
+                {
+                    let slot = &mut self.slots[token];
+                    let set = slot.share_chans.entry(chan).or_insert_with(HashSet::new);
+                    set.extend(labels);
+                }
+            } else {
+                let ids = self.chans.entry(chan.to_owned()).or_insert_with(HashSet::new);
+                ids.insert(token);
+
+                {
+                    let slot = &mut self.slots[token];
+                    let set = slot.chans.entry(chan).or_insert_with(HashSet::new);
+                    set.extend(labels);
+                }
             }
 
             self.relay_root_message(hook, token, SLOT_ATTACH, event_message);
@@ -594,6 +665,21 @@ impl Switch {
                 }
             }
 
+            // share
+            let mut share = false;
+
+            if let Some(share2) = message.get(SHARE) {
+                if let Some(share2) = share2.as_bool() {
+                    share = share2
+                } else {
+                    Code::InvalidShareFieldType.set(&mut message);
+
+                    self.send_message(hook, token, message);
+
+                    return
+                }
+            }
+
             // 这里可以验证该 SLOT 是否有权限
             // 可以让 SLOT 不能 DETACH 某些 CHAN
             let success = hook.detach(&self.slots[token], &mut message, &chan, &labels);
@@ -616,7 +702,7 @@ impl Switch {
             let mut event_message = msg!{
                 CHAN: SLOT_DETACH,
                 VALUE: &chan,
-                SLOT_ID: self.slots[token].id.clone()
+                SLOT_ID: self.slots[token].id
             };
 
             if let Some(label) = message.get(LABEL) {
@@ -624,7 +710,27 @@ impl Switch {
             }
 
             // session_detach
-            {
+            if share {
+                event_message.insert(SHARE, true);
+
+                let slot = &mut self.slots[token];
+
+                // 注意，DETACH 的时候，如果 LABEL 为空的话，会将 CHAN 移除掉
+                // 否则，只会移除掉对应的 LABEL
+                if labels.is_empty() {
+                    slot.share_chans.remove(&chan);
+
+                    if let Some(ids) = self.share_chans.get_mut(&chan) {
+                        ids.remove(&token);
+
+                        if ids.is_empty() {
+                            self.share_chans.remove(&chan);
+                        }
+                    }
+                } else if let Some(set) = slot.share_chans.get_mut(&chan) {
+                    *set = set.iter().filter(|label| !labels.contains(*label)).map(|s| s.to_string()).collect();
+                }
+            } else {
                 let slot = &mut self.slots[token];
 
                 // 注意，DETACH 的时候，如果 LABEL 为空的话，会将 CHAN 移除掉
@@ -667,11 +773,17 @@ impl Switch {
     pub(crate) fn mine(&self, hook: &impl Hook, token: usize, mut message: Message) {
         if let Some(slot) = self.slots.get(token) {
             let mut chans = Message::new();
-
             for (chan, labels) in &slot.chans {
                 let labels: Vec<&String> = labels.iter().collect();
 
                 chans.insert(chan, labels);
+            }
+
+            let mut share_chans = Message::new();
+            for (chan, labels) in &slot.share_chans {
+                let labels: Vec<&String> = labels.iter().collect();
+
+                share_chans.insert(chan, labels);
             }
 
             let slot = msg!{
@@ -680,6 +792,7 @@ impl Switch {
                 ROOT: slot.root,
                 ATTR: slot.wire.attr().clone(),
                 CHANS: chans,
+                SHARE_CHANS: share_chans,
                 SEND_NUM: slot.wire.send_num() as u64,
                 RECV_NUM: slot.wire.recv_num() as u64
             };

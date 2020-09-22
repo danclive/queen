@@ -1,14 +1,15 @@
 pub const CHAN:      &str = "_ch";
 
 // channel
-pub const CHANS:     &str = "_cs";
-pub const ATTACH:    &str = "_ah";
-pub const DETACH:    &str = "_dh";
-pub const PING:      &str = "_pi";
-pub const QUERY:     &str = "_qu";
-pub const MINE:      &str = "_mi";
-pub const CUSTOM:    &str = "_cu";
-pub const CTRL:      &str = "_ct";
+pub const CHANS:       &str = "_cs";
+pub const SHARE_CHANS: &str = "_sc";
+pub const ATTACH:      &str = "_ah";
+pub const DETACH:      &str = "_dh";
+pub const PING:        &str = "_pi";
+pub const QUERY:       &str = "_qu";
+pub const MINE:        &str = "_mi";
+pub const CUSTOM:      &str = "_cu";
+pub const CTRL:        &str = "_ct";
 
 // params
 pub const SOCKET_ID: &str = "_so";
