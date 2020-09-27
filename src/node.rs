@@ -22,8 +22,7 @@ use nson::{msg, Message, MessageId};
 
 use crate::Socket;
 use crate::Wire;
-use crate::net::{NetWork, Packet, Codec};
-use crate::net::tcp_ext::TcpExt;
+use crate::net::{NetWork, Packet, Codec, KeepAlive};
 use crate::crypto::{Crypto, Method};
 use crate::dict::*;
 use crate::util::message::read_block;
@@ -41,13 +40,14 @@ pub struct Node<C: Codec> {
 impl<C: Codec> Node<C> {
     pub fn new<H: Hook + Send + 'static>(
         socket: Socket,
-        works: usize,
+        worker_num: usize,
         addrs: Vec<SocketAddr>,
+        keep_alive: KeepAlive,
         hook: H
     ) -> Result<Self> {
         let mut queues = Vec::new();
 
-        for _ in 0..works {
+        for _ in 0..worker_num {
             let queue: Queue<Packet<C>> = Queue::new()?;
             queues.push(queue.clone());
         }
@@ -57,7 +57,14 @@ impl<C: Codec> Node<C> {
             run: Arc::new(AtomicBool::new(true))
         };
 
-        let mut inner: Inner<C, H> = Inner::new(node.clone(), socket, works, addrs, hook)?;
+        let mut inner: Inner<C, H> = Inner::new(
+            node.clone(),
+            socket,
+            worker_num,
+            addrs,
+            keep_alive,
+            hook
+        )?;
 
         thread::Builder::new().name("node".to_string()).spawn(move || {
             inner.run().unwrap()
@@ -89,18 +96,15 @@ struct Inner<C: Codec, H: Hook> {
     listens: Vec<TcpListener>,
     rand: SmallRng,
     hook: H,
-    tcp_keep_alive: bool,
-    tcp_keep_idle: u32,
-    tcp_keep_intvl: u32,
-    tcp_keep_cnt: u32
 }
 
 impl<C: Codec, H: Hook> Inner<C, H> {
     fn new(
         node: Node<C>,
         socket: Socket,
-        _works: usize,
+        _worker_num: usize,
         addrs: Vec<SocketAddr>,
+        keep_alive: KeepAlive,
         hook: H
     ) -> Result<Self> {
         let mut listens = Vec::new();
@@ -110,7 +114,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
         }
 
         for queue in node.queues.iter() {
-            let mut net_work = NetWork::<C>::new(queue.clone())?;
+            let mut net_work = NetWork::<C>::new(queue.clone(), keep_alive.clone())?;
 
             let run2 = node.run.clone();
 
@@ -133,11 +137,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
             events: Events::with_capacity(16),
             listens,
             hook,
-            rand: SmallRng::from_entropy(),
-            tcp_keep_alive: true,
-            tcp_keep_idle: 30,
-            tcp_keep_intvl: 5,
-            tcp_keep_cnt: 3
+            rand: SmallRng::from_entropy()
         })
     }
 
@@ -203,15 +203,6 @@ impl<C: Codec, H: Hook> Inner<C, H> {
                         stream.set_read_timeout(None)?;
                         stream.set_write_timeout(None)?;
                         // 握手结束
-
-                        // 开启keepalive属性
-                        stream.set_keep_alive(self.tcp_keep_alive)?;
-                        // 如该连接在30秒内没有任何数据往来,则进行探测
-                        stream.set_keep_idle(self.tcp_keep_idle as i32)?;
-                        // 探测时发包的时间间隔为5秒
-                        stream.set_keep_intvl(self.tcp_keep_intvl as i32)?;
-                        // 探测尝试的次数.如果第1次探测包就收到响应了,则后2次的不再发
-                        stream.set_keep_cnt(self.tcp_keep_cnt as i32)?;
 
                         if let Some(queue) = self.node.queues.choose(&mut self.rand) {
                             queue.push(Packet::NewConn {

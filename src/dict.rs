@@ -1,8 +1,6 @@
 pub const CHAN:      &str = "_ch";
 
 // channel
-pub const CHANS:       &str = "_cs";
-pub const SHARE_CHANS: &str = "_sc";
 pub const ATTACH:      &str = "_ah";
 pub const DETACH:      &str = "_dh";
 pub const PING:        &str = "_pi";
@@ -22,6 +20,8 @@ pub const SHARE:     &str = "_sh";
 pub const ROOT:      &str = "_ro";
 pub const ATTR:      &str = "_at";
 pub const ADDR:      &str = "_ad";
+pub const CHANS:       &str = "_cs";
+pub const SHARE_CHANS: &str = "_sc";
 
 // message id
 pub const ID:        &str = "_id";
@@ -49,7 +49,9 @@ pub const AES_256_GCM:       &str = "A2G";
 pub const CHACHA20_POLY1305: &str = "CP1";
 
 // network
-pub const HAND:      &str = "_ha";
-pub const METHOD:    &str = "_me";
-pub const SECURE:    &str = "_se";
-pub const ORIGIN:    &str = "_or";
+pub const HAND:        &str = "_ha";
+pub const KEEP_ALIVE:  &str = "_ke";
+
+pub const METHOD:      &str = "_me";
+pub const SECURE:      &str = "_se";
+pub const ORIGIN:      &str = "_or";

@@ -12,8 +12,7 @@ use queen_io::queue::mpsc::Queue;
 
 use nson::{Message, MessageId};
 
-use crate::net::{NetWork, Packet, CryptoOptions, Codec};
-use crate::net::tcp_ext::TcpExt;
+use crate::net::{NetWork, Packet, CryptoOptions, Codec, KeepAlive};
 use crate::Wire;
 use crate::crypto::Crypto;
 use crate::dict::*;
@@ -22,28 +21,31 @@ use crate::util::message::read_block;
 
 #[derive(Clone)]
 pub struct Port<C: Codec> {
+    inner: Arc<PortInner<C>>
+}
+
+struct PortInner<C: Codec> {
     queue: Queue<Packet<C>>,
-    pub tcp_keep_alive: bool,
-    pub tcp_keep_idle: u32,
-    pub tcp_keep_intvl: u32,
-    pub tcp_keep_cnt: u32,
-    run: Arc<AtomicBool>
+    run: AtomicBool,
+    keep_alive: KeepAlive
 }
 
 impl<C: Codec> Port<C> {
-    pub fn new() -> Result<Self> {
+    pub fn new(keep_alive: KeepAlive) -> Result<Self> {
         let port = Port {
-            queue: Queue::new()?,
-            tcp_keep_alive: true,
-            tcp_keep_idle: 30,
-            tcp_keep_intvl: 5,
-            tcp_keep_cnt: 3,
-            run: Arc::new(AtomicBool::new(true))
+            inner: Arc::new(PortInner {
+                queue: Queue::new()?,
+                run: AtomicBool::new(true),
+                keep_alive
+            })
         };
 
-        let mut net_work = NetWork::<C>::new(port.queue.clone())?;
+        let mut net_work = NetWork::<C>::new(
+            port.inner.queue.clone(),
+            port.inner.keep_alive.clone()
+        )?;
 
-        let run = port.run.clone();
+        let inner = port.inner.clone();
 
         thread::Builder::new().name("port_net".to_string()).spawn(move || {
             let ret = net_work.run();
@@ -53,19 +55,19 @@ impl<C: Codec> Port<C> {
                 log::debug!("net thread exit");
             }
 
-            run.store(false, Ordering::Relaxed);
+            inner.run.store(false, Ordering::Relaxed);
         }).unwrap();
 
         Ok(port)
     }
 
     pub fn stop(&self) {
-        self.run.store(false, Ordering::Relaxed);
-        self.queue.push(Packet::Close);
+        self.inner.run.store(false, Ordering::Relaxed);
+        self.inner.queue.push(Packet::Close);
     }
 
     pub fn is_run(&self) -> bool {
-        self.run.load(Ordering::Relaxed)
+        self.inner.run.load(Ordering::Relaxed)
     }
 
     pub fn connect<A: ToSocketAddrs>(
@@ -123,15 +125,10 @@ impl<C: Codec> Port<C> {
                 stream.set_write_timeout(None)?;
                 // 握手结束
 
-                stream.set_keep_alive(self.tcp_keep_alive)?;
-                stream.set_keep_idle(self.tcp_keep_idle as i32)?;
-                stream.set_keep_intvl(self.tcp_keep_intvl as i32)?;
-                stream.set_keep_cnt(self.tcp_keep_cnt as i32)?;
-
                 // 握手消息可以被对端修改，这里将修改后的出入，以便能够携带一些自定义数据
                 let (wire1, wire2) = Wire::pipe(capacity.unwrap_or(64), message)?;
 
-                self.queue.push(Packet::NewConn {
+                self.inner.queue.push(Packet::NewConn {
                     wire: wire1,
                     stream,
                     codec,
@@ -150,6 +147,8 @@ impl<C: Codec> Port<C> {
 
 impl<C: Codec> Drop for Port<C> {
     fn drop(&mut self) {
-        self.stop()
+        if Arc::strong_count(&self.inner) <= 2 {
+            self.stop()
+        }
     }
 }

@@ -5,31 +5,23 @@
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Released API docs](https://docs.rs/queen/badge.svg)](https://docs.rs/queen)
 
-Queen 是一个支持订阅发布模式、一对一和一对多的数据总线。
+Queen is a message bus
 
-## 安装
+## features
 
-在 `Cargo.toml` 文件中加入
+* subscribe-publish & request-response
+* one to one, one to many
+* use [nson](https://github.com/danclive/nson) as a data format
+* support message encryption
+* ... more
 
-```
-queen = "0.20"
-```
-
-## 功能特性
-
-* 订阅发布 & 请求响应
-* 一对一、一对多
-* 使用 [nson](https://github.com/danclive/nson) 作为数据格式
-* 支持消息加密
-* ... 待补充
-
-## 示例
+## example
 
 ```rust
 use std::time::Duration;
 
 use queen::{Socket, Node, Port, NonHook};
-use queen::net::NsonCodec;
+use queen::net::{NsonCodec, KeepAlive};
 use queen::dict::*;
 use queen::nson::{MessageId, msg};
 use queen::error::Code;
@@ -52,11 +44,12 @@ fn main() {
         socket.clone(),
         4,
         vec!["127.0.0.1:8888".parse().unwrap()],
+        KeepAlive::default(),
         ()
     ).unwrap();
 
     // start port
-    let port = Port::<NsonCodec>::new().unwrap();
+    let port = Port::<NsonCodec>::new(KeepAlive::default()).unwrap();
 
     // start wire 2
     let wire2 = port.connect("127.0.0.1:8888", None, MessageId::new(), false, msg!{}, None).unwrap();
@@ -102,5 +95,4 @@ fn main() {
 
     println!("wire 1 recv ret: {:?}", ret);
 }
-
 ```

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use queen::{Socket, Node, Port, NonHook};
-use queen::net::NsonCodec;
+use queen::net::{NsonCodec, KeepAlive};
 use queen::dict::*;
 use queen::nson::{MessageId, msg};
 use queen::error::Code;
@@ -24,11 +24,12 @@ fn main() {
         socket.clone(),
         4,
         vec!["127.0.0.1:8888".parse().unwrap()],
+        KeepAlive::default(),
         ()
     ).unwrap();
 
     // start port
-    let port = Port::<NsonCodec>::new().unwrap();
+    let port = Port::<NsonCodec>::new(KeepAlive::default()).unwrap();
 
     // start wire 2
     let wire2 = port.connect("127.0.0.1:8888", None, MessageId::new(), false, msg!{}, None).unwrap();

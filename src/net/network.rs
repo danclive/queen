@@ -1,3 +1,4 @@
+use std::time::Instant;
 use std::collections::VecDeque;
 use std::time::Duration;
 use std::io::{
@@ -11,15 +12,19 @@ use queen_io::{
     net::tcp::TcpStream,
     plus::slab::Slab
 };
+use queen_io::sys::timerfd::{TimerFd, TimerSpec, SetTimeFlags};
 
-use nson::Message;
+use nson::{Message, msg};
 
 use crate::Wire;
 use crate::crypto::Crypto;
 use crate::util::message::read_nonblock;
-use crate::error::{Error, Result, RecvError};
+use crate::error::{Error, Result, RecvError, Code};
+use crate::dict::*;
+use crate::timer::wheel::Wheel;
 
 use super::Codec;
+use super::KeepAlive;
 
 pub enum Packet<C: Codec> {
     NewConn {
@@ -36,28 +41,51 @@ pub struct NetWork<C: Codec> {
     events: Events,
     pub queue: Queue<Packet<C>>,
     wires: Slab<Wire<Message>>,
-    nets: Slab<NetConn<C>>
+    nets: Slab<NetConn<C>>,
+    keep_alive: KeepAlive,
+    timer: TimerFd,
+    time_id_counter: usize,
+    wheel: Wheel<(usize, usize)>,
+    instant: Instant,
 }
 
 impl<C: Codec> NetWork<C> {
-    const START_TOKEN: usize = 2;
-    const QUEUE_TOKEN: usize = 0;
+    const QUEUE_TOKEN: usize = usize::MAX;
+    const TIMER_TOKEN: usize = usize::MAX - 1;
 
-    pub fn new(queue: Queue<Packet<C>>) -> Result<Self> {
+    pub fn new(queue: Queue<Packet<C>>, keep_alive: KeepAlive) -> Result<Self> {
         Ok(Self {
             epoll: Epoll::new()?,
             events: Events::with_capacity(1024),
             queue,
             wires: Slab::new(),
-            nets: Slab::new()
+            nets: Slab::new(),
+            keep_alive,
+            timer: TimerFd::new()?,
+            time_id_counter: 0,
+            wheel: Wheel::default(),
+            instant: Instant::now()
         })
+    }
+
+    fn next_time_id(&mut self) -> usize {
+        self.time_id_counter = self.time_id_counter.wrapping_add(1);
+        self.time_id_counter
     }
 
     pub fn run(&mut self) -> Result<()> {
         self.epoll.add(&self.queue, Token(Self::QUEUE_TOKEN), Ready::readable(), EpollOpt::level())?;
+        self.epoll.add(&self.timer, Token(Self::TIMER_TOKEN), Ready::readable(), EpollOpt::edge())?;
+
+        let timerspec = TimerSpec {
+            interval: Duration::new(1, 0),
+            value: Duration::new(1, 0)
+        };
+
+        self.timer.settime(timerspec, SetTimeFlags::Default)?;
 
         loop {
-            let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
+            let size = match self.epoll.wait(&mut self.events, None) {
                 Ok(size) => size,
                 Err(err) => {
                     if err.kind() == Interrupted {
@@ -71,52 +99,96 @@ impl<C: Codec> NetWork<C> {
             for i in 0..size {
                 let event = self.events.get(i).unwrap();
 
-                if event.token().0 == Self::QUEUE_TOKEN {
-                    if let Some(packet) = self.queue.pop() {
-                        match packet {
-                            Packet::NewConn { wire, stream, codec, crypto } => {
-                                let entry1 = self.wires.vacant_entry();
-                                let entry2 = self.nets.vacant_entry();
+                match event.token().0 {
+                    Self::QUEUE_TOKEN => {
+                        if let Some(packet) = self.queue.pop() {
+                            match packet {
+                                Packet::NewConn { wire, stream, codec, crypto } => {
+                                    let time_id = self.next_time_id();
 
-                                assert_eq!(entry1.key(), entry2.key());
+                                    let entry1 = self.wires.vacant_entry();
+                                    let entry2 = self.nets.vacant_entry();
 
-                                let id = Self::START_TOKEN + entry1.key() * 2;
-                                // let id2 = Self::START_TOKEN + entry2.key() * 2 + 1;
+                                    assert_eq!(entry1.key(), entry2.key());
 
-                                self.epoll.add(
-                                    &wire,
-                                    Token(id),
-                                    Ready::readable(),
-                                    EpollOpt::level()
-                                )?;
+                                    let token = entry1.key() * 2;
+                                    let token2 = token + 1;
 
-                                self.epoll.add(
-                                    &stream,
-                                    Token(id + 1),
-                                    Ready::readable() | Ready::hup(),
-                                    EpollOpt::edge()
-                                )?;
+                                    self.epoll.add(
+                                        &wire,
+                                        Token(token),
+                                        Ready::readable(),
+                                        EpollOpt::level()
+                                    )?;
 
-                                entry1.insert(wire);
+                                    self.epoll.add(
+                                        &stream,
+                                        Token(token2),
+                                        Ready::readable() | Ready::hup(),
+                                        EpollOpt::edge()
+                                    )?;
 
-                                let conn = NetConn::new(id + 1, stream, codec, crypto);
+                                    entry1.insert(wire);
 
-                                entry2.insert(conn);
-                            }
-                            Packet::Close => {
-                                return Ok(())
+                                    let conn = NetConn::new(token2, stream, codec, crypto, time_id, self.keep_alive.clone());
+                                    // timer
+                                    self.wheel.insert((token, time_id), conn.keep_alive.idle).expect("can't insert id into wheel");
+
+                                    entry2.insert(conn);
+                                }
+                                Packet::Close => {
+                                    return Ok(())
+                                }
                             }
                         }
                     }
-                } else {
-                    self.dispatch_conn(event)?;
+                    Self::TIMER_TOKEN => {
+                        match self.timer.read() {
+                            Ok(_) => (),
+                            Err(err) => {
+                                if err.kind() == WouldBlock {
+                                    continue;
+                                } else {
+                                    return Err(err.into())
+                                }
+                            }
+                        }
+
+                        self.instant = Instant::now();
+                        let list = self.wheel.tick();
+
+                        for (token, time_id) in list {
+                            let index = token / 2;
+                            if let Some(net_conn) = self.nets.get_mut(index) {
+                                if time_id == net_conn.time_id {
+                                    if let Some((delay, detect)) = net_conn.keep_alive.tick(self.instant) {
+                                        self.wheel.insert((net_conn.token, time_id), delay).expect("can't insert id into wheel");
+
+                                        if detect {
+                                            log::trace!("send keep alive message, addr: {:?}", net_conn.stream.peer_addr()?);
+                                            let message = msg!{
+                                                CHAN: KEEP_ALIVE
+                                            };
+
+                                            net_conn.push_data(&self.epoll, message)?;
+                                        }
+                                    } else {
+                                        self.remove_conn(index)?;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        self.dispatch(event)?;
+                    }
                 }
             }
         }
     }
 
-    fn dispatch_conn(&mut self, event: Event) -> Result<()> {
-        let token = event.token().0 - Self::START_TOKEN;
+    fn dispatch(&mut self, event: Event) -> Result<()> {
+        let token = event.token().0;
 
         if token % 2 == 0 {
             self.dispatch_wire(token / 2)?;
@@ -157,7 +229,7 @@ impl<C: Codec> NetWork<C> {
 
         if ready.is_readable() {
             if let Some(net_conn) = self.nets.get_mut(index) {
-                let ret = net_conn.read(&self.wires[index]);
+                let ret = net_conn.read(&self.epoll, &self.wires[index], self.instant);
                 if ret.is_err() {
                     log::debug!("net_conn.read: {:?}", ret);
                     remove = true;
@@ -194,36 +266,56 @@ impl<C: Codec> NetWork<C> {
 }
 
 struct NetConn<C: Codec> {
-    id: usize,
+    token: usize,
     stream: TcpStream,
     interest: Ready,
     r_buffer: Vec<u8>,
     w_buffer: VecDeque<Vec<u8>>,
     codec: C,
-    crypto: Option<Crypto>
+    crypto: Option<Crypto>,
+    time_id: usize,
+    keep_alive: KeepAlive
 }
 
 impl<C: Codec> NetConn<C> {
-    fn new(id: usize, stream: TcpStream, codec: C, crypto: Option<Crypto>) -> Self {
+    fn new(token: usize, stream: TcpStream, codec: C, crypto: Option<Crypto>, time_id: usize, mut keep_alive: KeepAlive) -> Self {
+        keep_alive.reset(Instant::now());
+
         Self {
-            id,
+            token,
             stream,
             interest: Ready::readable() | Ready::hup() | Ready::error(),
             r_buffer: Vec::with_capacity(1024),
             w_buffer: VecDeque::new(),
             codec,
-            crypto
+            crypto,
+            time_id,
+            keep_alive
         }
     }
 
-    fn read(&mut self, wire: &Wire<Message>) -> Result<()> {
+    fn read(&mut self, epoll: &Epoll, wire: &Wire<Message>, now: Instant) -> Result<()> {
         loop {
             let ret = read_nonblock(&mut self.stream, &mut self.r_buffer);
 
             match ret {
                 Ok(ret) => {
                     if let Some(bytes) = ret {
-                        let message = self.codec.decode(&self.crypto, bytes)?;
+                        let mut message = self.codec.decode(&self.crypto, bytes)?;
+
+                        self.keep_alive.reset(now);
+
+                        if message.get_str(CHAN) == Ok(KEEP_ALIVE) {
+                            log::trace!("recv keep alive message, addr: {:?}", self.stream.peer_addr()?);
+
+                            if Code::get(&message).is_none() {
+                                Code::Ok.set(&mut message);
+                                self.push_data(epoll, message)?;
+                            }
+
+                            continue
+                        }
+
                         let _ = wire.send(message);
                     }
                 }
@@ -280,7 +372,6 @@ impl<C: Codec> NetConn<C> {
 
     fn push_data(&mut self, epoll: &Epoll, message: Message) -> Result<()> {
         let bytes = self.codec.encode(&self.crypto, message)?;
-
         self.w_buffer.push_back(bytes);
 
         if !self.interest.contains(Ready::writable()) {
@@ -288,7 +379,7 @@ impl<C: Codec> NetConn<C> {
 
             epoll.modify(
                 &self.stream,
-                Token(self.id),
+                Token(self.token),
                 self.interest,
                 EpollOpt::edge()
             )?;

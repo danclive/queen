@@ -3,7 +3,7 @@ use std::time::Duration;
 use queen::{Socket, Node, Port, Wire};
 use queen::node::Hook;
 use queen::nson::{MessageId, msg, Message};
-use queen::net::{CryptoOptions, NsonCodec};
+use queen::net::{CryptoOptions, NsonCodec, KeepAlive};
 use queen::crypto::Method;
 use queen::dict::*;
 
@@ -22,6 +22,7 @@ fn port() {
         socket.clone(),
         2,
         vec![addr.parse().unwrap()],
+        KeepAlive::default(),
         ()
     ).unwrap();
 
@@ -33,7 +34,7 @@ fn port() {
     });
 
     // start port
-    let port = Port::<NsonCodec>::new().unwrap();
+    let port = Port::<NsonCodec>::new(KeepAlive::default()).unwrap();
 
     let wire2 = port.connect(addr, None, MessageId::new(), false, msg!{}, None).unwrap();
 
@@ -111,6 +112,7 @@ fn port_secure() {
         socket.clone(),
         2,
         vec![addr.parse().unwrap()],
+        KeepAlive::default(),
         MyHook
     ).unwrap();
 
@@ -122,7 +124,7 @@ fn port_secure() {
     });
 
     // start port
-    let port = Port::<NsonCodec>::new().unwrap();
+    let port = Port::<NsonCodec>::new(KeepAlive::default()).unwrap();
 
     let crypto_options = CryptoOptions {
         method: Method::Aes128Gcm,
@@ -199,6 +201,7 @@ fn port_secure2() {
         socket.clone(),
         2,
         vec![addr.parse().unwrap()],
+        KeepAlive::default(),
         MyHook
     ).unwrap();
 
@@ -210,7 +213,7 @@ fn port_secure2() {
     });
 
     // start port
-    let port = Port::<NsonCodec>::new().unwrap();
+    let port = Port::<NsonCodec>::new(KeepAlive::default()).unwrap();
 
     let wire2 = port.connect(addr, None, MessageId::new(), false, msg!{}, None);
     assert!(wire2.is_err());

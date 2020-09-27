@@ -5,6 +5,7 @@ pub mod net;
 pub mod port;
 pub mod crypto;
 pub mod dict;
+pub mod timer;
 pub mod util;
 pub mod error;
 
