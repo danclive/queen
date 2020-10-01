@@ -1,6 +1,3 @@
-use std::net::{ToSocketAddrs, SocketAddr};
-use std::io::{self, Error, ErrorKind};
-
 use crate::crypto::Method;
 
 pub use codec::{Codec, NsonCodec};
@@ -18,6 +15,11 @@ pub struct CryptoOptions {
     pub secret: String
 }
 
-pub fn parse_addr<A: ToSocketAddrs>(addr: A) -> io::Result<SocketAddr> {
-    addr.to_socket_addrs()?.next().ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Address is not valid"))
+impl CryptoOptions {
+    pub fn new(method: Method, secret: &str) -> CryptoOptions {
+        CryptoOptions {
+            method,
+            secret: secret.to_string()
+        }
+    }
 }

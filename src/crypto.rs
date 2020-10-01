@@ -9,7 +9,7 @@ use rand::{self, thread_rng, Rng};
 
 use crate::dict;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Method {
     Aes128Gcm,
     Aes256Gcm,

@@ -17,6 +17,7 @@ pub enum Error {
     AlreadyExists(String),
     InvalidData(String),
     TimedOut(String),
+    Exit(String),
     IoError(io::Error),
     ErrorCode(Code),
     RecvError(RecvError)
@@ -54,6 +55,7 @@ impl fmt::Display for Error {
             Error::AlreadyExists(ref inner) => write!(fmt, "AlreadyExists: {}", inner),
             Error::InvalidData(ref inner) => write!(fmt, "InvalidData: {}", inner),
             Error::TimedOut(ref inner) => write!(fmt, "TimeOut: {}", inner),
+            Error::Exit(ref inner) => write!(fmt, "Exit: {}", inner),
             Error::IoError(ref inner) => inner.fmt(fmt),
             Error::ErrorCode(ref inner) => inner.fmt(fmt),
             Error::RecvError(ref inner) => inner.fmt(fmt)
