@@ -24,13 +24,13 @@ impl Codec for NsonCodec {
             )?;
         }
 
-        let recv = Message::from_slice(&bytes);
+        let recv = Message::from_bytes(&bytes);
 
         recv.map_err(|err| Error::InvalidData(format!("{}", err)))
     }
 
     fn encode(&mut self, crypto: &Option<Crypto>, message: Message) -> Result<Vec<u8>> {
-        let mut bytes = message.to_vec().map_err(|err| Error::InvalidData(format!("{}", err)) )?;
+        let mut bytes = message.to_bytes().map_err(|err| Error::InvalidData(format!("{}", err)) )?;
 
         if let Some(crypto) = &crypto {
             crypto.encrypt(&mut bytes).map_err(|err|

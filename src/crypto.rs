@@ -5,7 +5,7 @@ use ring::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305};
 use ring::digest;
 use ring::error;
 
-use rand::{self, thread_rng, Rng};
+use nson::MessageId;
 
 use crate::dict;
 
@@ -79,7 +79,7 @@ impl Crypto {
             return Err(error::Unspecified)
         }
 
-        let nonce_bytes = Self::rand_nonce();
+        let nonce_bytes = Self::nonce();
         let nonce = Nonce::assume_unique_for_key(nonce_bytes);
 
         let tag = self.inner.seal_in_place_separate_tag(nonce, Aad::empty(), &mut in_out[4..])?;
@@ -112,11 +112,8 @@ impl Crypto {
         Ok(())
     }
 
-    pub fn rand_nonce() -> [u8; Self::NONCE_LEN] {
-        let mut buf = [0u8; Self::NONCE_LEN];
-        thread_rng().fill(&mut buf);
-
-        buf
+    fn nonce() -> [u8; Self::NONCE_LEN] {
+        MessageId::new().bytes()
     }
 }
 
