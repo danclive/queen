@@ -38,12 +38,12 @@ pub struct Node<C: Codec> {
 }
 
 impl<C: Codec> Node<C> {
-    pub fn new<H: Hook + Send + 'static>(
+    pub fn new(
         socket: Socket,
         worker_num: usize,
         addrs: Vec<SocketAddr>,
         keep_alive: KeepAlive,
-        hook: H
+        hook: impl Hook
     ) -> Result<Self> {
         let mut queues = Vec::new();
 
@@ -57,10 +57,9 @@ impl<C: Codec> Node<C> {
             run: Arc::new(AtomicBool::new(true))
         };
 
-        let mut inner: Inner<C, H> = Inner::new(
+        let mut inner: Inner<C, _> = Inner::new(
             node.clone(),
             socket,
-            worker_num,
             addrs,
             keep_alive,
             hook
@@ -102,7 +101,6 @@ impl<C: Codec, H: Hook> Inner<C, H> {
     fn new(
         node: Node<C>,
         socket: Socket,
-        _worker_num: usize,
         addrs: Vec<SocketAddr>,
         keep_alive: KeepAlive,
         hook: H
@@ -152,7 +150,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
         }
 
         while self.is_run() && self.socket.is_run() {
-            let size = match self.epoll.wait(&mut self.events, Some(Duration::from_secs(10))) {
+            let size = match self.epoll.wait(&mut self.events, None) {
                 Ok(size) => size,
                 Err(err) => {
                     if err.kind() == Interrupted {

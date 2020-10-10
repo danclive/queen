@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn test_empty_message() {
         let message = msg!{};
-        let vec = message.to_vec().unwrap();
+        let vec = message.to_bytes().unwrap();
         let mut buffer: Vec<u8> = vec![];
         let mut reader = Cursor::new(&vec[..]);
 
@@ -135,7 +135,7 @@ mod tests {
             "a": 1234,
             "b": 5678
         };
-        let vec = message.to_vec().unwrap();
+        let vec = message.to_bytes().unwrap();
         let mut buffer: Vec<u8> = vec![];
         let mut reader = Cursor::new(&vec[..]);
 
@@ -150,7 +150,7 @@ mod tests {
             "a": 1234,
             "b": 5678
         };
-        let vec = message.to_vec().unwrap();
+        let vec = message.to_bytes().unwrap();
         let mut buffer: Vec<u8> = vec![];
 
         // slice 1
@@ -182,7 +182,7 @@ mod tests {
             "a": 1234,
             "b": 5678
         };
-        let vec = message.to_vec().unwrap();
+        let vec = message.to_bytes().unwrap();
         let mut buffer: Vec<u8> = vec![];
 
         // slice 1
@@ -216,7 +216,7 @@ mod tests {
             "a": 1234,
             "b": 5678
         };
-        let mut vec = message.to_vec().unwrap();
+        let mut vec = message.to_bytes().unwrap();
         let mut buffer: Vec<u8> = vec![];
 
         vec[3] = 123;
@@ -234,7 +234,7 @@ mod tests {
             "a": 1234,
             "b": 5678
         };
-        let vec = message.to_vec().unwrap();
+        let vec = message.to_bytes().unwrap();
         let mut reader = Cursor::new(&vec);
 
         let ret = read_block(&mut reader, None).unwrap();

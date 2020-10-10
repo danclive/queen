@@ -155,6 +155,7 @@ impl<C: Codec> NetWork<C> {
                         }
 
                         self.instant = Instant::now();
+
                         let list = self.wheel.tick();
 
                         for (token, time_id) in list {
@@ -165,7 +166,7 @@ impl<C: Codec> NetWork<C> {
                                         self.wheel.insert((net_conn.token, time_id), delay).expect("can't insert id into wheel");
 
                                         if detect {
-                                            log::trace!("send keep alive message, addr: {:?}", net_conn.stream.peer_addr()?);
+                                            log::debug!("send keep alive message, addr: {:?}", net_conn.stream.peer_addr()?);
                                             let message = msg!{
                                                 CHAN: KEEP_ALIVE
                                             };
@@ -306,7 +307,7 @@ impl<C: Codec> NetConn<C> {
                         self.keep_alive.reset(now);
 
                         if message.get_str(CHAN) == Ok(KEEP_ALIVE) {
-                            log::trace!("recv keep alive message, addr: {:?}", self.stream.peer_addr()?);
+                            log::debug!("recv keep alive message, addr: {:?}", self.stream.peer_addr()?);
 
                             if Code::get(&message).is_none() {
                                 Code::Ok.set(&mut message);

@@ -21,7 +21,7 @@ use super::Hook;
 use super::Slot;
 
 pub struct Switch {
-    pub id: MessageId,
+    pub socket_id: MessageId,
     // CHAN，Token
     pub chans: HashMap<String, HashSet<usize>>,
     pub share_chans: HashMap<String, HashSet<usize>>,
@@ -34,9 +34,9 @@ pub struct Switch {
 }
 
 impl Switch {
-    pub(crate) fn new(id: MessageId) -> Self {
+    pub(crate) fn new(socket_id: MessageId) -> Self {
         Self {
-            id,
+            socket_id,
             chans: HashMap::new(),
             share_chans: HashMap::new(),
             slot_ids: HashMap::new(),
@@ -787,7 +787,7 @@ impl Switch {
             }
 
             let slot = msg!{
-                SOCKET_ID: self.id,
+                SOCKET_ID: self.socket_id,
                 SLOT_ID: slot.id,
                 ROOT: slot.root,
                 ATTR: slot.wire.attr().clone(),
