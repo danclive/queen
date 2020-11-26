@@ -66,7 +66,7 @@ impl<C: Codec> Port<C> {
         self.inner.queue.push(Packet::Close);
     }
 
-    pub fn is_run(&self) -> bool {
+    pub fn running(&self) -> bool {
         self.inner.run.load(Ordering::Relaxed)
     }
 
@@ -80,7 +80,7 @@ impl<C: Codec> Port<C> {
         capacity: Option<usize>
     ) -> Result<Wire<Message>> {
 
-        if !self.is_run() {
+        if !self.running() {
             return Err(Error::ConnectionAborted("port is not run!".to_string()))
         }
 

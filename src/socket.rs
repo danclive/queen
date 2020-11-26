@@ -83,7 +83,7 @@ impl Socket {
         self.inner.queue.push(Packet::Close);
     }
 
-    pub fn is_run(&self) -> bool {
+    pub fn running(&self) -> bool {
         self.inner.run.load(Ordering::Relaxed)
     }
 

@@ -32,6 +32,36 @@ pub use hook::{Hook, NonHook};
 
 mod hook;
 
+pub trait Connector: Send + 'static {
+    fn connect(
+        &self,
+        slot_id: MessageId,
+        root: bool,
+        attr: Message,
+        capacity: Option<usize>,
+        timeout: Option<Duration>
+    ) -> Result<Wire<Message>>;
+
+    fn running(&self) -> bool;
+}
+
+impl Connector for Socket {
+    fn connect(
+        &self,
+        slot_id: MessageId,
+        root: bool,
+        attr: Message,
+        capacity: Option<usize>,
+        timeout: Option<Duration>
+    ) -> Result<Wire<Message>> {
+        self.connect(slot_id, root, attr, capacity, timeout)
+    }
+
+    fn running(&self) -> bool {
+        self.running()
+    }
+}
+
 pub struct Node<C: Codec> {
     queues: Arc<Vec<Queue<Packet<C>>>>,
     run: Arc<AtomicBool>
@@ -39,7 +69,7 @@ pub struct Node<C: Codec> {
 
 impl<C: Codec> Node<C> {
     pub fn new(
-        socket: Socket,
+        connector: impl Connector,
         worker_num: usize,
         addrs: Vec<SocketAddr>,
         keep_alive: KeepAlive,
@@ -59,7 +89,7 @@ impl<C: Codec> Node<C> {
 
         let mut inner: Inner<C, _> = Inner::new(
             node.clone(),
-            socket,
+            connector,
             addrs,
             keep_alive,
             hook
@@ -82,14 +112,14 @@ impl<C: Codec> Node<C> {
     }
 
     #[inline]
-    pub fn is_run(&self) -> bool {
+    pub fn running(&self) -> bool {
         self.run.load(Ordering::Relaxed)
     }
 }
 
 struct Inner<C: Codec, H: Hook> {
     node: Node<C>,
-    socket: Socket,
+    connector: Box<dyn Connector>,
     epoll: Epoll,
     events: Events,
     listens: Vec<TcpListener>,
@@ -100,7 +130,7 @@ struct Inner<C: Codec, H: Hook> {
 impl<C: Codec, H: Hook> Inner<C, H> {
     fn new(
         node: Node<C>,
-        socket: Socket,
+        connector: impl Connector,
         addrs: Vec<SocketAddr>,
         keep_alive: KeepAlive,
         hook: H
@@ -130,7 +160,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
 
         Ok(Self {
             node,
-            socket,
+            connector: Box::new(connector),
             epoll: Epoll::new()?,
             events: Events::with_capacity(16),
             listens,
@@ -140,7 +170,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
     }
 
     #[inline]
-    fn is_run(&self) -> bool {
+    fn running(&self) -> bool {
         self.node.run.load(Ordering::Relaxed)
     }
 
@@ -149,7 +179,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
             self.epoll.add(&listen.as_raw_fd(), Token(id), Ready::readable(), EpollOpt::edge())?;
         }
 
-        while self.is_run() && self.socket.is_run() {
+        while self.running() && self.connector.running() {
             let size = match self.epoll.wait(&mut self.events, None) {
                 Ok(size) => size,
                 Err(err) => {
@@ -189,7 +219,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
                         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
                         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
 
-                        let (wire, codec, crypto) = match Self::hand(&self.hook, &self.socket, &mut stream, &addr) {
+                        let (wire, codec, crypto) = match Self::hand(&self.hook, &self.connector, &mut stream, &addr) {
                             Ok(ret) => ret,
                             Err(err) => {
                                 log::debug!("{}", err);
@@ -220,7 +250,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
 
     fn hand(
         hook: &H,
-        socket: &Socket,
+        connector: &Box<dyn Connector>,
         stream: &mut TcpStream,
         addr: &SocketAddr
     ) -> Result<(Wire<Message>, C, Option<Crypto>)> {
@@ -318,7 +348,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
                 ORIGIN: origin
             };
 
-            let wire = socket.connect(slot_id, root, attr, None, None)?;
+            let wire = connector.connect(slot_id, root, attr, None, None)?;
 
             // 这里可以修改 Wire 的属性
             hook.finish(slot_id, root, &mut message, &wire);
@@ -375,7 +405,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
                 ORIGIN: origin
             };
 
-            let wire = socket.connect(slot_id, root, attr, None, None)?;
+            let wire = connector.connect(slot_id, root, attr, None, None)?;
 
             // 这里可以修改 Wire 的属性
             hook.finish(slot_id, root, &mut message, &wire);
