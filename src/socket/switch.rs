@@ -314,11 +314,13 @@ impl Switch {
         }
 
         // BIND
-        // 此模式可以接收到所 BIND 的 SLOT 的任何消息
+        // 此模式可以接收到所 BIND 的 SLOT 的消息
         let bounds = &self.slots[token].bound;
 
-        let mut bind_message = message.clone();
-        bind_message.insert(BIND, true);
+        let mut bind_message = msg! {
+            CHAN: BINDING,
+            VALUE: message.clone()
+        };
 
         for bound in bounds {
             if let Some(slot) = self.slots.get(*bound) {

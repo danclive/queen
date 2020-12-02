@@ -1566,10 +1566,9 @@ fn bind_unbind() {
     // recv
     let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == "aaa");
-    assert!(recv.get_str("hello").unwrap() == "world");
-    assert!(recv.get_message_id(FROM).is_ok());
-    assert!(recv.get_bool(BIND).unwrap());
+    assert!(recv.get_str(CHAN).unwrap() == BINDING);
+    assert!(recv.get_message(VALUE).unwrap().get_str("hello").unwrap() == "world");
+    assert!(recv.get_message(VALUE).unwrap().get_message_id(FROM).is_ok());
 
     // unbind
     let _ = wire2.send(msg!{

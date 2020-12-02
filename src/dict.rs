@@ -41,6 +41,9 @@ pub const SLOT_KILL:   &str = "_slki";
 pub const SLOT_SEND:   &str = "_slse";
 pub const SLOT_RECV:   &str = "_slrc";
 
+// bind event channel
+pub const BINDING:   &str = "_bdin";
+
 // attr
 pub const SEND_NUM:    &str = "_snum";
 pub const RECV_NUM:    &str = "_rnum";
