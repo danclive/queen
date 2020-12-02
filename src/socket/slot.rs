@@ -14,6 +14,8 @@ pub struct Slot {
     pub root: bool,
     pub chans: HashMap<String, HashSet<String>>,
     pub share_chans: HashMap<String, HashSet<String>>,
+    pub bind: HashSet<usize>,
+    pub bound: HashSet<usize>,
     pub wire: Wire<Message>
 }
 
@@ -25,6 +27,8 @@ impl Slot {
             root,
             chans: HashMap::new(),
             share_chans: HashMap::new(),
+            bind: HashSet::new(),
+            bound: HashSet::new(),
             wire
         }
     }

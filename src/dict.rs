@@ -3,6 +3,8 @@ pub const CHAN:      &str = "_ch";
 // channel
 pub const ATTACH:      &str = "_ah";
 pub const DETACH:      &str = "_dh";
+pub const BIND:        &str = "_bi";
+pub const UNBIND:      &str = "_ub";
 pub const PING:        &str = "_pi";
 pub const QUERY:       &str = "_qu";
 pub const MINE:        &str = "_mi";
@@ -10,16 +12,16 @@ pub const CUSTOM:      &str = "_cu";
 pub const CTRL:        &str = "_ct";
 
 // params
-pub const SOCKET_ID: &str = "_so";
-pub const SLOT_ID:   &str = "_sl";
-pub const VALUE:     &str = "_va";
-pub const LABEL:     &str = "_la";
-pub const TO:        &str = "_to";
-pub const FROM:      &str = "_fr";
-pub const SHARE:     &str = "_sh";
-pub const ROOT:      &str = "_ro";
-pub const ATTR:      &str = "_at";
-pub const ADDR:      &str = "_ad";
+pub const SOCKET_ID:   &str = "_so";
+pub const SLOT_ID:     &str = "_sl";
+pub const VALUE:       &str = "_va";
+pub const LABEL:       &str = "_la";
+pub const TO:          &str = "_to";
+pub const FROM:        &str = "_fr";
+pub const SHARE:       &str = "_sh";
+pub const ROOT:        &str = "_ro";
+pub const ATTR:        &str = "_at";
+pub const ADDR:        &str = "_ad";
 pub const CHANS:       &str = "_cs";
 pub const SHARE_CHANS: &str = "_sc";
 
