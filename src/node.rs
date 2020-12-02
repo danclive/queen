@@ -63,6 +63,7 @@ impl Connector for Socket {
 }
 
 pub struct Node<C: Codec> {
+    #[allow(clippy::rc_buffer)]
     queues: Arc<Vec<Queue<Packet<C>>>>,
     run: Arc<AtomicBool>
 }
@@ -79,7 +80,7 @@ impl<C: Codec> Node<C> {
 
         for _ in 0..worker_num {
             let queue: Queue<Packet<C>> = Queue::new()?;
-            queues.push(queue.clone());
+            queues.push(queue);
         }
 
         let node = Self {
@@ -219,7 +220,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
                         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
                         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
 
-                        let (wire, codec, crypto) = match Self::hand(&self.hook, &self.connector, &mut stream, &addr) {
+                        let (wire, codec, crypto) = match Self::hand(&self.hook, &*self.connector, &mut stream, &addr) {
                             Ok(ret) => ret,
                             Err(err) => {
                                 log::debug!("{}", err);
@@ -250,7 +251,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
 
     fn hand(
         hook: &H,
-        connector: &Box<dyn Connector>,
+        connector: &dyn Connector,
         stream: &mut TcpStream,
         addr: &SocketAddr
     ) -> Result<(Wire<Message>, C, Option<Crypto>)> {
