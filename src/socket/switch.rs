@@ -240,7 +240,7 @@ impl Switch {
         }
     }
 
-    pub(crate) fn relay_root_message(
+    fn relay_root_message(
         &self,
         hook: &impl Hook,
         token: usize,
@@ -267,7 +267,7 @@ impl Switch {
     }
 
     #[allow(clippy::cognitive_complexity)]
-    pub(crate) fn relay_message(
+    fn relay_message(
         &mut self,
         hook: &impl Hook,
         token: usize,
@@ -526,7 +526,7 @@ impl Switch {
     }
 
     // ATTACH 的时候，可以附带自定义数据，可以通过 Hook.attach 或 SLOT_ATTACH 事件获取
-    pub(crate) fn attach(
+    fn attach(
         &mut self,
         hook: &impl Hook,
         token: usize,
@@ -653,7 +653,7 @@ impl Switch {
     }
 
     // DETACH 的时候，可以附带自定义数据，可以通过 Hook.detach 或 SLOT_DETACH 事件获取
-    pub(crate) fn detach(
+    fn detach(
         &mut self,
         hook: &impl Hook,
         token: usize,
@@ -782,7 +782,7 @@ impl Switch {
         self.send_message(hook, token, message);
     }
 
-    pub(crate) fn bind(
+    fn bind(
         &mut self,
         hook: &impl Hook,
         token: usize,
@@ -816,7 +816,7 @@ impl Switch {
         self.send_message(hook, token, message);
     }
 
-    pub(crate) fn unbind(
+    fn unbind(
         &mut self,
         hook: &impl Hook,
         token: usize,
@@ -851,7 +851,7 @@ impl Switch {
     }
 
     // PING 的时候可以附带自定义数据，可以通过 Hook.ping 获取
-    pub(crate) fn ping(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
+    fn ping(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
         hook.ping(&self.slots[token], &mut message);
 
         // PING 的时候，会插入 OK: 0
@@ -860,7 +860,7 @@ impl Switch {
         self.send_message(hook, token, message);
     }
 
-    pub(crate) fn mine(&self, hook: &impl Hook, token: usize, mut message: Message) {
+    fn mine(&self, hook: &impl Hook, token: usize, mut message: Message) {
         if let Some(slot) = self.slots.get(token) {
             let mut chans = Message::new();
             for (chan, labels) in &slot.chans {
@@ -897,7 +897,7 @@ impl Switch {
 
     // 注意，QUERY 和 CUSTOM 的不同之处在于，前者必须具有 ROOT 权限，后者不需要
     // 可以在 Hook.query 自行定制返回数据
-    pub(crate) fn query(&self, hook: &impl Hook, token: usize, mut message: Message) {
+    fn query(&self, hook: &impl Hook, token: usize, mut message: Message) {
         {
             let slot = &self.slots[token];
 
@@ -919,7 +919,7 @@ impl Switch {
 
     // 用于实现自定义功能。注意，QUERY 和 CUSTOM 的不同之处在于，前者必须具有 ROOT 权限，后者不需要
     // 可以在 Hook.custom 自行定制返回数据
-    pub(crate) fn custom(&self, hook: &impl Hook, token: usize, mut message: Message) {
+    fn custom(&self, hook: &impl Hook, token: usize, mut message: Message) {
         hook.custom(self, token, &mut message);
 
         // CUSTOM 的时候，不会插入 CODE: 0, 由 hook 函数决定
@@ -930,7 +930,7 @@ impl Switch {
     // 用于控制命令。必须具有 ROOT 权限
     // 可以在 Hook.ctrl 自行定制返回数据
     // 注意，在 Hook.ctrl 能修改 Switch 结构，需谨慎操作
-    pub(crate) fn ctrl(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
+    fn ctrl(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
         {
             let slot = &self.slots[token];
 
@@ -951,7 +951,7 @@ impl Switch {
     }
 
     // 具有 ROOT 权限的 SLOT 可以 KILL 掉其他 SLOT（包括自己）
-    pub(crate) fn kill(
+    fn kill(
         &mut self,
         epoll: &Epoll,
         hook: &impl Hook,
