@@ -25,7 +25,7 @@ impl<T> Lock<T> {
     }
 
     pub fn try_lock(&self) -> Option<LockGuard<T>> {
-        if match self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire) {
+        if match self.lock.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed) {
             Ok(x) => x,
             Err(x) => x,
         } {
@@ -39,7 +39,7 @@ impl<T> Lock<T> {
     }
 
     pub fn lock(&self) -> LockGuard<T> {
-        while match self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire) {
+        while match self.lock.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed) {
             Ok(x) => x,
             Err(x) => x,
         } {
@@ -57,6 +57,10 @@ impl<T> Lock<T> {
     #[allow(clippy::missing_safety_doc)]
     pub unsafe fn force_unlock(&self) {
         self.lock.store(false, Ordering::Release);
+    }
+
+    pub fn is_lock(&self) -> bool {
+        self.lock.load(Ordering::Relaxed)
     }
 }
 
