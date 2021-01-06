@@ -25,7 +25,10 @@ impl<T> Lock<T> {
     }
 
     pub fn try_lock(&self) -> Option<LockGuard<T>> {
-        if self.lock.compare_and_swap(false, true, Ordering::Acquire) {
+        if match self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire) {
+            Ok(x) => x,
+            Err(x) => x,
+        } {
             return None
         }
 
@@ -36,7 +39,10 @@ impl<T> Lock<T> {
     }
 
     pub fn lock(&self) -> LockGuard<T> {
-        while self.lock.compare_and_swap(false, true, Ordering::Acquire) {
+        while match self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire) {
+            Ok(x) => x,
+            Err(x) => x,
+        } {
             while self.lock.load(Ordering::Relaxed) {
                 spin_loop_hint();
             }
