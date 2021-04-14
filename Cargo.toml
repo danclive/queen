@@ -23,7 +23,7 @@ queen-io = "0.6"
 nson = "0.11"
 libc = "0.2"
 log = "0.4"
-rand = {"version" = "0.7", features = ["small_rng"]}
+rand = {"version" = "0.8", features = ["small_rng"]}
 ring = "0.16"
 
 [dev-dependencies]

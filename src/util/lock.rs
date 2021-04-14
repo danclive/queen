@@ -1,6 +1,7 @@
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicBool, Ordering, spin_loop_hint};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::hint::spin_loop;
 
 #[derive(Debug)]
 pub struct Lock<T: ?Sized> {
@@ -44,7 +45,7 @@ impl<T> Lock<T> {
             Err(x) => x,
         } {
             while self.lock.load(Ordering::Relaxed) {
-                spin_loop_hint();
+                spin_loop();
             }
         }
 
