@@ -21,6 +21,10 @@ pub trait Hook: Send + 'static {
 
     fn unbind(&self, _: &Slot, _: &mut Message, _slot_id: MessageId) -> bool { true }
 
+    fn join(&self, _: &Slot, _: &mut Message) -> bool { true }
+
+    fn unjoin(&self, _: &Slot, _: &mut Message) -> bool { true }
+
     fn ping(&self, _: &Slot, _: &mut Message) {}
 
     fn emit(&self, _: &Slot, _: &mut Message) -> bool { true }

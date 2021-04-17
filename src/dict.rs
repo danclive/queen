@@ -1,10 +1,12 @@
 pub const CHAN:      &str = "_ch";
 
-// channel
+// system channel
 pub const ATTACH:      &str = "_ah";
 pub const DETACH:      &str = "_dh";
 pub const BIND:        &str = "_bi";
 pub const UNBIND:      &str = "_ub";
+pub const JOIN:        &str = "_jo";
+pub const UNJOIN:      &str = "_uj";
 pub const PING:        &str = "_pi";
 pub const QUERY:       &str = "_qu";
 pub const MINE:        &str = "_mi";
@@ -17,13 +19,18 @@ pub const SLOT_ID:     &str = "_sl";
 pub const VALUE:       &str = "_va";
 pub const LABEL:       &str = "_la";
 pub const TO:          &str = "_to";
+pub const TO_SOCKET:   &str = "_ts";
 pub const FROM:        &str = "_fr";
+pub const FROM_SOCKET: &str = "_fs";
 pub const SHARE:       &str = "_sh";
 pub const ROOT:        &str = "_ro";
 pub const ATTR:        &str = "_at";
 pub const ADDR:        &str = "_ad";
 pub const CHANS:       &str = "_cs";
 pub const SHARE_CHANS: &str = "_sc";
+pub const BINDED:      &str = "_bd";
+pub const BOUNDED:     &str = "_bo";
+pub const JOINED:      &str = "_jd";
 
 // message id
 pub const ID:        &str = "_id";
@@ -42,7 +49,8 @@ pub const SLOT_SEND:   &str = "_slse";
 pub const SLOT_RECV:   &str = "_slrc";
 
 // bind event channel
-pub const BINDING:   &str = "_bdin";
+pub const BIND_SEND:   &str = "_bdse";
+pub const BIND_RECV:   &str = "_bdre";
 
 // attr
 pub const SEND_NUM:    &str = "_snum";

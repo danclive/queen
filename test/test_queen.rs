@@ -1350,6 +1350,9 @@ fn mine() {
     assert!(value.is_null(SLOT_ID) == false);
     assert!(value.get_u64(SEND_NUM).unwrap() == 1);
     assert!(value.get_u64(RECV_NUM).unwrap() == 1);
+    assert!(value.get_array(BINDED).is_ok());
+    assert!(value.get_array(BOUNDED).is_ok());
+    assert!(value.get_bool(JOINED).is_ok());
 
     // attach
     let _ = wire1.send(msg!{
@@ -1547,6 +1550,7 @@ fn bind_unbind() {
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
+    // BIND_SEND
     // bind
     let _ = wire2.send(msg!{
         CHAN: BIND,
@@ -1566,7 +1570,8 @@ fn bind_unbind() {
     // recv
     let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
 
-    assert!(recv.get_str(CHAN).unwrap() == BINDING);
+    assert!(recv.get_str(CHAN).unwrap() == BIND_SEND);
+    assert!(recv.get_message_id(SLOT_ID).unwrap() == &slot_id1);
     assert!(recv.get_message(VALUE).unwrap().get_str("hello").unwrap() == "world");
     assert!(recv.get_message(VALUE).unwrap().get_message_id(FROM).is_ok());
 
@@ -1587,5 +1592,154 @@ fn bind_unbind() {
     });
 
     // recv
+    assert!(wire2.wait(Some(Duration::from_millis(100))) == Err(RecvError::TimedOut));
+
+
+    // BIND_RECV
+    let slot_id3 = MessageId::new();
+    let wire3 = socket.connect(slot_id3, false, msg!{}, None, None).unwrap();
+
+    let _ = wire3.send(msg!{
+        CHAN: PING
+    });
+
+    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // bind
+    let _ = wire2.send(msg!{
+        CHAN: BIND,
+        SLOT_ID: slot_id3
+    });
+
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(recv.get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire1.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        TO: slot_id3
+    });
+
+    // recv
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == BIND_RECV);
+    assert!(recv.get_message_id(SLOT_ID).unwrap() == &slot_id3);
+    assert!(recv.get_message(VALUE).unwrap().get_str("hello").unwrap() == "world");
+    assert!(recv.get_message(VALUE).unwrap().get_message_id(FROM).is_ok());
+
+    // unbind
+    let _ = wire2.send(msg!{
+        CHAN: UNBIND,
+        SLOT_ID: slot_id3
+    });
+
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(recv.get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire1.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        TO: slot_id3
+    });
+
+    // recv
+    assert!(wire2.wait(Some(Duration::from_millis(100))) == Err(RecvError::TimedOut));
+}
+
+#[test]
+fn to_socket() {
+    let socket_id = MessageId::new();
+    let socket = Socket::new(socket_id, ()).unwrap();
+
+    let slot_id1 = MessageId::new();
+    let slot_id2 = MessageId::new();
+    let slot_id3 = MessageId::new();
+    let wire1 = socket.connect(slot_id1, false, msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(slot_id2, false, msg!{}, None, None).unwrap();
+    let wire3 = socket.connect(slot_id3, false, msg!{}, None, None).unwrap();
+
+    let _ = wire1.send(msg!{
+        CHAN: PING
+    });
+
+    let _ = wire2.send(msg!{
+        CHAN: PING
+    });
+
+    let _ = wire3.send(msg!{
+        CHAN: PING
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire1.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        TO: slot_id3,
+        TO_SOCKET: 123
+    });
+
+    // err
+    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
+    assert!(Code::get(&recv) == Some(Code::InvalidToSocketFieldType));
+
+    // send
+    let _ = wire1.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        TO: slot_id3,
+        TO_SOCKET: socket_id
+    });
+
+    // recv
+    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+
+    // join
+    let _ = wire2.send(msg!{
+        CHAN: JOIN
+    });
+
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+    assert!(recv.get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire1.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        TO: slot_id3,
+        TO_SOCKET: slot_id2
+    });
+
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get_message_id(FROM_SOCKET).unwrap() == &socket_id);
+    assert!(recv.get_message_id(TO_SOCKET).unwrap() == &slot_id2);
+
+    // unjoin
+    let _ = wire2.send(msg!{
+        CHAN: UNJOIN
+    });
+
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+    assert!(recv.get_i32(CODE).unwrap() == 0);
+
+    // send
+    let _ = wire1.send(msg!{
+        CHAN: "aaa",
+        "hello": "world",
+        TO: slot_id3,
+        TO_SOCKET: slot_id2
+    });
+
     assert!(wire2.wait(Some(Duration::from_millis(100))) == Err(RecvError::TimedOut));
 }

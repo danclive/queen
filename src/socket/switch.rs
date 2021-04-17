@@ -8,7 +8,8 @@ use queen_io::{
 
 use nson::{
     Message, msg,
-    message_id::MessageId
+    message_id::MessageId,
+    Array
 };
 
 use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
@@ -27,6 +28,8 @@ pub struct Switch {
     pub share_chans: HashMap<String, HashSet<usize>>,
     // SLOT_ID，Token
     pub slot_ids: HashMap<MessageId, usize>,
+    // SOCKET_ID, Token
+    pub socket_ids: HashMap<MessageId, usize>,
     pub slots: Slab<Slot>,
     pub send_num: Cell<usize>,
     pub recv_num: Cell<usize>,
@@ -40,6 +43,7 @@ impl Switch {
             chans: HashMap::new(),
             share_chans: HashMap::new(),
             slot_ids: HashMap::new(),
+            socket_ids: HashMap::new(),
             slots: Slab::new(),
             send_num: Cell::new(0),
             recv_num: Cell::new(0),
@@ -206,6 +210,8 @@ impl Switch {
                 DETACH => self.detach(hook, token, message),
                 BIND => self.bind(hook, token, message),
                 UNBIND => self.unbind(hook, token, message),
+                JOIN => self.join(hook, token, message),
+                UNJOIN => self.unjoin(hook, token, message),
                 PING => self.ping(hook, token, message),
                 MINE => self.mine(hook, token, message),
                 QUERY => self.query(hook, token, message),
@@ -284,12 +290,38 @@ impl Switch {
             return
         }
 
+        macro_rules! send_bind {
+            ($self: ident, $hook: ident, $slot: ident, $message: ident) => {
+                let success = $hook.push($slot, &mut $message);
+
+                if success {
+                    $self.send_message($hook, $slot.token, $message.clone());
+                }
+            };
+        }
+
         macro_rules! send {
             ($self: ident, $hook: ident, $slot: ident, $message: ident) => {
                 let success = $hook.push($slot, &mut $message);
 
                 if success {
                     $self.send_message($hook, $slot.token, $message.clone());
+
+                    // BIND
+                    // 此模式可以接收到所 BIND 的 SLOT 发送的消息
+                    let bounds = &$slot.bound;
+
+                    let mut bind_message = msg! {
+                        CHAN: BIND_RECV,
+                        SLOT_ID: $slot.id,
+                        VALUE: message.clone()
+                    };
+
+                    for bound in bounds {
+                        if let Some(slot) = self.slots.get(*bound) {
+                            send_bind!(self, hook, slot, bind_message);
+                        }
+                    }
 
                     // slot event
                     // {
@@ -310,24 +342,52 @@ impl Switch {
         }
 
         if !message.contains_key(FROM) {
-            message.insert(FROM, &self.slots[token].id.clone());
+            message.insert(FROM, self.slots[token].id);
         }
 
         // BIND
-        // 此模式可以接收到所 BIND 的 SLOT 的消息
+        // 此模式可以接收到所 BIND 的 SLOT 发送的消息
         let bounds = &self.slots[token].bound;
 
         let mut bind_message = msg! {
-            CHAN: BINDING,
+            CHAN: BIND_SEND,
+            SLOT_ID: self.slots[token].id,
             VALUE: message.clone()
         };
 
         for bound in bounds {
             if let Some(slot) = self.slots.get(*bound) {
-                send!(self, hook, slot, bind_message);
+                send_bind!(self, hook, slot, bind_message);
             }
         }
 
+        // TO SOCKET
+        let mut goon = true;
+        if let Some(to_socket) = message.get(TO_SOCKET).cloned() {
+            if let Some(to_socket_id) = to_socket.as_message_id() {
+                if to_socket_id != &self.socket_id {
+                    goon = false;
+                }
+
+                if let Some(socket_token) = self.socket_ids.get(to_socket_id) {
+                    if let Some(slot) = self.slots.get(*socket_token) {
+                        if !message.contains_key(FROM_SOCKET) {
+                            message.insert(FROM_SOCKET, self.socket_id);
+                        }
+
+                        send!(self, hook, slot, message);
+                    }
+                }
+            } else {
+                Code::InvalidToSocketFieldType.set(&mut message);
+
+                self.send_message(hook, token, message);
+
+                return
+            }
+        }
+
+        if goon {
         // 两种模式下，自己都可以收到自己发送的消息，如果不想处理，可以利用 `FROM` 进行过滤，
         // 也就是此时 FROM == 自己的 SLOT_ID
 
@@ -369,22 +429,22 @@ impl Switch {
             if !to_ids.is_empty() {
                 if message.get_bool(SHARE).ok().unwrap_or(false) {
                     if to_ids.len() == 1 {
-                        if let Some(slot_id) = self.slot_ids.get(&to_ids[0]) {
-                            if let Some(slot) = self.slots.get(*slot_id) {
+                        if let Some(slot_token) = self.slot_ids.get(&to_ids[0]) {
+                            if let Some(slot) = self.slots.get(*slot_token) {
                                 send!(self, hook, slot, message);
                             }
                         }
                     } else if let Some(to) = to_ids.choose(&mut self.rand) {
-                        if let Some(slot_id) = self.slot_ids.get(to) {
-                            if let Some(slot) = self.slots.get(*slot_id) {
+                        if let Some(slot_token) = self.slot_ids.get(to) {
+                            if let Some(slot) = self.slots.get(*slot_token) {
                                 send!(self, hook, slot, message);
                             }
                         }
                     }
                 } else {
                     for to in &to_ids {
-                        if let Some(slot_id) = self.slot_ids.get(to) {
-                            if let Some(slot) = self.slots.get(*slot_id) {
+                        if let Some(slot_token) = self.slot_ids.get(to) {
+                            if let Some(slot) = self.slots.get(*slot_token) {
                                 send!(self, hook, slot, message);
                             }
                         }
@@ -419,14 +479,14 @@ impl Switch {
                 }
             }
 
-            if let Some(ids) = self.chans.get(&chan) {
+            if let Some(tokens) = self.chans.get(&chan) {
                 if message.get_bool(SHARE).ok().unwrap_or(false) {
                     let mut array: Vec<usize> = Vec::new();
 
                     // 这里没有进行过滤 `.filter(|id| **id != token )`
                     // 也就是自己可以收到自己发送的消息
-                    for slot_id in ids.iter() {
-                        if let Some(slot) = self.slots.get(*slot_id) {
+                    for slot_token in tokens.iter() {
+                        if let Some(slot) = self.slots.get(*slot_token) {
                             // filter labels
                             if !labels.is_empty() {
                                 let slot_labels = slot.chans.get(&chan).expect("It shouldn't be executed here!");
@@ -440,7 +500,7 @@ impl Switch {
                                 }
                             }
 
-                            array.push(*slot_id);
+                            array.push(*slot_token);
                         }
                     }
 
@@ -458,10 +518,10 @@ impl Switch {
                 } else {
                     // 给每个 SLOT 发送消息
                     // 会根据 LABEL 过滤
-                    // 这里没有进行过滤 `.filter(|id| **id != token )`
+                    // 这里没有进行过滤 `.filter(|slot_token| **slot_token != token )`
                     // 也就是自己可以收到自己发送的消息
-                    for slot_id in ids.iter() {
-                        if let Some(slot) = self.slots.get(*slot_id) {
+                    for slot_token in tokens.iter() {
+                        if let Some(slot) = self.slots.get(*slot_token) {
                             // filter labels
                             if !labels.is_empty() {
                                 let slot_labels = slot.chans.get(&chan).expect("It shouldn't be executed here!");
@@ -480,11 +540,11 @@ impl Switch {
             // 共享订阅
             // 注意: 共享订阅与普通订阅是两套并行的机制，
             // 不管发送消息时有没有　SHARE　参数，共享订阅始终能收到消息
-            if let Some(ids) = self.share_chans.get(&chan) {
+            if let Some(tokens) = self.share_chans.get(&chan) {
                 let mut array: Vec<usize> = Vec::new();
 
-                for slot_id in ids.iter() {
-                    if let Some(slot) = self.slots.get(*slot_id) {
+                for slot_token in tokens.iter() {
+                    if let Some(slot) = self.slots.get(*slot_token) {
                         // filter labels
                         if !labels.is_empty() {
                             let slot_labels = slot.share_chans.get(&chan).expect("It shouldn't be executed here!");
@@ -494,7 +554,7 @@ impl Switch {
                             }
                         }
 
-                        array.push(*slot_id);
+                        array.push(*slot_token);
                     }
                 }
 
@@ -503,13 +563,15 @@ impl Switch {
                         if let Some(slot) = self.slots.get(array[0]) {
                             send!(self, hook, slot, message);
                         }
-                    } else if let Some(id) = array.choose(&mut self.rand) {
-                        if let Some(slot) = self.slots.get(*id) {
+                    } else if let Some(slot_token) = array.choose(&mut self.rand) {
+                        if let Some(slot) = self.slots.get(*slot_token) {
                             send!(self, hook, slot, message);
                         }
                     }
                 }
             }
+        }
+        // end goon
         }
 
         // slot event
@@ -850,6 +912,54 @@ impl Switch {
         self.send_message(hook, token, message);
     }
 
+    fn join(
+        &mut self,
+        hook: &impl Hook,
+        token: usize,
+        mut message: Message
+    ) {
+        // 这里可以验证该 SLOT 是否有权限
+        let success = hook.join(&self.slots[token], &mut message);
+
+        if !success {
+            Code::PermissionDenied.set(&mut message);
+
+            self.send_message(hook, token, message);
+
+            return
+        }
+
+        self.socket_ids.insert(self.slots[token].id, token);
+
+        Code::Ok.set(&mut message);
+
+        self.send_message(hook, token, message);
+    }
+
+    fn unjoin(
+        &mut self,
+        hook: &impl Hook,
+        token: usize,
+        mut message: Message
+    ) {
+        // 这里可以验证该 SLOT 是否有权限
+        let success = hook.unjoin(&self.slots[token], &mut message);
+
+        if !success {
+            Code::PermissionDenied.set(&mut message);
+
+            self.send_message(hook, token, message);
+
+            return
+        }
+
+        self.socket_ids.remove(&self.slots[token].id);
+
+        Code::Ok.set(&mut message);
+
+        self.send_message(hook, token, message);
+    }
+
     // PING 的时候可以附带自定义数据，可以通过 Hook.ping 获取
     fn ping(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
         hook.ping(&self.slots[token], &mut message);
@@ -876,6 +986,22 @@ impl Switch {
                 share_chans.insert(chan, labels);
             }
 
+            let mut binded = Array::new();
+
+            for bind_token in &slot.bind {
+                if let Some(bind_slot) = self.slots.get(*bind_token) {
+                    binded.push(bind_slot.id);
+                }
+            }
+
+            let mut bounded = Array::new();
+
+            for bound_token in &slot.bound {
+                if let Some(bound_slot) = self.slots.get(*bound_token) {
+                    bounded.push(bound_slot.id);
+                }
+            }
+
             let slot = msg!{
                 SOCKET_ID: self.socket_id,
                 SLOT_ID: slot.id,
@@ -884,7 +1010,10 @@ impl Switch {
                 CHANS: chans,
                 SHARE_CHANS: share_chans,
                 SEND_NUM: slot.wire.send_num() as u64,
-                RECV_NUM: slot.wire.recv_num() as u64
+                RECV_NUM: slot.wire.recv_num() as u64,
+                BINDED: binded,
+                BOUNDED: bounded,
+                JOINED: self.socket_ids.contains_key(&slot.id)
             };
 
             message.insert(VALUE, slot);
