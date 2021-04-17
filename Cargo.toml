@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.25.2"
+version       = "0.26.0-alpha.1"
 license       = "MIT"
 authors       = ["danclive <dangcheng@hotmail.com>"]
 description   = "message queue"
@@ -23,7 +23,7 @@ queen-io = "0.6"
 nson = "0.11"
 libc = "0.2"
 log = "0.4"
-rand = {"version" = "0.8", features = ["small_rng"]}
+rand = {version = "0.8", features = ["small_rng"]}
 ring = "0.16"
 
 [dev-dependencies]
