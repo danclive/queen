@@ -147,7 +147,7 @@ fn attach_detach() {
 }
 
 #[test]
-fn label() {
+fn tag() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
     let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
@@ -179,7 +179,7 @@ fn label() {
     let _ = wire2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -204,11 +204,11 @@ fn label() {
     assert!(recv.get_str("hello").unwrap() == "world");
     assert!(recv.get(FROM).is_some());
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     // recv
@@ -223,16 +223,16 @@ fn label() {
     let _ = wire2.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     // recv
@@ -265,24 +265,24 @@ fn label() {
     let _ = wire4.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     let _ = wire4.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
-        LABEL: "label2"
+        TAG: "tag2"
     });
 
     assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
     assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
     assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     // recv
@@ -295,16 +295,16 @@ fn label() {
     let _ = wire4.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label2"
+        TAG: "tag2"
     });
 
     // recv
@@ -315,7 +315,7 @@ fn label() {
 }
 
 #[test]
-fn labels() {
+fn tags() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
     let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
@@ -342,13 +342,13 @@ fn labels() {
     let _ = wire1.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
-        LABEL: ["label1", "label2", "label3", "label1"]
+        TAG: ["tag1", "tag2", "tag3", "tag1"]
     });
 
     let _ = wire2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
-        LABEL: ["label2", "label3", "label4"]
+        TAG: ["tag2", "tag3", "tag4"]
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -373,31 +373,31 @@ fn labels() {
     assert!(recv.get_str("hello").unwrap() == "world");
     assert!(recv.get(FROM).is_some());
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label5"
+        TAG: "tag5"
     });
 
     // recv
     assert!(wire1.wait(Some(Duration::from_millis(100))).is_err());
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label5", "label6"]
+        TAG: ["tag5", "tag6"]
     });
 
     // recv
     assert!(wire1.wait(Some(Duration::from_millis(100))).is_err());
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     // recv
@@ -408,11 +408,11 @@ fn labels() {
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).is_err());
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label1"]
+        TAG: ["tag1"]
     });
 
     // recv
@@ -423,11 +423,11 @@ fn labels() {
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).is_err());
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label1", "label5"]
+        TAG: ["tag1", "tag5"]
     });
 
     // recv
@@ -438,11 +438,11 @@ fn labels() {
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).is_err());
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label1", "label4"]
+        TAG: ["tag1", "tag4"]
     });
 
     // recv
@@ -460,16 +460,16 @@ fn labels() {
     let _ = wire1.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label1", "label4"]
+        TAG: ["tag1", "tag4"]
     });
 
     // recv
@@ -484,16 +484,16 @@ fn labels() {
     let _ = wire2.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
-        LABEL: ["label2", "label3"]
+        TAG: ["tag2", "tag3"]
     });
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label2"
+        TAG: "tag2"
     });
 
     // recv
@@ -504,11 +504,11 @@ fn labels() {
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).is_err());
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: ["label2", "label3"]
+        TAG: ["tag2", "tag3"]
     });
 
     // recv
@@ -529,24 +529,24 @@ fn labels() {
     let _ = wire4.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
-        LABEL: ["label1", "label2"]
+        TAG: ["tag1", "tag2"]
     });
 
     let _ = wire4.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
-        LABEL: ["label3", "label4"]
+        TAG: ["tag3", "tag4"]
     });
 
     assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
     assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
     assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     // recv
@@ -559,16 +559,16 @@ fn labels() {
     let _ = wire4.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
-        LABEL: ["label2", "label3"]
+        TAG: ["tag2", "tag3"]
     });
 
     assert!(wire4.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    // send with label
+    // send with tag
     let _ = wire3.send(msg!{
         CHAN: "aaa",
         "hello": "world",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     // recv
@@ -659,19 +659,19 @@ fn share() {
 
     assert!(read_num == 1);
 
-    // with label
+    // with tag
 
     // attatch
     let _ = wire1.send(msg!{
         CHAN: ATTACH,
         VALUE: "bbb",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     let _ = wire2.send(msg!{
         CHAN: ATTACH,
         VALUE: "bbb",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     let _ = wire3.send(msg!{
@@ -687,7 +687,7 @@ fn share() {
     let _ = wire4.send(msg!{
         CHAN: "bbb",
         "hello": "world",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
@@ -708,7 +708,7 @@ fn share() {
     let _ = wire4.send(msg!{
         CHAN: "bbb",
         "hello": "world",
-        LABEL: "label1",
+        TAG: "tag1",
         SHARE: true
     });
 
@@ -857,20 +857,20 @@ fn share_attach() {
 
     assert!(read_num == 0);
 
-    // with label
+    // with tag
 
     // attatch
     let _ = wire1.send(msg!{
         CHAN: ATTACH,
         VALUE: "bbb",
-        LABEL: "label1",
+        TAG: "tag1",
         SHARE: true
     });
 
     let _ = wire2.send(msg!{
         CHAN: ATTACH,
         VALUE: "bbb",
-        LABEL: "label1",
+        TAG: "tag1",
         SHARE: true
     });
 
@@ -888,7 +888,7 @@ fn share_attach() {
     let _ = wire4.send(msg!{
         CHAN: "bbb",
         "hello": "world",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     let mut read_num = 0;
@@ -909,13 +909,13 @@ fn share_attach() {
     let _ = wire1.send(msg!{
         CHAN: DETACH,
         VALUE: "bbb",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     let _ = wire2.send(msg!{
         CHAN: DETACH,
         VALUE: "bbb",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     let _ = wire3.send(msg!{
@@ -931,7 +931,7 @@ fn share_attach() {
     let _ = wire4.send(msg!{
         CHAN: "bbb",
         "hello": "world",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     let mut read_num = 0;
@@ -952,14 +952,14 @@ fn share_attach() {
     let _ = wire1.send(msg!{
         CHAN: DETACH,
         VALUE: "bbb",
-        LABEL: "label1",
+        TAG: "tag1",
         SHARE: true
     });
 
     let _ = wire2.send(msg!{
         CHAN: DETACH,
         VALUE: "bbb",
-        LABEL: "label1",
+        TAG: "tag1",
         SHARE: true
     });
 
@@ -977,7 +977,7 @@ fn share_attach() {
     let _ = wire4.send(msg!{
         CHAN: "bbb",
         "hello": "world",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     let mut read_num = 0;
@@ -1215,7 +1215,7 @@ fn slot_event() {
     let _ = wire2.send(msg!{
         CHAN: ATTACH,
         VALUE: "aaa",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -1224,14 +1224,14 @@ fn slot_event() {
 
     assert!(recv.get_str(CHAN).unwrap() == SLOT_ATTACH);
     assert!(recv.get_str(VALUE).unwrap() == "aaa");
-    assert!(recv.get_str(LABEL).unwrap() == "label1");
+    assert!(recv.get_str(TAG).unwrap() == "tag1");
     assert!(recv.get_message_id(SLOT_ID).is_ok());
 
     // detach
     let _ = wire2.send(msg!{
         CHAN: DETACH,
         VALUE: "aaa",
-        LABEL: "label1"
+        TAG: "tag1"
     });
 
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
@@ -1240,7 +1240,7 @@ fn slot_event() {
 
     assert!(recv.get_str(CHAN).unwrap() == SLOT_DETACH);
     assert!(recv.get_str(VALUE).unwrap() == "aaa");
-    assert!(recv.get_str(LABEL).unwrap() == "label1");
+    assert!(recv.get_str(TAG).unwrap() == "tag1");
     assert!(recv.get_message_id(SLOT_ID).is_ok());
 
     let _ = wire2.send(msg!{
