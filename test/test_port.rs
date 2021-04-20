@@ -36,7 +36,7 @@ fn port() {
     // start port
     let port = Port::<NsonCodec>::new(KeepAlive::default()).unwrap();
 
-    let wire2 = port.connect(addr, None, MessageId::new(), false, msg!{}, None).unwrap();
+    let wire2 = port.connect(addr, MessageId::new(), false, msg!{}, None, None).unwrap();
 
     let _ = wire2.send(msg!{
         CHAN: PING
@@ -135,7 +135,7 @@ fn port_secure() {
         ACCESS: "12d3eaf5e9effffb14fb213e"
     };
 
-    let wire2 = port.connect(addr, Some(crypto_options), MessageId::new(), false, attr, None).unwrap();
+    let wire2 = port.connect(addr, MessageId::new(), false, attr, Some(crypto_options), None).unwrap();
     assert!(wire2.attr().get_i32("lalala").unwrap() == 123);
     assert!(wire2.attr().get_i32("wawawa").unwrap() == 456);
     assert!(wire2.attr().get_str("hello").unwrap() == "world");
@@ -215,7 +215,7 @@ fn port_secure2() {
     // start port
     let port = Port::<NsonCodec>::new(KeepAlive::default()).unwrap();
 
-    let wire2 = port.connect(addr, None, MessageId::new(), false, msg!{}, None);
+    let wire2 = port.connect(addr, MessageId::new(), false, msg!{}, None, None);
     assert!(wire2.is_err());
 
     // wire1 recv

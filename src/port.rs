@@ -73,10 +73,10 @@ impl<C: Codec> Port<C> {
     pub fn connect<A: ToSocketAddrs>(
         &self,
         addr: A,
-        crypto_options: Option<CryptoOptions>,
         slot_id: MessageId,
         root: bool,
         mut attr: Message,
+        crypto_options: Option<CryptoOptions>,
         capacity: Option<usize>
     ) -> Result<Wire<Message>> {
 

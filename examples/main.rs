@@ -32,7 +32,7 @@ fn main() {
     let port = Port::<NsonCodec>::new(KeepAlive::default()).unwrap();
 
     // start wire 2
-    let wire2 = port.connect("127.0.0.1:8888", None, MessageId::new(), false, msg!{}, None).unwrap();
+    let wire2 = port.connect("127.0.0.1:8888", MessageId::new(), false, msg!{}, None, None).unwrap();
 
     wire2.send(msg!{
         CHAN: PING

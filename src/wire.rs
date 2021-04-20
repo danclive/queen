@@ -4,7 +4,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering}
 };
 use std::time::Duration;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::marker::PhantomData;
 use std::cell::Cell;
 
@@ -159,6 +159,12 @@ impl<T: Send> Wire<T> {
                 Err(RecvError::Disconnected)
             }
         }
+    }
+}
+
+impl<T: Send> AsRawFd for Wire<T> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.rx.as_raw_fd()
     }
 }
 
