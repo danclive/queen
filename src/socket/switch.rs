@@ -305,7 +305,16 @@ impl Switch {
                 let success = $hook.push($slot, &mut $message);
 
                 if success {
-                    $self.send_message($hook, $slot.token, $message.clone());
+                    let mut message = $message.clone();
+
+                    if $slot.joined {
+                        // 如果对方已 JOIN，则填充 FROM_SOCKET
+                        if !message.contains_key(FROM_SOCKET) {
+                            message.insert(FROM_SOCKET, self.socket_id);
+                        }
+                    }
+
+                    $self.send_message($hook, $slot.token, message.clone());
 
                     // BIND
                     // 此模式可以接收到所 BIND 的 SLOT 发送的消息
@@ -330,7 +339,7 @@ impl Switch {
                     // }
                     let event_message = msg!{
                         CHAN: SLOT_RECV,
-                        VALUE: $message.clone(),
+                        VALUE: message.clone(),
                         TO: $slot.id
                     };
 
@@ -363,19 +372,20 @@ impl Switch {
 
         // TO SOCKET
         let mut goon = true;
+
         if let Some(to_socket) = message.get(TO_SOCKET).cloned() {
             if let Some(to_socket_id) = to_socket.as_message_id() {
+                // 目前 Socket ID 不等于本 Socket ID 时，该功能才生效
                 if to_socket_id != &self.socket_id {
                     goon = false;
-                }
 
-                if let Some(socket_token) = self.socket_ids.get(to_socket_id) {
-                    if let Some(slot) = self.slots.get(*socket_token) {
-                        if !message.contains_key(FROM_SOCKET) {
-                            message.insert(FROM_SOCKET, self.socket_id);
+                    // 移除 TO
+                    message.remove(TO_SOCKET);
+
+                    if let Some(socket_token) = self.socket_ids.get(to_socket_id) {
+                        if let Some(slot) = self.slots.get(*socket_token) {
+                            send!(self, hook, slot, message);
                         }
-
-                        send!(self, hook, slot, message);
                     }
                 }
             } else {
@@ -388,82 +398,37 @@ impl Switch {
         }
 
         if goon {
-        // 两种模式下，自己都可以收到自己发送的消息，如果不想处理，可以利用 `FROM` 进行过滤，
-        // 也就是此时 FROM == 自己的 SLOT_ID
-
-        // P2P 的优先级比较高
-        // 不管 SLOT 是否 ATTACH，都可给其发送消息
-        // 忽略 TAG
-        // 自己可以收到自己发送的消息
-        if let Some(to) = message.get(TO).cloned() {
-            let mut to_ids = vec![];
-
-            if let Some(to_id) = to.as_message_id() {
-                // TO 可以是单个 SLOT_ID
-                if self.slot_ids.contains_key(to_id) {
-                    to_ids.push(*to_id);
-                }
-            } else if let Some(to_array) = to.as_array() {
-                // TO 也可以是一个数组
-                for to in to_array {
-                    if let Some(to_id) = to.as_message_id() {
-                        if self.slot_ids.contains_key(to_id) {
-                            to_ids.push(*to_id);
-                        }
-                    } else {
-                        Code::InvalidToFieldType.set(&mut message);
-
-                        self.send_message(hook, token, message);
-
-                        return
-                    }
-                }
-            } else {
-                Code::InvalidToFieldType.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
-
-            if !to_ids.is_empty() {
-                if message.get_bool(SHARE).ok().unwrap_or(false) {
-                    if to_ids.len() == 1 {
-                        if let Some(slot_token) = self.slot_ids.get(&to_ids[0]) {
-                            if let Some(slot) = self.slots.get(*slot_token) {
-                                send!(self, hook, slot, message);
-                            }
-                        }
-                    } else if let Some(to) = to_ids.choose(&mut self.rand) {
-                        if let Some(slot_token) = self.slot_ids.get(to) {
-                            if let Some(slot) = self.slots.get(*slot_token) {
-                                send!(self, hook, slot, message);
-                            }
-                        }
-                    }
-                } else {
-                    for to in &to_ids {
-                        if let Some(slot_token) = self.slot_ids.get(to) {
-                            if let Some(slot) = self.slots.get(*slot_token) {
-                                send!(self, hook, slot, message);
-                            }
-                        }
-                    }
+            // 如果 TO == 本 Socket ID，则移除
+            if let Ok(to) = message.get_message_id(TO) {
+                if to == &self.socket_id {
+                    message.remove(TO);
                 }
             }
-        } else {
-            // tags
-            let mut tags = HashSet::new();
 
-            if let Some(tag) = message.get(TAG) {
-                if let Some(tag) = tag.as_str() {
-                    tags.insert(tag.to_string());
-                } else if let Some(tag_array) = tag.as_array() {
-                    for v in tag_array {
-                        if let Some(v) = v.as_str() {
-                            tags.insert(v.to_string());
+            // 两种模式下，自己都可以收到自己发送的消息，如果不想处理，可以利用 `FROM` 进行过滤，
+            // 也就是此时 FROM == 自己的 SLOT_ID
+
+            // P2P 的优先级比较高
+            // 不管 SLOT 是否 ATTACH，都可给其发送消息
+            // 忽略 TAG
+            // 自己可以收到自己发送的消息
+            if let Some(to) = message.get(TO).cloned() {
+                let mut to_ids = vec![];
+
+                if let Some(to_id) = to.as_message_id() {
+                    // TO 可以是单个 SLOT_ID
+                    if self.slot_ids.contains_key(to_id) {
+                        to_ids.push(*to_id);
+                    }
+                } else if let Some(to_array) = to.as_array() {
+                    // TO 也可以是一个数组
+                    for to in to_array {
+                        if let Some(to_id) = to.as_message_id() {
+                            if self.slot_ids.contains_key(to_id) {
+                                to_ids.push(*to_id);
+                            }
                         } else {
-                            Code::InvalidTagFieldType.set(&mut message);
+                            Code::InvalidToFieldType.set(&mut message);
 
                             self.send_message(hook, token, message);
 
@@ -471,30 +436,139 @@ impl Switch {
                         }
                     }
                 } else {
-                    Code::InvalidTagFieldType.set(&mut message);
+                    Code::InvalidToFieldType.set(&mut message);
 
                     self.send_message(hook, token, message);
 
                     return
                 }
-            }
 
-            if let Some(tokens) = self.chans.get(&chan) {
-                if message.get_bool(SHARE).ok().unwrap_or(false) {
+                // 移除 TO
+                message.remove(TO);
+
+                if !to_ids.is_empty() {
+                    if message.get_bool(SHARE).ok().unwrap_or(false) {
+                        if to_ids.len() == 1 {
+                            if let Some(slot_token) = self.slot_ids.get(&to_ids[0]) {
+                                if let Some(slot) = self.slots.get(*slot_token) {
+                                    send!(self, hook, slot, message);
+                                }
+                            }
+                        } else if let Some(to) = to_ids.choose(&mut self.rand) {
+                            if let Some(slot_token) = self.slot_ids.get(to) {
+                                if let Some(slot) = self.slots.get(*slot_token) {
+                                    send!(self, hook, slot, message);
+                                }
+                            }
+                        }
+                    } else {
+                        for to in &to_ids {
+                            if let Some(slot_token) = self.slot_ids.get(to) {
+                                if let Some(slot) = self.slots.get(*slot_token) {
+                                    send!(self, hook, slot, message);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // tags
+                let mut tags = HashSet::new();
+
+                if let Some(tag) = message.get(TAG) {
+                    if let Some(tag) = tag.as_str() {
+                        tags.insert(tag.to_string());
+                    } else if let Some(tag_array) = tag.as_array() {
+                        for v in tag_array {
+                            if let Some(v) = v.as_str() {
+                                tags.insert(v.to_string());
+                            } else {
+                                Code::InvalidTagFieldType.set(&mut message);
+
+                                self.send_message(hook, token, message);
+
+                                return
+                            }
+                        }
+                    } else {
+                        Code::InvalidTagFieldType.set(&mut message);
+
+                        self.send_message(hook, token, message);
+
+                        return
+                    }
+                }
+
+                if let Some(tokens) = self.chans.get(&chan) {
+                    if message.get_bool(SHARE).ok().unwrap_or(false) {
+                        let mut array: Vec<usize> = Vec::new();
+
+                        // 这里没有进行过滤 `.filter(|id| **id != token )`
+                        // 也就是自己可以收到自己发送的消息
+                        for slot_token in tokens.iter() {
+                            if let Some(slot) = self.slots.get(*slot_token) {
+                                // filter tags
+                                if !tags.is_empty() {
+                                    let slot_tags = slot.chans.get(&chan).expect("It shouldn't be executed here!");
+
+                                    // 交集
+                                    // if !slot_tags.iter().any(|l| tags.contains(l)) {
+                                    //     continue
+                                    // }
+                                    if (slot_tags & &tags).is_empty() {
+                                        continue;
+                                    }
+                                }
+
+                                array.push(*slot_token);
+                            }
+                        }
+
+                        if !array.is_empty() {
+                            if array.len() == 1 {
+                                if let Some(slot) = self.slots.get(array[0]) {
+                                    send!(self, hook, slot, message);
+                                }
+                            } else if let Some(id) = array.choose(&mut self.rand) {
+                                if let Some(slot) = self.slots.get(*id) {
+                                    send!(self, hook, slot, message);
+                                }
+                            }
+                        }
+                    } else {
+                        // 给每个 SLOT 发送消息
+                        // 会根据 TAG 过滤
+                        // 这里没有进行过滤 `.filter(|slot_token| **slot_token != token )`
+                        // 也就是自己可以收到自己发送的消息
+                        for slot_token in tokens.iter() {
+                            if let Some(slot) = self.slots.get(*slot_token) {
+                                // filter tags
+                                if !tags.is_empty() {
+                                    let slot_tags = slot.chans.get(&chan).expect("It shouldn't be executed here!");
+
+                                    if (slot_tags & &tags).is_empty() {
+                                        continue;
+                                    }
+                                }
+
+                                send!(self, hook, slot, message);
+                            }
+                        }
+                    }
+                }
+
+                // 共享订阅
+                // 注意: 共享订阅与普通订阅是两套并行的机制，
+                // 不管发送消息时有没有　SHARE　参数，共享订阅始终能收到消息
+                if let Some(tokens) = self.share_chans.get(&chan) {
                     let mut array: Vec<usize> = Vec::new();
 
-                    // 这里没有进行过滤 `.filter(|id| **id != token )`
-                    // 也就是自己可以收到自己发送的消息
                     for slot_token in tokens.iter() {
                         if let Some(slot) = self.slots.get(*slot_token) {
                             // filter tags
                             if !tags.is_empty() {
-                                let slot_tags = slot.chans.get(&chan).expect("It shouldn't be executed here!");
+                                let slot_tags = slot.share_chans.get(&chan).expect("It shouldn't be executed here!");
 
-                                // 交集
-                                // if !slot_tags.iter().any(|l| tags.contains(l)) {
-                                //     continue
-                                // }
                                 if (slot_tags & &tags).is_empty() {
                                     continue;
                                 }
@@ -509,70 +583,16 @@ impl Switch {
                             if let Some(slot) = self.slots.get(array[0]) {
                                 send!(self, hook, slot, message);
                             }
-                        } else if let Some(id) = array.choose(&mut self.rand) {
-                            if let Some(slot) = self.slots.get(*id) {
+                        } else if let Some(slot_token) = array.choose(&mut self.rand) {
+                            if let Some(slot) = self.slots.get(*slot_token) {
                                 send!(self, hook, slot, message);
                             }
                         }
                     }
-                } else {
-                    // 给每个 SLOT 发送消息
-                    // 会根据 TAG 过滤
-                    // 这里没有进行过滤 `.filter(|slot_token| **slot_token != token )`
-                    // 也就是自己可以收到自己发送的消息
-                    for slot_token in tokens.iter() {
-                        if let Some(slot) = self.slots.get(*slot_token) {
-                            // filter tags
-                            if !tags.is_empty() {
-                                let slot_tags = slot.chans.get(&chan).expect("It shouldn't be executed here!");
-
-                                if (slot_tags & &tags).is_empty() {
-                                    continue;
-                                }
-                            }
-
-                            send!(self, hook, slot, message);
-                        }
-                    }
                 }
             }
 
-            // 共享订阅
-            // 注意: 共享订阅与普通订阅是两套并行的机制，
-            // 不管发送消息时有没有　SHARE　参数，共享订阅始终能收到消息
-            if let Some(tokens) = self.share_chans.get(&chan) {
-                let mut array: Vec<usize> = Vec::new();
-
-                for slot_token in tokens.iter() {
-                    if let Some(slot) = self.slots.get(*slot_token) {
-                        // filter tags
-                        if !tags.is_empty() {
-                            let slot_tags = slot.share_chans.get(&chan).expect("It shouldn't be executed here!");
-
-                            if (slot_tags & &tags).is_empty() {
-                                continue;
-                            }
-                        }
-
-                        array.push(*slot_token);
-                    }
-                }
-
-                if !array.is_empty() {
-                    if array.len() == 1 {
-                        if let Some(slot) = self.slots.get(array[0]) {
-                            send!(self, hook, slot, message);
-                        }
-                    } else if let Some(slot_token) = array.choose(&mut self.rand) {
-                        if let Some(slot) = self.slots.get(*slot_token) {
-                            send!(self, hook, slot, message);
-                        }
-                    }
-                }
-            }
-        }
-        // end goon
-        }
+        } // end goon
 
         // slot event
         // {
@@ -930,6 +950,7 @@ impl Switch {
         }
 
         self.socket_ids.insert(self.slots[token].id, token);
+        self.slots[token].joined = true;
 
         Code::Ok.set(&mut message);
 
@@ -954,6 +975,7 @@ impl Switch {
         }
 
         self.socket_ids.remove(&self.slots[token].id);
+        self.slots[token].joined = false;
 
         Code::Ok.set(&mut message);
 
@@ -1013,7 +1035,7 @@ impl Switch {
                 RECV_NUM: slot.wire.recv_num() as u64,
                 BINDED: binded,
                 BOUNDED: bounded,
-                JOINED: self.socket_ids.contains_key(&slot.id)
+                JOINED: slot.joined
             };
 
             message.insert(VALUE, slot);

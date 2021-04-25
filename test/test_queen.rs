@@ -1723,7 +1723,6 @@ fn to_socket() {
     assert!(recv.get_str(CHAN).unwrap() == "aaa");
     assert!(recv.get_str("hello").unwrap() == "world");
     assert!(recv.get_message_id(FROM_SOCKET).unwrap() == &socket_id);
-    assert!(recv.get_message_id(TO_SOCKET).unwrap() == &slot_id2);
 
     // unjoin
     let _ = wire2.send(msg!{
