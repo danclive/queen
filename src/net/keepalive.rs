@@ -18,7 +18,7 @@ impl Default for KeepAlive {
             count: 3,
             time: Instant::now(),
             detect: false,
-            counter: 3
+            counter: 0
         }
     }
 }
@@ -31,33 +31,33 @@ impl KeepAlive {
             count,
             time: Instant::now(),
             detect: false,
-            counter: count
+            counter: 0
         }
     }
 
     pub fn reset(&mut self, now: Instant) {
         self.time = now;
         self.detect = false;
-        self.counter = self.count;
+        self.counter = 0;
     }
 
     pub fn tick(&mut self, now: Instant) -> Option<(u32, bool)> {
         let since = now.duration_since(self.time).as_secs() as u32;
 
         if self.detect {
-            if self.counter == 0 {
+            if self.counter >= self.count {
                 None
             } else if since < self.interval {
                 Some((self.interval - since, false))
             } else {
-                self.counter = self.counter.saturating_sub(1);
+                self.counter = self.counter.saturating_add(1);
                 Some((self.interval, true))
             }
         } else if since < self.idle {
             Some((self.idle - since, false))
         } else {
             self.detect = true;
-            self.counter = self.counter.saturating_sub(1);
+            self.counter = self.counter.saturating_add(1);
             Some((self.interval, true))
         }
     }
