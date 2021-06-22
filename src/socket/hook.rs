@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use nson::{Message, MessageId};
 
 use super::{Switch, Slot};
@@ -13,9 +11,9 @@ pub trait Hook: Send + 'static {
 
     fn send(&self, _: &Slot, _: &mut Message) -> bool { true }
 
-    fn attach(&self, _: &Slot, _: &mut Message, _chan: &str, _tag: &HashSet<String>) -> bool { true }
+    fn attach(&self, _: &Slot, _: &mut Message, _chan: &str) -> bool { true }
 
-    fn detach(&self, _: &Slot, _: &mut Message, _chan: &str, _tag: &HashSet<String>) -> bool { true }
+    fn detach(&self, _: &Slot, _: &mut Message, _chan: &str) -> bool { true }
 
     fn bind(&self, _: &Slot, _: &mut Message, _slot_id: MessageId) -> bool { true }
 

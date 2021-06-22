@@ -17,7 +17,6 @@ pub const CTRL:        &str = "_ct";
 pub const SOCKET_ID:   &str = "_so";
 pub const SLOT_ID:     &str = "_sl";
 pub const VALUE:       &str = "_va";
-pub const TAG:         &str = "_ta";
 pub const TO:          &str = "_to";
 pub const TO_SOCKET:   &str = "_ts";
 pub const FROM:        &str = "_fr";

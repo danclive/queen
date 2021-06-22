@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use nson::{
     Message,
@@ -13,8 +13,8 @@ pub struct Slot {
     pub id: MessageId,
     pub root: bool,
     pub joined: bool,
-    pub chans: HashMap<String, HashSet<String>>,
-    pub share_chans: HashMap<String, HashSet<String>>,
+    pub chans: HashSet<String>,
+    pub share_chans: HashSet<String>,
     pub bind: HashSet<usize>,
     pub bound: HashSet<usize>,
     pub wire: Wire<Message>
@@ -27,8 +27,8 @@ impl Slot {
             id,
             root,
             joined: false,
-            chans: HashMap::new(),
-            share_chans: HashMap::new(),
+            chans: HashSet::new(),
+            share_chans: HashSet::new(),
             bind: HashSet::new(),
             bound: HashSet::new(),
             wire

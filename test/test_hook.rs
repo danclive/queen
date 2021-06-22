@@ -4,7 +4,6 @@ use std::sync::{
 };
 use std::time::Duration;
 use std::thread;
-use std::collections::HashSet;
 
 use queen::{Socket, Hook, Switch, Slot};
 use queen::nson::{msg, MessageId, Message};
@@ -89,7 +88,7 @@ fn test_hook() {
             true
         }
 
-        fn attach(&self, _: &Slot, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
+        fn attach(&self, _: &Slot, message: &mut Message, chan: &str) -> bool {
             if chan == "123" {
                 return false
             }
@@ -99,7 +98,7 @@ fn test_hook() {
             return true
         }
 
-        fn detach(&self, _: &Slot, message: &mut Message, chan: &str, _ : &HashSet<String>) -> bool {
+        fn detach(&self, _: &Slot, message: &mut Message, chan: &str) -> bool {
             if chan == "123" {
                 return false
             }
