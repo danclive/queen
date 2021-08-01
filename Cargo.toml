@@ -26,9 +26,6 @@ log = "0.4"
 rand = {version = "0.8", features = ["small_rng"]}
 ring = "0.16"
 
-[dev-dependencies]
-queen-log = "0.3"
-
 [[test]]
 name = "test"
 path = "test/mod.rs"
