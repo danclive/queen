@@ -1,6 +1,6 @@
 # Queen
 
-[![crates.io](https://meritbadge.herokuapp.com/queen)](https://crates.io/crates/queen)
+[![crates.io](https://img.shields.io/crates/v/queen.svg)](https://crates.io/crates/queen)
 [![Build Status](https://travis-ci.org/danclive/queen.svg?branch=master)](https://travis-ci.org/danclive/queen)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Released API docs](https://docs.rs/queen/badge.svg)](https://docs.rs/queen)
