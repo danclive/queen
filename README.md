@@ -1,7 +1,7 @@
 # Queen
 
 [![crates.io](https://img.shields.io/crates/v/queen.svg)](https://crates.io/crates/queen)
-[![Build Status](https://github.com/danclive/queen/workflows/Rust/badge.svg)](https://github.com/danclive/queen/actions?query=workflow%3ARust+branch%3Amaster)
+[![CI](https://github.com/danclive/queen/actions/workflows/ci.yml/badge.svg)](https://github.com/danclive/queen/actions/workflows/ci.yml)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Released API docs](https://docs.rs/queen/badge.svg)](https://docs.rs/queen)
 
