@@ -795,15 +795,14 @@ fn slot_event_send_recv() {
         VALUE: "aaa"
     });
 
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+    assert!(recv.get_i32(CODE).unwrap() == 0);
+
     // send
     let _ = wire1.send(msg!{
         CHAN: "aaa",
         "hello": "world"
     });
-
-    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_i32(CODE).unwrap() == 0);
 
     // recv
     let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
