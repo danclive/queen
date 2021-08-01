@@ -211,7 +211,7 @@ impl Switch {
                 BIND => self.bind(hook, token, message),
                 UNBIND => self.unbind(hook, token, message),
                 JOIN => self.join(hook, token, message),
-                UNJOIN => self.unjoin(hook, token, message),
+                LEAVE => self.leave(hook, token, message),
                 PING => self.ping(hook, token, message),
                 MINE => self.mine(hook, token, message),
                 QUERY => self.query(hook, token, message),
@@ -690,7 +690,7 @@ impl Switch {
                         self.share_chans.remove(&chan);
                     }
                 }
-                
+
             } else {
                 self.slots[token].chans.remove(&chan);
 
@@ -806,14 +806,14 @@ impl Switch {
         self.send_message(hook, token, message);
     }
 
-    fn unjoin(
+    fn leave(
         &mut self,
         hook: &impl Hook,
         token: usize,
         mut message: Message
     ) {
         // 这里可以验证该 SLOT 是否有权限
-        let success = hook.unjoin(&self.slots[token], &mut message);
+        let success = hook.leave(&self.slots[token], &mut message);
 
         if !success {
             Code::PermissionDenied.set(&mut message);
@@ -843,7 +843,7 @@ impl Switch {
 
     fn mine(&self, hook: &impl Hook, token: usize, mut message: Message) {
         if let Some(slot) = self.slots.get(token) {
-           
+
             let chans: Vec<&String> = slot.chans.iter().collect();
             let share_chans: Vec<&String> = slot.share_chans.iter().collect();
 

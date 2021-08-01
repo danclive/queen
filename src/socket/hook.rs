@@ -21,7 +21,7 @@ pub trait Hook: Send + 'static {
 
     fn join(&self, _: &Slot, _: &mut Message) -> bool { true }
 
-    fn unjoin(&self, _: &Slot, _: &mut Message) -> bool { true }
+    fn leave(&self, _: &Slot, _: &mut Message) -> bool { true }
 
     fn ping(&self, _: &Slot, _: &mut Message) {}
 

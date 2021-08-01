@@ -1084,9 +1084,9 @@ fn to_socket() {
     assert!(recv.get_str("hello").unwrap() == "world");
     assert!(recv.get_message_id(FROM_SOCKET).unwrap() == &socket_id);
 
-    // unjoin
+    // leave
     let _ = wire2.send(msg!{
-        CHAN: UNJOIN
+        CHAN: LEAVE
     });
 
     let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
