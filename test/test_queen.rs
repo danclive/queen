@@ -1116,3 +1116,126 @@ fn to_socket() {
 
     assert!(wire2.wait(Some(Duration::from_millis(100))) == Err(RecvError::TimedOut));
 }
+
+#[test]
+fn slot_tags() {
+    let socket = Socket::new(MessageId::new(), ()).unwrap();
+
+    let attr = msg! {TAGS: 123};
+    let ret = socket.connect(attr, None, None);
+
+    assert!(matches!(ret, Err(Error::ErrorCode(Code::InvalidTagsFieldType))));
+
+    let attr = msg! {TAGS: [123]};
+    let ret = socket.connect(attr, None, None);
+
+    assert!(matches!(ret, Err(Error::ErrorCode(Code::InvalidTagsFieldType))));
+
+    let attr = msg! {TAGS: "abc"};
+    let ret = socket.connect(attr, None, None);
+
+    assert!(ret.is_ok());
+
+    let attr = msg! {TAGS: ["abc", "efg"]};
+    let ret = socket.connect(attr, None, None);
+
+    assert!(ret.is_ok());
+
+
+    let wire1 = socket.connect(msg!{TAGS: "abc"}, None, None).unwrap();
+    let wire2 = socket.connect(msg!{TAGS: ["abc", "123"]}, None, None).unwrap();
+    let wire3 = socket.connect(msg!{}, None, None).unwrap();
+
+    let _ = wire1.send(msg!{
+        CHAN: PING
+    });
+
+    let _ = wire2.send(msg!{
+        CHAN: PING
+    });
+
+    let _ = wire3.send(msg!{
+        CHAN: PING
+    });
+
+    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
+
+    // attach
+    let _ = wire1.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa"
+    });
+
+    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(recv.get_i32(CODE).unwrap() == 0);
+
+    let _ = wire2.send(msg!{
+        CHAN: ATTACH,
+        VALUE: "aaa"
+    });
+
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(recv.get_i32(CODE).unwrap() == 0);
+
+    // try send
+    let _ = wire3.send(msg!{
+        CHAN: "aaa",
+        TAGS: 123,
+        "hello": "world"
+    });
+
+    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(Code::get(&recv) == Some(Code::InvalidTagsFieldType));
+
+    let _ = wire3.send(msg!{
+        CHAN: "aaa",
+        TAGS: [123],
+        "hello": "world"
+    });
+
+    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(Code::get(&recv) == Some(Code::InvalidTagsFieldType));
+
+    // send
+    let _ = wire3.send(msg!{
+        CHAN: "aaa",
+        TAGS: "abc",
+        "hello": "world"
+    });
+
+    // recv
+    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get_message_id(FROM).is_ok());
+
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get_message_id(FROM).is_ok());
+
+    // send
+    let _ = wire3.send(msg!{
+        CHAN: "aaa",
+        TAGS: ["abc", "123"],
+        "hello": "world",
+    });
+
+    // recv
+    // let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
+    assert!(wire1.wait(Some(Duration::from_millis(100))) == Err(RecvError::TimedOut));
+
+    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
+
+    assert!(recv.get_str(CHAN).unwrap() == "aaa");
+    assert!(recv.get_str("hello").unwrap() == "world");
+    assert!(recv.get_message_id(FROM).is_ok());
+}

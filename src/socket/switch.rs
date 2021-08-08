@@ -92,10 +92,35 @@ impl Switch {
             false
         };
 
+        // TAGS
+        let mut tags = HashSet::new();
+
+        if let Some(tag) = wire.attr().get(TAGS) {
+            if let Some(tag) = tag.as_str() {
+                tags.insert(tag.to_string());
+            } else if let Some(tag_array) = tag.as_array() {
+                for v in tag_array {
+                    if let Some(v) = v.as_str() {
+                        tags.insert(v.to_string());
+                    } else {
+                        let _ = wire.send(msg!{CODE: Code::InvalidTagsFieldType.code()});
+
+                        return Ok(())
+                    }
+                }
+            } else {
+                let _ = wire.send(msg!{CODE: Code::InvalidTagsFieldType.code()});
+
+                return Ok(())
+            }
+        }
+
         let entry = self.slots.vacant_entry();
         let token = entry.key();
 
-        let slot = Slot::new(token, slot_id, root, wire);
+        let mut slot = Slot::new(token, slot_id, wire);
+        slot.root = root;
+        slot.tags = tags;
 
         // 此处可以验证一下 SLOT 的属性，不过目前只能验证 wire.attr
         // 并且，wire.attr 是可以修改的
@@ -496,6 +521,33 @@ impl Switch {
                     }
                 }
             } else {
+                // tags
+                let mut tags = HashSet::new();
+
+                if let Some(tag) = message.get(TAGS) {
+                    if let Some(tag) = tag.as_str() {
+                        tags.insert(tag.to_string());
+                    } else if let Some(tag_array) = tag.as_array() {
+                        for v in tag_array {
+                            if let Some(v) = v.as_str() {
+                                tags.insert(v.to_string());
+                            } else {
+                                Code::InvalidTagsFieldType.set(&mut message);
+
+                                self.send_message(hook, token, message);
+
+                                return
+                            }
+                        }
+                    } else {
+                        Code::InvalidTagsFieldType.set(&mut message);
+
+                        self.send_message(hook, token, message);
+
+                        return
+                    }
+                }
+
                 if let Some(tokens) = self.chans.get(&chan) {
                     if message.get_bool(SHARE).ok().unwrap_or(false) {
                         let mut array: Vec<usize> = Vec::new();
@@ -503,6 +555,14 @@ impl Switch {
                         // 这里没有进行过滤 `.filter(|slot_token| **slot_token != token )`
                         // 也就是自己可以收到自己发送的消息
                         for slot_token in tokens.iter() {
+                            if !tags.is_empty() {
+                                if let Some(slot) = self.slots.get(*slot_token) {
+                                    if !tags.iter().all(|t| slot.tags.contains(t)) {
+                                        continue
+                                    }
+                                }
+                            }
+
                             array.push(*slot_token);
                         }
 
@@ -523,6 +583,12 @@ impl Switch {
                         // 也就是自己可以收到自己发送的消息
                         for slot_token in tokens.iter() {
                             if let Some(slot) = self.slots.get(*slot_token) {
+                                if !tags.is_empty() {
+                                    if !tags.iter().all(|t| slot.tags.contains(t)) {
+                                        continue
+                                    }
+                                }
+
                                 send!(self, hook, slot, message);
                             }
                         }
@@ -536,6 +602,14 @@ impl Switch {
                     let mut array: Vec<usize> = Vec::new();
 
                     for slot_token in tokens.iter() {
+                        if !tags.is_empty() {
+                            if let Some(slot) = self.slots.get(*slot_token) {
+                                if !tags.iter().all(|t| slot.tags.contains(t)) {
+                                    continue
+                                }
+                            }
+                        }
+
                         array.push(*slot_token);
                     }
 
