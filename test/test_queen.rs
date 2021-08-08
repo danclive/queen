@@ -565,9 +565,9 @@ fn slot_event() {
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == SLOT_READY);
-    assert!(recv.get_bool(ROOT).unwrap() == true);
     assert!(recv.get_message_id(SLOT_ID).is_ok());
     assert!(recv.get_message(ATTR).is_ok());
+    assert!(recv.get_message(ATTR).unwrap().get_bool(ROOT).unwrap() == true);
 
     // attach
     let _ = wire2.send(msg!{
@@ -649,8 +649,8 @@ fn slot_event() {
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
 
     assert!(recv.get_str(CHAN).unwrap() == SLOT_READY);
-    assert!(recv.get_bool(ROOT).unwrap() == false);
     assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
+    assert!(recv.get_message(ATTR).unwrap().get_bool(ROOT).is_err());
 
     let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
 
@@ -713,7 +713,6 @@ fn mine() {
 
     let value = recv.get_message(VALUE).unwrap();
 
-    assert!(value.get_bool(ROOT).unwrap() == false);
     assert!(value.get_array(CHANS).unwrap().is_empty());
     assert!(value.is_null(SLOT_ID) == false);
     assert!(value.get_u64(SEND_NUM).unwrap() == 1);
@@ -740,7 +739,6 @@ fn mine() {
     assert!(recv.get_i32(CODE).unwrap() == 0);
 
     let value = recv.get_message(VALUE).unwrap();
-    assert!(value.get_bool(ROOT).unwrap() == false);
     assert!(value.get_array(CHANS).unwrap().contains(&"hello".into()));
     assert!(value.get_message_id(SLOT_ID).is_ok());
     assert!(value.get_u64(SEND_NUM).unwrap() == 3);

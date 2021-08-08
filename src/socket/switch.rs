@@ -113,14 +113,12 @@ impl Switch {
             // slot event
             // {
             //     CHAN: SLOT_READY,
-            //     ROOT: $slot.root,
             //     SLOT_ID: $slot_id,
             //     ATTR: $attr
             // }
             let event_message = msg!{
                 CHAN: SLOT_READY,
                 SLOT_ID: slot.id,
-                ROOT: slot.root,
                 ATTR: slot.wire.attr().clone()
             };
 
@@ -893,7 +891,6 @@ impl Switch {
             let slot = msg!{
                 SOCKET_ID: self.socket_id,
                 SLOT_ID: slot.id,
-                ROOT: slot.root,
                 ATTR: slot.wire.attr().clone(),
                 CHANS: chans,
                 SHARE_CHANS: share_chans,
