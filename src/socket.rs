@@ -89,15 +89,13 @@ impl Socket {
 
     pub fn connect(
         &self,
-        slot_id: MessageId,
-        root: bool,
         attr: Message,
         capacity: Option<usize>,
         timeout: Option<Duration>
     ) -> Result<Wire<Message>> {
         let (wire1, wire2) = Wire::pipe(capacity.unwrap_or(64), attr)?;
 
-        let packet = Packet::NewSlot(slot_id, root, wire1);
+        let packet = Packet::NewSlot(wire1);
 
         self.inner.queue.push(packet);
 
@@ -132,7 +130,7 @@ struct MainLoop<H> {
 }
 
 enum Packet {
-    NewSlot(MessageId, bool, Wire<Message>),
+    NewSlot(Wire<Message>),
     Close
 }
 
@@ -173,8 +171,8 @@ impl<H: Hook> MainLoop<H> {
                     Self::QUEUE_TOKEN => {
                         if let Some(packet) = self.queue.pop() {
                             match packet {
-                                Packet::NewSlot(id, root, wire) => {
-                                    self.switch.add_slot(&self.epoll, &self.hook, id, root, wire)?;
+                                Packet::NewSlot(wire) => {
+                                    self.switch.add_slot(&self.epoll, &self.hook, wire)?;
                                 }
                                 Packet::Close => {
                                     return Ok(())

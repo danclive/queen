@@ -12,7 +12,7 @@ fn conn() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
     for _ in 0..10000 {
-        let _wire = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+        let _wire = socket.connect(msg!{}, None, None).unwrap();
     }
 
     struct MyHook;
@@ -25,7 +25,7 @@ fn conn() {
 
     let socket = Socket::new(MessageId::new(), MyHook).unwrap();
 
-    let ret = socket.connect(MessageId::new(), false, msg!{}, None, None);
+    let ret = socket.connect(msg!{}, None, None);
     assert!(ret.is_err());
 
     match ret {
@@ -40,8 +40,8 @@ fn conn() {
 fn connect() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(msg!{}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING
@@ -75,8 +75,8 @@ fn connect() {
 fn attach_detach() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(msg!{}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING
@@ -150,10 +150,10 @@ fn attach_detach() {
 fn share() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
-    let wire3 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
-    let wire4 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(msg!{}, None, None).unwrap();
+    let wire3 = socket.connect(msg!{}, None, None).unwrap();
+    let wire4 = socket.connect(msg!{}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING
@@ -232,10 +232,10 @@ fn share() {
 fn share_attach() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
-    let wire3 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
-    let wire4 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(msg!{}, None, None).unwrap();
+    let wire3 = socket.connect(msg!{}, None, None).unwrap();
+    let wire4 = socket.connect(msg!{}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING
@@ -424,13 +424,16 @@ fn wire_to_wire() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
     let slot_id = MessageId::with_string("016f9dd00d746c7f89ce3423").unwrap();
-    let wire1 = socket.connect(slot_id, false, msg!{}, None, None).unwrap();
+    let attr = msg! {SLOT_ID: slot_id};
+    let wire1 = socket.connect(attr, None, None).unwrap();
 
     let slot_id = MessageId::with_string("016f9dd0c97338e09f5c61e9").unwrap();
-    let wire2 = socket.connect(slot_id, false, msg!{}, None, None).unwrap();
+    let attr = msg! {SLOT_ID: slot_id};
+    let wire2 = socket.connect(attr, None, None).unwrap();
 
     let slot_id = MessageId::with_string("016f9dd0c97338e09f5c61e9").unwrap();
-    let ret = socket.connect(slot_id, false, msg!{}, None, None);
+    let attr = msg! {SLOT_ID: slot_id};
+    let ret = socket.connect(attr, None, None);
 
     assert!(matches!(ret, Err(Error::ErrorCode(Code::DuplicateSlotId))));
 
@@ -446,7 +449,8 @@ fn wire_to_wire() {
     assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
     let slot_id = MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap();
-    let wire3 = socket.connect(slot_id, false, msg!{}, None, None).unwrap();
+    let attr = msg! {SLOT_ID: slot_id};
+    let wire3 = socket.connect(attr, None, None).unwrap();
 
     let _ = wire3.send(msg!{
         CHAN: PING
@@ -514,7 +518,8 @@ fn wire_to_wire() {
 fn slot_event() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(MessageId::new(), true, msg!{}, None, None).unwrap();
+    let attr = msg! {ROOT: true};
+    let wire1 = socket.connect(attr, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING
@@ -548,7 +553,8 @@ fn slot_event() {
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    let wire2 = socket.connect(MessageId::new(), true, msg!{}, None, None).unwrap();
+    let attr = msg! {ROOT: true};
+    let wire2 = socket.connect(attr, None, None).unwrap();
 
     let _ = wire2.send(msg!{
         CHAN: PING
@@ -626,7 +632,8 @@ fn slot_event() {
     assert!(recv.get_message(ATTR).is_ok());
 
     let slot_id = MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap();
-    let wire2 = socket.connect(slot_id, false, msg!{}, None, None).unwrap();
+    let attr = msg! {SLOT_ID: slot_id};
+    let wire2 = socket.connect(attr, None, None).unwrap();
 
     let _ = wire2.send(msg!{
         CHAN: PING
@@ -671,7 +678,7 @@ fn slot_event() {
     assert!(Code::get(&recv) == Some(Code::TargetSlotIdNotExist));
     assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
 
-    let wire3 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire3 = socket.connect(msg!{}, None, None).unwrap();
 
     let _ = wire3.send(msg!{
         CHAN: PING
@@ -693,7 +700,7 @@ fn slot_event() {
 fn mine() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
 
     // mine
     let _ = wire1.send(msg!{
@@ -744,9 +751,11 @@ fn mine() {
 fn slot_event_send_recv() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
-    let wire3 = socket.connect(MessageId::new(), true, msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(msg!{}, None, None).unwrap();
+
+    let attr = msg! {ROOT: true};
+    let wire3 = socket.connect(attr, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING
@@ -821,7 +830,7 @@ fn slot_event_send_recv() {
 fn self_send_recv() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING
@@ -853,7 +862,7 @@ fn self_send_recv() {
     assert!(wire1.wait(Some(Duration::from_millis(100))).is_err());
 
     // wire2
-    let wire2 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire2 = socket.connect(msg!{}, None, None).unwrap();
 
     let _ = wire2.send(msg!{
         CHAN: PING
@@ -894,9 +903,12 @@ fn bind_unbind() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
     let slot_id1 = MessageId::new();
+    let attr1 = msg! {SLOT_ID: slot_id1};
     let slot_id2 = MessageId::new();
-    let wire1 = socket.connect(slot_id1, false, msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(slot_id2, false, msg!{}, None, None).unwrap();
+    let attr2 = msg! {SLOT_ID: slot_id2};
+
+    let wire1 = socket.connect(attr1, None, None).unwrap();
+    let wire2 = socket.connect(attr2, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING
@@ -956,7 +968,8 @@ fn bind_unbind() {
 
     // BIND_RECV
     let slot_id3 = MessageId::new();
-    let wire3 = socket.connect(slot_id3, false, msg!{}, None, None).unwrap();
+    let attr3 = msg! {SLOT_ID: slot_id3};
+    let wire3 = socket.connect(attr3, None, None).unwrap();
 
     let _ = wire3.send(msg!{
         CHAN: PING
@@ -1016,11 +1029,15 @@ fn to_socket() {
     let socket = Socket::new(socket_id, ()).unwrap();
 
     let slot_id1 = MessageId::new();
+    let attr1 = msg! {SLOT_ID: slot_id1};
     let slot_id2 = MessageId::new();
+    let attr2 = msg! {SLOT_ID: slot_id2};
     let slot_id3 = MessageId::new();
-    let wire1 = socket.connect(slot_id1, false, msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(slot_id2, false, msg!{}, None, None).unwrap();
-    let wire3 = socket.connect(slot_id3, false, msg!{}, None, None).unwrap();
+    let attr3 = msg! {SLOT_ID: slot_id3};
+
+    let wire1 = socket.connect(attr1, None, None).unwrap();
+    let wire2 = socket.connect(attr2, None, None).unwrap();
+    let wire3 = socket.connect(attr3, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING

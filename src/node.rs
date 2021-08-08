@@ -18,7 +18,7 @@ use queen_io::{
 
 use rand::{SeedableRng, seq::SliceRandom, rngs::SmallRng};
 
-use nson::{msg, Message, MessageId};
+use nson::{Message, MessageId};
 
 use crate::Socket;
 use crate::Wire;
@@ -35,8 +35,6 @@ mod hook;
 pub trait Connector: Send + 'static {
     fn connect(
         &self,
-        slot_id: MessageId,
-        root: bool,
         attr: Message,
         capacity: Option<usize>,
         timeout: Option<Duration>
@@ -48,13 +46,11 @@ pub trait Connector: Send + 'static {
 impl Connector for Socket {
     fn connect(
         &self,
-        slot_id: MessageId,
-        root: bool,
         attr: Message,
         capacity: Option<usize>,
         timeout: Option<Duration>
     ) -> Result<Wire<Message>> {
-        self.connect(slot_id, root, attr, capacity, timeout)
+        self.connect(attr, capacity, timeout)
     }
 
     fn running(&self) -> bool {
@@ -335,21 +331,13 @@ impl<C: Codec, H: Hook> Inner<C, H> {
         if !hook.enable_secure() {
             // 没有开启加密
 
-            // 这里会将原始的握手消息传入。
             // 但是要注意，握手消息是没有加密的，不能传递敏感数据
-            let mut origin = message.clone();
-            // 去除一些冗余信息
-            origin.remove(CHAN);
-            origin.remove(ADDR);
-            origin.remove(SECURE);
+            let mut attr = message.clone();
 
-            let attr = msg!{
-                ADDR: addr.to_string(),
-                SECURE: false,
-                ORIGIN: origin
-            };
+            attr.remove(CHAN);
+            attr.insert(ADDR, addr.to_string());
 
-            let wire = connector.connect(slot_id, root, attr, None, None)?;
+            let wire = connector.connect(attr, None, None)?;
 
             // 这里可以修改 Wire 的属性
             hook.finish(slot_id, root, &mut message, &wire);
@@ -392,21 +380,13 @@ impl<C: Codec, H: Hook> Inner<C, H> {
                 }
             };
 
-            // 这里会将原始的握手消息传入。
             // 但是要注意，握手消息是没有加密的，不能传递敏感数据
-            let mut origin = message.clone();
-            // 去除一些冗余信息
-            origin.remove(CHAN);
-            origin.remove(ADDR);
-            origin.remove(SECURE);
+            let mut attr = message.clone();
 
-            let attr = msg!{
-                ADDR: addr.to_string(),
-                SECURE: true,
-                ORIGIN: origin
-            };
+            attr.remove(CHAN);
+            attr.insert(ADDR, addr.to_string());
 
-            let wire = connector.connect(slot_id, root, attr, None, None)?;
+            let wire = connector.connect(attr, None, None)?;
 
             // 这里可以修改 Wire 的属性
             hook.finish(slot_id, root, &mut message, &wire);

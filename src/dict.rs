@@ -66,4 +66,3 @@ pub const KEEP_ALIVE:  &str = "_ke";
 
 pub const METHOD:      &str = "_me";
 pub const SECURE:      &str = "_se";
-pub const ORIGIN:      &str = "_or";

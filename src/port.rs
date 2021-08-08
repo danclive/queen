@@ -10,7 +10,7 @@ use std::io::Write;
 use queen_io::net::tcp::TcpStream;
 use queen_io::queue::mpsc::Queue;
 
-use nson::{Message, MessageId};
+use nson::Message;
 
 use crate::net::{NetWork, Packet, CryptoOptions, Codec, KeepAlive};
 use crate::Wire;
@@ -73,8 +73,6 @@ impl<C: Codec> Port<C> {
     pub fn connect<A: ToSocketAddrs>(
         &self,
         addr: A,
-        slot_id: MessageId,
-        root: bool,
         mut attr: Message,
         crypto_options: Option<CryptoOptions>,
         capacity: Option<usize>
@@ -95,8 +93,6 @@ impl<C: Codec> Port<C> {
         attr.insert(CHAN, HAND);
         attr.insert(ADDR, stream.peer_addr()?.to_string());
         attr.insert(SECURE, false);
-        attr.insert(SLOT_ID, slot_id);
-        attr.insert(ROOT, root);
 
         let crypto = crypto_options.map(|options| {
             attr.insert(SECURE, true);

@@ -10,7 +10,7 @@ fn main() {
     let socket = Socket::new(MessageId::new(), NonHook).unwrap();
 
     // start wire 1
-    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
 
     wire1.send(msg!{
         CHAN: PING
@@ -32,7 +32,7 @@ fn main() {
     let port = Port::<NsonCodec>::new(KeepAlive::default()).unwrap();
 
     // start wire 2
-    let wire2 = port.connect("127.0.0.1:8888", MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire2 = port.connect("127.0.0.1:8888", msg!{}, None, None).unwrap();
 
     wire2.send(msg!{
         CHAN: PING

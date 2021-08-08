@@ -55,20 +55,47 @@ impl Switch {
         &mut self,
         epoll: &Epoll,
         hook: &impl Hook,
-        id: MessageId,
-        root: bool,
         wire: Wire<Message>
     ) -> Result<()> {
-        if self.slot_ids.contains_key(&id) {
-            let _ = wire.send(msg!{CODE: Code::DuplicateSlotId.code()});
+        // SLOT_ID
+        let slot_id = if let Some(slot_id) = wire.attr().get(SLOT_ID) {
+            if let Some(slot_id) = slot_id.as_message_id() {
+                if self.slot_ids.contains_key(slot_id) {
+                    let _ = wire.send(msg!{CODE: Code::DuplicateSlotId.code()});
 
-            return Ok(())
-        }
+                    return Ok(())
+                }
+
+                *slot_id
+            } else {
+                let _ = wire.send(msg!{CODE: Code::InvalidSlotIdFieldType.code()});
+
+                return Ok(())
+            }
+        } else {
+            let slot_id = MessageId::new();
+            slot_id
+        };
+
+        wire.attr().insert(SLOT_ID, slot_id);
+
+        // ROOT
+        let root = if let Some(root) = wire.attr().get(ROOT) {
+            if let Some(root) = root.as_bool() {
+                root
+            } else {
+                let _ = wire.send(msg!{CODE: Code::InvalidRootFieldType.code()});
+
+                return Ok(())
+            }
+        } else {
+            false
+        };
 
         let entry = self.slots.vacant_entry();
         let token = entry.key();
 
-        let slot = Slot::new(token, id, root, wire);
+        let slot = Slot::new(token, slot_id, root, wire);
 
         // 此处可以验证一下 SLOT 的属性，不过目前只能验证 wire.attr
         // 并且，wire.attr 是可以修改的

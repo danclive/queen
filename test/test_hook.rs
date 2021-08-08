@@ -129,7 +129,7 @@ fn test_hook() {
 
     let socket = Socket::new(MessageId::new(), hook.clone()).unwrap();
 
-    let wire1 = socket.connect(MessageId::new(), false, msg!{}, None, None).unwrap();
+    let wire1 = socket.connect(msg!{}, None, None).unwrap();
 
     assert!(hook.slots() == 1);
 
