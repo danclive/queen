@@ -299,26 +299,9 @@ impl<C: Codec, H: Hook> Inner<C, H> {
             slot_id
         };
 
-        // ROOT
-        let root = if let Some(root) = message.get(ROOT) {
-            if let Some(root) = root.as_bool() {
-                root
-            } else {
-                #[cfg(debug_assertions)]
-                {
-                    Code::InvalidRootFieldType.set(&mut message);
-                    let _ = Self::send(&mut codec, stream, message);
-                }
-
-                return Err(Error::ErrorCode(Code::InvalidRootFieldType));
-            }
-        } else {
-            false
-        };
-
         // 握手消息是可以修改的，修改后的消息会发回客户端，因此可以携带自定义数据
         // 但是对于一些握手必备的属性，请谨慎修改，比如加密方式（METHOD）
-        if !hook.start(slot_id, root, &mut message) {
+        if !hook.start(slot_id, &mut message) {
             #[cfg(debug_assertions)]
             {
                 Code::AuthenticationFailed.set(&mut message);
@@ -340,7 +323,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
             let wire = connector.connect(attr, None, None)?;
 
             // 这里可以修改 Wire 的属性
-            hook.finish(slot_id, root, &mut message, &wire);
+            hook.finish(slot_id, &mut message, &wire);
 
             Code::Ok.set(&mut message);
 
@@ -367,7 +350,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
             // 但是对于一些握手必备的属性，请谨慎修改
             // 这里需要根据传递的自定义数据，返回一个加密密钥
             // let secret = hook.access(&mut message).ok_or_else(|| Error::ErrorCode(Code::PermissionDenied))?;
-            let secret = match hook.access(slot_id, root, &mut message) {
+            let secret = match hook.access(slot_id, &mut message) {
                 Some(s) => s,
                 None => {
                     #[cfg(debug_assertions)]
@@ -389,7 +372,7 @@ impl<C: Codec, H: Hook> Inner<C, H> {
             let wire = connector.connect(attr, None, None)?;
 
             // 这里可以修改 Wire 的属性
-            hook.finish(slot_id, root, &mut message, &wire);
+            hook.finish(slot_id, &mut message, &wire);
 
             Code::Ok.set(&mut message);
 

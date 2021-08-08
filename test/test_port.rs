@@ -84,13 +84,13 @@ fn port_secure() {
             true
         }
 
-        fn start(&self, _slot_id: MessageId, _root: bool, message: &mut Message) -> bool {
+        fn start(&self, _slot_id: MessageId, message: &mut Message) -> bool {
             message.insert("lalala", 123);
 
             true
         }
 
-        fn access(&self, _slot_id: MessageId, _root: bool, message: &mut Message) -> Option<String> {
+        fn access(&self, _slot_id: MessageId, message: &mut Message) -> Option<String> {
             message.insert("hello", "world");
 
             if let Ok(access) = message.get_str(ACCESS) {
@@ -102,7 +102,7 @@ fn port_secure() {
             None
         }
 
-        fn finish(&self, _slot_id: MessageId, _root: bool, message: &mut Message, wire: &Wire<Message>) {
+        fn finish(&self, _slot_id: MessageId, message: &mut Message, wire: &Wire<Message>) {
             message.insert("wawawa", 456);
             wire.attr().insert("aaa", "bbb");
         }
@@ -186,7 +186,7 @@ fn port_secure2() {
             true
         }
 
-        fn access(&self, _slot_id: MessageId, _root: bool, message: &mut Message) -> Option<String> {
+        fn access(&self, _slot_id: MessageId, message: &mut Message) -> Option<String> {
             if let Ok(access) = message.get_str(ACCESS) {
                 if access == "12d3eaf5e9effffb14fb213e" {
                     return Some("99557df09590ad6043ceefd1".to_string())

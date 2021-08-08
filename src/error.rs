@@ -96,6 +96,7 @@ pub enum Code {
     InvalidRootFieldType = 208,
     InvalidShareFieldType = 209,
     InvalidToSocketFieldType = 210,
+    InvalidTagsFieldType = 211,
 
     InternalError = 300,
     UnsupportedFormat = 301,
@@ -132,6 +133,7 @@ impl Code {
             208 => Code::InvalidRootFieldType,
             209 => Code::InvalidShareFieldType,
             210 => Code::InvalidToSocketFieldType,
+            211 => Code::InvalidTagsFieldType,
 
             300 => Code::InternalError,
             301 => Code::UnsupportedFormat,
@@ -164,6 +166,7 @@ impl Code {
             Code::InvalidRootFieldType => "InvalidRootFieldType",
             Code::InvalidShareFieldType => "InvalidShareFieldType",
             Code::InvalidToSocketFieldType => "InvalidToSocketFieldType",
+            Code::InvalidTagsFieldType => "InvalidTagsFieldType",
 
             Code::InternalError => "InternalError",
             Code::UnsupportedFormat => "UnsupportedFormat",

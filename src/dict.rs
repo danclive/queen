@@ -30,6 +30,7 @@ pub const SHARE_CHANS: &str = "_sc";
 pub const BINDED:      &str = "_bd";
 pub const BOUNDED:     &str = "_bo";
 pub const JOINED:      &str = "_jd";
+pub const TAGS:        &str = "_tg";
 
 // message id
 pub const ID:        &str = "_id";
