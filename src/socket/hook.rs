@@ -25,13 +25,7 @@ pub trait Hook: Send + 'static {
 
     fn push(&self, _: &Slot, _: &mut Message) -> bool { true }
 
-    fn kill(&self, _: &Slot, _: &mut Message) -> bool { true }
-
-    fn query(&self, _: &Switch, _token: usize, _: &mut Message) {}
-
     fn custom(&self, _: &Switch, _token: usize, _: &mut Message) {}
-
-    fn ctrl(&self, _: &mut Switch, _token: usize, _: &mut Message) {}
 
     fn stop(&self, _: &Switch) {}
 }

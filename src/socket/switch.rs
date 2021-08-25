@@ -79,19 +79,6 @@ impl Switch {
 
         wire.attr().insert(SLOT_ID, slot_id);
 
-        // ROOT
-        let root = if let Some(root) = wire.attr().get(ROOT) {
-            if let Some(root) = root.as_bool() {
-                root
-            } else {
-                let _ = wire.send(msg!{CODE: Code::InvalidRootFieldType.code()});
-
-                return Ok(())
-            }
-        } else {
-            false
-        };
-
         // TAGS
         let mut tags = HashSet::new();
 
@@ -119,7 +106,6 @@ impl Switch {
         let token = entry.key();
 
         let mut slot = Slot::new(token, slot_id, wire);
-        slot.root = root;
         slot.tags = tags;
 
         // 此处可以验证一下 SLOT 的属性，不过目前只能验证 wire.attr
@@ -133,8 +119,7 @@ impl Switch {
             self.slot_ids.insert(slot.id, token);
 
             // 这里发一个事件，表示有 SLOT 认证成功，准备好接收消息了
-            // 注意，只有在 SLOT_READY 和 SLOT_BREAK 这两个事件才会返回
-            // SLOT 的 ATTR
+            // 注意，只有在 SLOT_READY 和 SLOT_BREAK 这两个事件才会返回 SLOT 的 ATTR
             // slot event
             // {
             //     CHAN: SLOT_READY,
@@ -149,7 +134,7 @@ impl Switch {
 
             entry.insert(slot);
 
-            self.relay_root_message(hook, token, SLOT_READY, event_message);
+            self.relay_event_message(hook, token, SLOT_READY, event_message);
         } else {
             let _ = slot.wire.send(msg!{CODE: Code::AuthenticationFailed.code()});
         }
@@ -192,6 +177,7 @@ impl Switch {
             // 这里要记得移除 SLOT_ID，因为 wire 在一开始建立连接时就会默认分配一个
             // 认证成功时可以修改
             self.slot_ids.remove(&slot.id);
+            self.socket_ids.remove(&slot.id);
 
             // 清除 BIND
             for target_token in &slot.bind {
@@ -214,11 +200,10 @@ impl Switch {
             let event_message = msg!{
                 CHAN: SLOT_BREAK,
                 SLOT_ID: slot.id,
-                ROOT: slot.root,
                 ATTR: slot.wire.attr().clone()
             };
 
-            self.relay_root_message(hook, token, SLOT_BREAK, event_message);
+            self.relay_event_message(hook, token, SLOT_BREAK, event_message);
         }
 
         Ok(())
@@ -226,7 +211,6 @@ impl Switch {
 
     pub(crate) fn recv_message(
         &mut self,
-        epoll: &Epoll,
         hook: &impl Hook,
         token: usize,
         mut message: Message
@@ -262,10 +246,7 @@ impl Switch {
                 LEAVE => self.leave(hook, token, message),
                 PING => self.ping(hook, token, message),
                 MINE => self.mine(hook, token, message),
-                QUERY => self.query(hook, token, message),
                 CUSTOM => self.custom(hook, token, message),
-                CTRL => self.ctrl(hook, token, message),
-                SLOT_KILL => self.kill(epoll, hook, token, message)?,
                 _ => {
                     Code::UnsupportedChan.set(&mut message);
 
@@ -294,7 +275,7 @@ impl Switch {
         }
     }
 
-    fn relay_root_message(
+    fn relay_event_message(
         &self,
         hook: &impl Hook,
         token: usize,
@@ -353,21 +334,6 @@ impl Switch {
                     }
 
                     $self.send_message($hook, $slot.token, message.clone());
-
-                    // slot event
-                    // {
-                    //     CHAN: SLOT_RECV,
-                    //     VALUE: $message
-                    // }
-                    let event_message = msg!{
-                        CHAN: SLOT_RECV,
-                        VALUE: message.clone(),
-                        TO: $slot.id
-                    };
-
-                    let id = $slot.token;
-
-                    $self.relay_root_message($hook, id, SLOT_RECV, event_message);
                 }
             };
         }
@@ -584,18 +550,6 @@ impl Switch {
             }
 
         } // end goon
-
-        // slot event
-        // {
-        //     CHAN: SLOT_SEND,
-        //     VALUE: $message
-        // }
-        let event_message = msg!{
-            CHAN: SLOT_SEND,
-            VALUE: message
-        };
-
-        self.relay_root_message(hook, token, SLOT_SEND, event_message);
     }
 
     // ATTACH 的时候，可以附带自定义数据，可以通过 Hook.attach 或 SLOT_ATTACH 事件获取
@@ -608,15 +562,15 @@ impl Switch {
         if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
             // check ROOT
             match chan.as_str() {
-                SLOT_READY | SLOT_BREAK | SLOT_ATTACH | SLOT_DETACH | SLOT_SEND | SLOT_RECV => {
+                SLOT_READY | SLOT_BREAK | SLOT_ATTACH | SLOT_DETACH => {
 
-                    if !self.slots[token].root {
-                        Code::PermissionDenied.set(&mut message);
+                    // if !self.slots[token].root {
+                    //     Code::PermissionDenied.set(&mut message);
 
-                        self.send_message(hook, token, message);
+                    //     self.send_message(hook, token, message);
 
-                        return
-                    }
+                    //     return
+                    // }
 
                 }
                 _ => ()
@@ -675,7 +629,7 @@ impl Switch {
                 self.slots[token].chans.insert(chan);
             }
 
-            self.relay_root_message(hook, token, SLOT_ATTACH, event_message);
+            self.relay_event_message(hook, token, SLOT_ATTACH, event_message);
 
             Code::Ok.set(&mut message);
         } else {
@@ -758,7 +712,7 @@ impl Switch {
                 }
             }
 
-            self.relay_root_message(hook, token, SLOT_DETACH, event_message);
+            self.relay_event_message(hook, token, SLOT_DETACH, event_message);
 
             Code::Ok.set(&mut message);
         } else {
@@ -869,29 +823,6 @@ impl Switch {
         self.send_message(hook, token, message);
     }
 
-    // 注意，QUERY 和 CUSTOM 的不同之处在于，前者必须具有 ROOT 权限，后者不需要
-    // 可以在 Hook.query 自行定制返回数据
-    fn query(&self, hook: &impl Hook, token: usize, mut message: Message) {
-        {
-            let slot = &self.slots[token];
-
-            if !slot.root {
-                Code::PermissionDenied.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
-        }
-
-        hook.query(self, token, &mut message);
-
-        // QUERY 的时候，不会插入 CODE: 0, 由 hook 函数决定
-
-        self.send_message(hook, token, message);
-    }
-
-    // 用于实现自定义功能。注意，QUERY 和 CUSTOM 的不同之处在于，前者必须具有 ROOT 权限，后者不需要
     // 可以在 Hook.custom 自行定制返回数据
     fn custom(&self, hook: &impl Hook, token: usize, mut message: Message) {
         hook.custom(self, token, &mut message);
@@ -899,97 +830,5 @@ impl Switch {
         // CUSTOM 的时候，不会插入 CODE: 0, 由 hook 函数决定
 
         self.send_message(hook, token, message);
-    }
-
-    // 用于控制命令。必须具有 ROOT 权限
-    // 可以在 Hook.ctrl 自行定制返回数据
-    // 注意，在 Hook.ctrl 能修改 Switch 结构，需谨慎操作
-    fn ctrl(&mut self, hook: &impl Hook, token: usize, mut message: Message) {
-        {
-            let slot = &self.slots[token];
-
-            if !slot.root {
-                Code::PermissionDenied.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
-        }
-
-        hook.ctrl(self, token, &mut message);
-
-        // QUERY 的时候，不会插入 CODE: 0, 由 hook 函数决定
-
-        self.send_message(hook, token, message);
-    }
-
-    // 具有 ROOT 权限的 SLOT 可以 KILL 掉其他 SLOT（包括自己）
-    fn kill(
-        &mut self,
-        epoll: &Epoll,
-        hook: &impl Hook,
-        token: usize,
-        mut message: Message
-    ) -> Result<()> {
-        {
-            let slot = &self.slots[token];
-
-            if !slot.root {
-                Code::PermissionDenied.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return Ok(())
-            }
-        }
-
-        let success = hook.kill(&self.slots[token], &mut message);
-
-        if !success {
-            Code::PermissionDenied.set(&mut message);
-
-            self.send_message(hook, token, message);
-
-            return Ok(())
-        }
-
-        let remove_token;
-
-        if let Some(slot_id) = message.get(SLOT_ID) {
-            if let Some(slot_id) = slot_id.as_message_id() {
-                if let Some(other_token) = self.slot_ids.get(slot_id).cloned() {
-                    remove_token = Some(other_token);
-                } else {
-                    Code::TargetSlotIdNotExist.set(&mut message);
-
-                    self.send_message(hook, token, message);
-
-                    return Ok(())
-                }
-            } else {
-                Code::InvalidSlotIdFieldType.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return Ok(())
-            }
-        } else {
-            Code::CannotGetSlotIdField.set(&mut message);
-
-            self.send_message(hook, token, message);
-
-            return Ok(())
-        }
-
-        Code::Ok.set(&mut message);
-
-        self.send_message(hook, token, message);
-
-        if let Some(remove_token) = remove_token {
-            self.del_slot(epoll, hook, remove_token)?;
-        }
-
-        Ok(())
     }
 }

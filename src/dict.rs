@@ -6,10 +6,8 @@ pub const DETACH:      &str = "_dh";
 pub const JOIN:        &str = "_jo";
 pub const LEAVE:       &str = "_le";
 pub const PING:        &str = "_pi";
-pub const QUERY:       &str = "_qu";
 pub const MINE:        &str = "_mi";
 pub const CUSTOM:      &str = "_cu";
-pub const CTRL:        &str = "_ct";
 
 // params
 pub const SOCKET_ID:   &str = "_so";
@@ -20,7 +18,6 @@ pub const TO_SOCKET:   &str = "_ts";
 pub const FROM:        &str = "_fr";
 pub const FROM_SOCKET: &str = "_fs";
 pub const SHARE:       &str = "_sh";
-pub const ROOT:        &str = "_ro";
 pub const ATTR:        &str = "_at";
 pub const ADDR:        &str = "_ad";
 pub const CHANS:       &str = "_cs";
@@ -40,9 +37,6 @@ pub const SLOT_READY:  &str = "_slre";
 pub const SLOT_BREAK:  &str = "_slbr";
 pub const SLOT_ATTACH: &str = "_slat";
 pub const SLOT_DETACH: &str = "_slde";
-pub const SLOT_KILL:   &str = "_slki";
-pub const SLOT_SEND:   &str = "_slse";
-pub const SLOT_RECV:   &str = "_slrc";
 
 // attr
 pub const SEND_NUM:    &str = "_snum";

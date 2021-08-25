@@ -11,7 +11,6 @@ use crate::Wire;
 pub struct Slot {
     pub token: usize,
     pub id: MessageId,
-    pub root: bool,
     pub joined: bool,
     pub chans: HashSet<String>,
     pub share_chans: HashSet<String>,
@@ -26,7 +25,6 @@ impl Slot {
         Self {
             token,
             id,
-            root: false,
             joined: false,
             chans: HashSet::new(),
             share_chans: HashSet::new(),

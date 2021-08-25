@@ -1,5 +1,4 @@
 use std::time::Duration;
-use std::thread;
 
 use nson::{msg, MessageId};
 
@@ -518,8 +517,7 @@ fn wire_to_wire() {
 fn slot_event() {
     let socket = Socket::new(MessageId::new(), ()).unwrap();
 
-    let attr = msg! {ROOT: true};
-    let wire1 = socket.connect(attr, None, None).unwrap();
+    let wire1 = socket.connect(msg! {}, None, None).unwrap();
 
     let _ = wire1.send(msg!{
         CHAN: PING
@@ -553,8 +551,7 @@ fn slot_event() {
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
     assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
 
-    let attr = msg! {ROOT: true};
-    let wire2 = socket.connect(attr, None, None).unwrap();
+    let wire2 = socket.connect(msg! {}, None, None).unwrap();
 
     let _ = wire2.send(msg!{
         CHAN: PING
@@ -567,7 +564,6 @@ fn slot_event() {
     assert!(recv.get_str(CHAN).unwrap() == SLOT_READY);
     assert!(recv.get_message_id(SLOT_ID).is_ok());
     assert!(recv.get_message(ATTR).is_ok());
-    assert!(recv.get_message(ATTR).unwrap().get_bool(ROOT).unwrap() == true);
 
     // attach
     let _ = wire2.send(msg!{
@@ -630,70 +626,6 @@ fn slot_event() {
     assert!(recv.get_str(CHAN).unwrap() == SLOT_BREAK);
     assert!(recv.get_message_id(SLOT_ID).is_ok());
     assert!(recv.get_message(ATTR).is_ok());
-
-    let slot_id = MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap();
-    let attr = msg! {SLOT_ID: slot_id};
-    let wire2 = socket.connect(attr, None, None).unwrap();
-
-    let _ = wire2.send(msg!{
-        CHAN: PING
-    });
-
-    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-
-    let _ = wire1.send(msg!{
-        CHAN: SLOT_KILL,
-        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap()
-    });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_str(CHAN).unwrap() == SLOT_READY);
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
-    assert!(recv.get_message(ATTR).unwrap().get_bool(ROOT).is_err());
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_str(CHAN).unwrap() == SLOT_KILL);
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_str(CHAN).unwrap() == SLOT_BREAK);
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
-
-    thread::sleep(Duration::from_millis(100));
-
-    assert!(wire2.is_close());
-    assert!(wire2.wait(Some(Duration::from_millis(100))).is_err());
-
-    let _ = wire1.send(msg!{
-        CHAN: SLOT_KILL,
-        SLOT_ID: MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap()
-    });
-
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(Code::get(&recv) == Some(Code::TargetSlotIdNotExist));
-    assert!(recv.get_message_id(SLOT_ID).unwrap() == &MessageId::with_string("016f9dd11953dba9c0943f8c").unwrap());
-
-    let wire3 = socket.connect(msg!{}, None, None).unwrap();
-
-    let _ = wire3.send(msg!{
-        CHAN: PING
-    });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-
-    let _ = wire3.send(msg!{
-        CHAN: ATTACH,
-        VALUE: SLOT_READY
-    });
-
-    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(Code::get(&recv) == Some(Code::PermissionDenied));
 }
 
 #[test]
@@ -741,85 +673,6 @@ fn mine() {
     assert!(value.get_message_id(SLOT_ID).is_ok());
     assert!(value.get_u64(SEND_NUM).unwrap() == 3);
     assert!(value.get_u64(RECV_NUM).unwrap() == 3);
-}
-
-#[test]
-fn slot_event_send_recv() {
-    let socket = Socket::new(MessageId::new(), ()).unwrap();
-
-    let wire1 = socket.connect(msg!{}, None, None).unwrap();
-    let wire2 = socket.connect(msg!{}, None, None).unwrap();
-
-    let attr = msg! {ROOT: true};
-    let wire3 = socket.connect(attr, None, None).unwrap();
-
-    let _ = wire1.send(msg!{
-        CHAN: PING
-    });
-
-    let _ = wire2.send(msg!{
-        CHAN: PING
-    });
-
-    let _ = wire3.send(msg!{
-        CHAN: PING
-    });
-
-    assert!(wire1.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-    assert!(wire2.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-
-    // attach slot event
-    let _ = wire3.send(msg!{
-        CHAN: ATTACH,
-        VALUE: SLOT_SEND,
-    });
-
-    let _ = wire3.send(msg!{
-        CHAN: ATTACH,
-        VALUE: SLOT_RECV,
-    });
-
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-    assert!(wire3.wait(Some(Duration::from_millis(100))).unwrap().get_i32(CODE).unwrap() == 0);
-
-    // try send
-    let _ = wire1.send(msg!{
-        CHAN: "aaa",
-        "hello": "world"
-    });
-
-    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_str(CHAN).unwrap() == SLOT_SEND);
-    assert!(recv.get_message(VALUE).unwrap().get_str(CHAN).unwrap() == "aaa");
-
-    // attach
-    let _ = wire2.send(msg!{
-        CHAN: ATTACH,
-        VALUE: "aaa"
-    });
-
-    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
-    assert!(recv.get_i32(CODE).unwrap() == 0);
-
-    // send
-    let _ = wire1.send(msg!{
-        CHAN: "aaa",
-        "hello": "world"
-    });
-
-    // recv
-    let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
-
-    assert!(recv.get_str(CHAN).unwrap() == "aaa");
-    assert!(recv.get_str("hello").unwrap() == "world");
-
-    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
-    assert!(recv.get_str(CHAN).unwrap() == SLOT_RECV);
-
-    let recv = wire3.wait(Some(Duration::from_millis(100))).unwrap();
-    assert!(recv.get_str(CHAN).unwrap() == SLOT_SEND);
 }
 
 #[test]

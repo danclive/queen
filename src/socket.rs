@@ -185,7 +185,7 @@ impl<H: Hook> MainLoop<H> {
                         if let Some(slot) = self.switch.slots.get(token) {
                             match slot.wire.recv() {
                                 Ok(message) => {
-                                    self.switch.recv_message(&self.epoll, &self.hook, token, message)?;
+                                    self.switch.recv_message(&self.hook, token, message)?;
                                 }
                                 Err(err) => {
                                     if !matches!(err, RecvError::Empty) {
