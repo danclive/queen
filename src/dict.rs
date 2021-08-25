@@ -3,8 +3,6 @@ pub const CHAN:      &str = "_ch";
 // system channel
 pub const ATTACH:      &str = "_ah";
 pub const DETACH:      &str = "_dh";
-pub const BIND:        &str = "_bi";
-pub const UNBIND:      &str = "_ub";
 pub const JOIN:        &str = "_jo";
 pub const LEAVE:       &str = "_le";
 pub const PING:        &str = "_pi";
@@ -27,8 +25,6 @@ pub const ATTR:        &str = "_at";
 pub const ADDR:        &str = "_ad";
 pub const CHANS:       &str = "_cs";
 pub const SHARE_CHANS: &str = "_sc";
-pub const BINDED:      &str = "_bd";
-pub const BOUNDED:     &str = "_bo";
 pub const JOINED:      &str = "_jd";
 pub const TAGS:        &str = "_tg";
 
@@ -47,10 +43,6 @@ pub const SLOT_DETACH: &str = "_slde";
 pub const SLOT_KILL:   &str = "_slki";
 pub const SLOT_SEND:   &str = "_slse";
 pub const SLOT_RECV:   &str = "_slrc";
-
-// bind event channel
-pub const BIND_SEND:   &str = "_bdse";
-pub const BIND_RECV:   &str = "_bdre";
 
 // attr
 pub const SEND_NUM:    &str = "_snum";

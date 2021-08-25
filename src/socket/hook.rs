@@ -1,4 +1,4 @@
-use nson::{Message, MessageId};
+use nson::Message;
 
 use super::{Switch, Slot};
 
@@ -14,10 +14,6 @@ pub trait Hook: Send + 'static {
     fn attach(&self, _: &Slot, _: &mut Message, _chan: &str) -> bool { true }
 
     fn detach(&self, _: &Slot, _: &mut Message, _chan: &str) -> bool { true }
-
-    fn bind(&self, _: &Slot, _: &mut Message, _slot_id: MessageId) -> bool { true }
-
-    fn unbind(&self, _: &Slot, _: &mut Message, _slot_id: MessageId) -> bool { true }
 
     fn join(&self, _: &Slot, _: &mut Message) -> bool { true }
 

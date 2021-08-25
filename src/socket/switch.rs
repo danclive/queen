@@ -258,8 +258,6 @@ impl Switch {
             match chan {
                 ATTACH => self.attach(hook, token, message),
                 DETACH => self.detach(hook, token, message),
-                BIND => self.bind(hook, token, message),
-                UNBIND => self.unbind(hook, token, message),
                 JOIN => self.join(hook, token, message),
                 LEAVE => self.leave(hook, token, message),
                 PING => self.ping(hook, token, message),
@@ -340,16 +338,6 @@ impl Switch {
             return
         }
 
-        macro_rules! send_bind {
-            ($self: ident, $hook: ident, $slot: ident, $message: ident) => {
-                let success = $hook.push($slot, &mut $message);
-
-                if success {
-                    $self.send_message($hook, $slot.token, $message.clone());
-                }
-            };
-        }
-
         macro_rules! send {
             ($self: ident, $hook: ident, $slot: ident, $message: ident) => {
                 let success = $hook.push($slot, &mut $message);
@@ -365,22 +353,6 @@ impl Switch {
                     }
 
                     $self.send_message($hook, $slot.token, message.clone());
-
-                    // BIND
-                    // 此模式可以接收到所 BIND 的 SLOT 发送的消息
-                    let bounds = &$slot.bound;
-
-                    let mut bind_message = msg! {
-                        CHAN: BIND_RECV,
-                        SLOT_ID: $slot.id,
-                        VALUE: message.clone()
-                    };
-
-                    for bound in bounds {
-                        if let Some(slot) = self.slots.get(*bound) {
-                            send_bind!(self, hook, slot, bind_message);
-                        }
-                    }
 
                     // slot event
                     // {
@@ -402,22 +374,6 @@ impl Switch {
 
         if !message.contains_key(FROM) {
             message.insert(FROM, self.slots[token].id);
-        }
-
-        // BIND
-        // 此模式可以接收到所 BIND 的 SLOT 发送的消息
-        let bounds = &self.slots[token].bound;
-
-        let mut bind_message = msg! {
-            CHAN: BIND_SEND,
-            SLOT_ID: self.slots[token].id,
-            VALUE: message.clone()
-        };
-
-        for bound in bounds {
-            if let Some(slot) = self.slots.get(*bound) {
-                send_bind!(self, hook, slot, bind_message);
-            }
         }
 
         // TO SOCKET
@@ -812,74 +768,6 @@ impl Switch {
         self.send_message(hook, token, message);
     }
 
-    fn bind(
-        &mut self,
-        hook: &impl Hook,
-        token: usize,
-        mut message: Message
-    ) {
-        if let Ok(slot_id) = message.get_message_id(SLOT_ID).map(ToOwned::to_owned) {
-            // 这里可以验证该 SLOT 是否有权限
-            // 可以让 SLOT 不能 BIND 某些 SLOT_ID
-            let success = hook.bind(&self.slots[token], &mut message, slot_id);
-
-            if !success {
-                Code::PermissionDenied.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
-
-            if let Some(target_token) = self.slot_ids.get(&slot_id).copied() {
-                self.slots[token].bind.insert(target_token);
-                self.slots[target_token].bound.insert(token);
-
-                Code::Ok.set(&mut message);
-            } else {
-                Code::TargetSlotIdNotExist.set(&mut message);
-            }
-        } else {
-            Code::CannotGetSlotIdField.set(&mut message);
-        }
-
-        self.send_message(hook, token, message);
-    }
-
-    fn unbind(
-        &mut self,
-        hook: &impl Hook,
-        token: usize,
-        mut message: Message
-    ) {
-        if let Ok(slot_id) = message.get_message_id(SLOT_ID).map(ToOwned::to_owned) {
-            // 这里可以验证该 SLOT 是否有权限
-            // 可以让 SLOT 不能 BIND 某些 SLOT_ID
-            let success = hook.unbind(&self.slots[token], &mut message, slot_id);
-
-            if !success {
-                Code::PermissionDenied.set(&mut message);
-
-                self.send_message(hook, token, message);
-
-                return
-            }
-
-            if let Some(target_token) = self.slot_ids.get(&slot_id).copied() {
-                self.slots[token].bind.remove(&target_token);
-                self.slots[target_token].bound.remove(&token);
-
-                Code::Ok.set(&mut message);
-            } else {
-                Code::TargetSlotIdNotExist.set(&mut message);
-            }
-        } else {
-            Code::CannotGetSlotIdField.set(&mut message);
-        }
-
-        self.send_message(hook, token, message);
-    }
-
     fn join(
         &mut self,
         hook: &impl Hook,
@@ -970,8 +858,6 @@ impl Switch {
                 SHARE_CHANS: share_chans,
                 SEND_NUM: slot.wire.send_num() as u64,
                 RECV_NUM: slot.wire.recv_num() as u64,
-                BINDED: binded,
-                BOUNDED: bounded,
                 JOINED: slot.joined
             };
 
