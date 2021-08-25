@@ -703,12 +703,7 @@ fn self_send_recv() {
     assert!(recv.get_str(CHAN).unwrap() == ATTACH);
     assert!(recv.get_i32(CODE).is_ok());
 
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-    assert!(recv.get_str("hello").unwrap() == "world");
-    assert!(recv.get_message_id(FROM).is_ok());
-    assert!(recv.get_i32(CODE).is_err());
-
-    assert!(wire1.wait(Some(Duration::from_millis(100))).is_err());
+    assert!(wire1.wait(Some(Duration::from_millis(100))) == Err(RecvError::TimedOut));
 
     // wire2
     let wire2 = socket.connect(msg!{}, None, None).unwrap();
@@ -733,10 +728,7 @@ fn self_send_recv() {
         "hello": "world"
     });
 
-    let recv = wire1.wait(Some(Duration::from_millis(100))).unwrap();
-    assert!(recv.get_str("hello").unwrap() == "world");
-    assert!(recv.get_message_id(FROM).is_ok());
-    assert!(recv.get_i32(CODE).is_err());
+    assert!(wire1.wait(Some(Duration::from_millis(100))) == Err(RecvError::TimedOut));
 
     let recv = wire2.wait(Some(Duration::from_millis(100))).unwrap();
     assert!(recv.get_str("hello").unwrap() == "world");

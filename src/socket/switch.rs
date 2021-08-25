@@ -377,9 +377,6 @@ impl Switch {
                 }
             }
 
-            // 两种模式下，自己都可以收到自己发送的消息，如果不想处理，可以利用 `FROM` 进行过滤，
-            // 也就是此时 FROM == 自己的 SLOT_ID
-
             // P2P 的优先级比较高
             // 不管 SLOT 是否 ATTACH，都可给其发送消息
             // 自己可以收到自己发送的消息
@@ -474,9 +471,12 @@ impl Switch {
                     if message.get_bool(SHARE).ok().unwrap_or(false) {
                         let mut array: Vec<usize> = Vec::new();
 
-                        // 这里没有进行过滤 `.filter(|slot_token| **slot_token != token )`
-                        // 也就是自己可以收到自己发送的消息
                         for slot_token in tokens.iter() {
+                            // 自己不能收到自己的消息
+                            if slot_token == &token {
+                                continue;
+                            }
+
                             if !tags.is_empty() {
                                 if let Some(slot) = self.slots.get(*slot_token) {
                                     if !tags.iter().all(|t| slot.tags.contains(t)) {
@@ -501,9 +501,12 @@ impl Switch {
                         }
                     } else {
                         // 给每个 SLOT 发送消息
-                        // 这里没有进行过滤 `.filter(|slot_token| **slot_token != token )`
-                        // 也就是自己可以收到自己发送的消息
                         for slot_token in tokens.iter() {
+                            // 自己不能收到自己的消息
+                            if slot_token == &token {
+                                continue;
+                            }
+
                             if let Some(slot) = self.slots.get(*slot_token) {
                                 if !tags.is_empty() {
                                     if !tags.iter().all(|t| slot.tags.contains(t)) {
@@ -524,6 +527,11 @@ impl Switch {
                     let mut array: Vec<usize> = Vec::new();
 
                     for slot_token in tokens.iter() {
+                        // 自己不能收到自己的消息
+                        if slot_token == &token {
+                            continue;
+                        }
+
                         if !tags.is_empty() {
                             if let Some(slot) = self.slots.get(*slot_token) {
                                 if !tags.iter().all(|t| slot.tags.contains(t)) {
