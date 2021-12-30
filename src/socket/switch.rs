@@ -568,22 +568,6 @@ impl Switch {
         mut message: Message
     ) {
         if let Ok(chan) = message.get_str(VALUE).map(ToOwned::to_owned) {
-            // check ROOT
-            match chan.as_str() {
-                SLOT_READY | SLOT_BREAK | SLOT_ATTACH | SLOT_DETACH => {
-
-                    // if !self.slots[token].root {
-                    //     Code::PermissionDenied.set(&mut message);
-
-                    //     self.send_message(hook, token, message);
-
-                    //     return
-                    // }
-
-                }
-                _ => ()
-            }
-
             // share
             let mut share = false;
 

@@ -1,6 +1,6 @@
 [package]
 name          = "queen"
-version       = "0.27.0"
+version       = "0.28.0"
 license       = "MIT"
 authors       = ["danclive <dangcheng@hotmail.com>"]
 description   = "message queue"
@@ -15,7 +15,7 @@ exclude       = [
   "deploy.sh",
   "test/**/*",
 ]
-edition       = "2018"
+edition       = "2021"
 autobins      = false
 
 [dependencies]
